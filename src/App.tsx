@@ -308,6 +308,8 @@ h3{
 .product-field>span{position:absolute;top:-10px;left:12px;padding:0 7px;background:var(--pn);font-size:14px}
 .product-field input,.product-field select{height:45px;padding:10px 0 0;border:0;outline:0;background:transparent;color:var(--tx);font:inherit}
 .product-field input[type=file]{padding-top:11px;font-size:13px}
+.product-serial-input{width:100%;min-height:88px;margin-top:13px;padding:10px;border:1px solid var(--ln);border-radius:7px;background:var(--in);color:var(--tx);font:inherit;resize:vertical}
+.serial-scan{margin:10px 0}.serial-scan label{display:block;margin-bottom:5px;color:var(--mut);font-size:12px}.serial-scan input{border-color:var(--pu)}
 .product-create-actions{display:flex;justify-content:center;gap:18px;margin:32px 0 8px}
 .product-create-actions .btn{min-width:134px}
 .product-list-link{display:inline-flex;align-items:center;gap:7px;text-decoration:none}
@@ -1423,11 +1425,14 @@ function POSApp() {
               </div>
             ` : ""}
 
+            ${s ? `<div class="serial-scan"><label for="serialScan">Scan or enter product serial number, then press Enter</label><input id="serialScan" autocomplete="off" placeholder="Enter serial number"></div>` : ""}
+
             <div class="wrap">
-              <table style="min-width:440px">
+              <table style="min-width:560px">
                 <thead>
                   <tr>
                     <th>Item</th>
+                    <th>Serial No.</th>
                     <th>Price</th>
                     <th>Qty</th>
                     <th>Sub Total</th>
@@ -1596,6 +1601,14 @@ function POSApp() {
         };
         partySelect?.addEventListener("change", syncWalkinFields);
         syncWalkinFields();
+        const serialScan = $("#serialScan");
+        serialScan?.addEventListener("keydown", (event: KeyboardEvent) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          const value = serialScan.value.trim();
+          if (!value) return;
+          addSerialFromScan(value);
+        });
       }
 
       pgrid("");
@@ -1631,24 +1644,78 @@ function POSApp() {
       PRODUCT_BRAND = $("#productBrandFilter")?.value || "";
       pgrid($("#productSearch")?.value || "");
     };
-    const addc = (id: number) => {
+    const addc = (id: number, enteredSerial?: string) => {
       const p = prod(id);
 
       if (!p) return;
+
+      let serial = "";
+      if (PT === "sale" && p.hasSerial) {
+        if (+p.stock <= 0) {
+          toast("This product is out of stock");
+          return;
+        }
+        const entered = enteredSerial ?? window.prompt(`Enter serial number for ${p.name}`);
+        if (entered === null) return;
+        serial = entered.trim();
+        if (!serial) {
+          toast("Serial number is required");
+          return;
+        }
+        const availableSerial = (p.serials || []).find((value: string) => value.toLowerCase() === serial.toLowerCase());
+        if (!availableSerial) {
+          toast("Serial not in product stock. Add it in Product Edit first.");
+          return;
+        }
+        serial = availableSerial;
+        const isDuplicate = (items: any[]) => items.some((item: any) =>
+          (item.serials || []).some((value: string) => value.toLowerCase() === serial.toLowerCase()),
+        );
+        if (D.sales.some((sale: any) => isDuplicate(sale.items || [])) || isDuplicate(CART)) {
+          toast("This serial number has already been sold or added");
+          return;
+        }
+      }
 
       const c = CART.find((x) => x.id === id);
 
       if (c) {
         c.qty++;
+        if (serial) c.serials.push(serial);
       } else {
         CART.push({
           id,
           qty: 1,
           price: PT === "sale" ? p.sell : p.buy,
+          serials: serial ? [serial] : [],
         });
       }
 
       draw();
+    };
+
+    const addSerialFromScan = (serial: string) => {
+      const matchedProduct = D.products.find((p: any) =>
+        p.hasSerial && +p.stock > 0 &&
+        (p.serials || []).some((value: string) => value.toLowerCase() === serial.toLowerCase()),
+      );
+      if (matchedProduct) {
+        addc(matchedProduct.id, serial);
+      } else {
+        const codeMatch = D.products.find((p: any) =>
+          !p.hasSerial && +p.stock > 0 && String(p.code || "").trim().toLowerCase() === serial.toLowerCase(),
+        );
+        if (!codeMatch) {
+          toast("Serial not found. For regular products, enter the product code.");
+          return;
+        }
+        addc(codeMatch.id);
+      }
+      const input = $("#serialScan");
+      if (input) {
+        input.value = "";
+        input.focus();
+      }
     };
 
     const draw = () => {
@@ -1660,6 +1727,8 @@ function POSApp() {
               <td>
                 ${esc(prod(c.id)?.name)}
               </td>
+
+              <td>${c.serials?.length ? c.serials.map((value: string) => esc(value)).join(", ") : "-"}</td>
 
               <td>
                 <input
@@ -1679,6 +1748,7 @@ function POSApp() {
                   min="1"
                   style="width:64px"
                   value="${c.qty}"
+                  ${PT === "sale" && prod(c.id)?.hasSerial ? "readonly title=\"Add one unit by selecting the product and entering its serial number\"" : ""}
                   oninput="
                     CART[${i}].qty=Math.max(
                       1,
@@ -1705,7 +1775,7 @@ function POSApp() {
 
             </tr>
           `,
-        ).join("") || empty(5);
+        ).join("") || empty(6);
 
       calc();
     };
@@ -1790,6 +1860,11 @@ function POSApp() {
         return;
       }
 
+      if (s && CART.some((c) => prod(c.id)?.hasSerial && (c.serials?.length || 0) !== c.qty)) {
+        toast("Enter a serial number for each serialized unit");
+        return;
+      }
+
       CART.forEach((c) => {
         const pr = prod(c.id);
 
@@ -1797,6 +1872,10 @@ function POSApp() {
 
         if (s) {
           pr.stock -= c.qty;
+          if (pr.hasSerial && c.serials?.length) {
+            const soldSerials = new Set(c.serials.map((value: string) => value.toLowerCase()));
+            pr.serials = (pr.serials || []).filter((value: string) => !soldSerials.has(value.toLowerCase()));
+          }
         } else {
           pr.stock += c.qty;
           pr.buy = c.price;
@@ -1849,6 +1928,7 @@ function POSApp() {
           qty: c.qty,
           price: c.price,
           name: prod(c.id)?.name || "Product",
+          serials: c.serials || [],
         })),
 
         p: sum(
@@ -2007,6 +2087,7 @@ function POSApp() {
               ${textField("expireDate", "Expire Date", "", "date")}
               <label class="product-field"><span>Image</span><input id="p_image" type="file" accept="image/*"><img id="productImagePreview" class="product-image-preview" alt="Product image preview"></label>
               <label class="product-field"><span>Has Serial</span><select id="p_hasSerial"><option>No</option><option>Yes</option></select></label>
+              <label class="product-field serial-inventory-field" id="serialInventoryField" hidden><span>Available Serial Numbers</span><textarea id="p_serials" class="product-serial-input" placeholder="Enter one serial number per line, or separate with commas"></textarea></label>
             </div>
             <div class="product-create-actions">
               <button class="btn or" type="reset">Reset</button>
@@ -2014,6 +2095,11 @@ function POSApp() {
             </div>
           </form>
         </section>`;
+
+      const serialField = $("#serialInventoryField");
+      const syncSerialField = () => { serialField.hidden = $("#p_hasSerial").value !== "Yes"; };
+      $("#p_hasSerial")?.addEventListener("change", syncSerialField);
+      syncSerialField();
 
       $("#p_image")?.addEventListener("change", (event: Event) => {
         const input = event.currentTarget as HTMLInputElement;
@@ -2060,6 +2146,9 @@ function POSApp() {
           expireDate: value("expireDate"),
           image,
           hasSerial: value("hasSerial") === "Yes",
+          serials: value("hasSerial") === "Yes"
+            ? [...new Set(value("serials").split(/[\n,;]+/).map((serial: string) => serial.trim()).filter(Boolean))]
+            : [],
         };
         D.products.push(product);
         save();
@@ -2089,6 +2178,7 @@ function POSApp() {
           qty: +item.qty || 0,
           price,
           total: price * (+item.qty || 0),
+          serials: item.serials || [],
         };
       });
       const subtotal = +(sale.subtotal ?? sum(items, (item) => item.total));
@@ -2126,7 +2216,7 @@ function POSApp() {
           <div class="row"><span>Payment</span><span>${esc(sale.pay || "Cash")}</span></div>
           <div class="rule"></div>
           <table><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
-            <tbody>${items.map((item: AnyData) => `<tr><td>${item.name}</td><td>${item.qty}</td><td>${tk(item.price)}</td><td>${tk(item.total)}</td></tr>`).join("") || `<tr><td colspan="4">No item details</td></tr>`}</tbody>
+            <tbody>${items.map((item: AnyData) => `<tr><td>${item.name}${item.serials.length ? `<br><small>Serial: ${item.serials.map((value: string) => esc(value)).join(", ")}</small>` : ""}</td><td>${item.qty}</td><td>${tk(item.price)}</td><td>${tk(item.total)}</td></tr>`).join("") || `<tr><td colspan="4">No item details</td></tr>`}</tbody>
           </table>
           <section class="amounts">
             <div class="row"><span>Subtotal</span><span>${tk(subtotal)}</span></div>
@@ -2240,9 +2330,13 @@ function POSApp() {
         <label>Unit</label><select id="ep_unit">${opts(D.units, product.unit)}</select>
         <div class="two"><div><label>Purchase Price</label><input id="ep_buy" type="number" min="0" step="0.01" value="${+product.buy || 0}"></div><div><label>Sale Price</label><input id="ep_sell" type="number" min="0" step="0.01" value="${+product.sell || 0}"></div></div>
         <div class="two"><div><label>Stock</label><input id="ep_stock" type="number" min="0" step="1" value="${+product.stock || 0}"></div><div><label>Serial</label><select id="ep_serial"><option value="false" ${product.hasSerial ? "" : "selected"}>No</option><option value="true" ${product.hasSerial ? "selected" : ""}>Yes</option></select></div></div>
+        <label id="editSerialInventoryField">Available Serial Numbers<textarea id="ep_serials" class="product-serial-input" placeholder="Enter one serial number per line, or separate with commas">${esc((product.serials || []).join("\n"))}</textarea></label>
         <label>Replace Image (optional)</label><input id="ep_image" type="file" accept="image/*">
         <div class="two" style="margin-top:16px"><button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button><button class="btn pu" type="button" id="saveProductEdit">Save Changes</button></div>`;
       dialog.showModal();
+      const syncEditSerialField = () => { $("#editSerialInventoryField").hidden = $("#ep_serial").value !== "true"; };
+      $("#ep_serial")?.addEventListener("change", syncEditSerialField);
+      syncEditSerialField();
       $("#saveProductEdit")?.addEventListener("click", async () => {
         const imageFile = $("#ep_image")?.files?.[0] as File | undefined;
         let image = product.image || "";
@@ -2254,7 +2348,10 @@ function POSApp() {
           name: $("#ep_name").value.trim(), code: $("#ep_code").value.trim(),
           brand: +$("#ep_brand").value, category: +$("#ep_category").value, unit: +$("#ep_unit").value,
           buy: Math.max(0, +$("#ep_buy").value || 0), sell: Math.max(0, +$("#ep_sell").value || 0),
-          stock: Math.max(0, +$("#ep_stock").value || 0), hasSerial: $("#ep_serial").value === "true", image,
+          stock: Math.max(0, +$("#ep_stock").value || 0), hasSerial: $("#ep_serial").value === "true",
+          serials: $("#ep_serial").value === "true"
+            ? [...new Set(String($("#ep_serials").value).split(/[\n,;]+/).map((serial: string) => serial.trim()).filter(Boolean))]
+            : [], image,
         });
         save(); dialog.close(); render(); toast("Product updated");
       });
@@ -2809,6 +2906,7 @@ function POSApp() {
             "Date",
             "Invoice No",
             "Party Name",
+            "Serial No.",
             "Total",
             "Discount",
             "Paid",
@@ -2822,6 +2920,7 @@ function POSApp() {
               s.date,
               s.inv,
               esc(s.party),
+              esc((s.items || []).flatMap((item: any) => item.serials || []).join(", ") || "-"),
               tk(s.total),
               tk(s.disc),
               tk(s.paid),
