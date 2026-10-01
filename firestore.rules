@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/private/{documentId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Keep every other document private unless a separate rule is added.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

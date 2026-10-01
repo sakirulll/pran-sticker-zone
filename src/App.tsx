@@ -16,7 +16,8 @@ import {
   type User,
 } from "firebase/auth";
 import { Eye, EyeOff, LockKeyhole, Mail, UserRound } from "lucide-react";
-import { auth } from "./firebase";
+import { auth, db } from "./firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 const ORIGINAL_APP = String.raw`
 <style>
@@ -708,11 +709,24 @@ function POSApp() {
     const root = rootRef.current;
     if (!root) return;
 
+    let disposed = false;
+    let cleanup: (() => void) | undefined;
+    const boot = async () => {
+    const owner = auth.currentUser;
+    if (!owner) return;
+    const K = `pran_pos_v1_${owner.uid}`;
+    let cloudData: AnyData | null = null;
+    try {
+      const snapshot = await getDoc(doc(db, "users", owner.uid, "private", "pos"));
+      if (snapshot.exists()) cloudData = snapshot.data().data as AnyData;
+    } catch (error) {
+      console.error("Could not load cloud data", error);
+    }
+    if (disposed) return;
+
     root.innerHTML = ORIGINAL_APP;
 
     const $ = (q: string): any => document.querySelector(q);
-
-    const K = "pran_pos_v1";
 
     const today = () => new Date().toISOString().slice(0, 10);
 
@@ -881,7 +895,7 @@ function POSApp() {
     let D: AnyData;
 
     try {
-      D = JSON.parse(localStorage.getItem(K) || "null") || seed();
+      D = cloudData || JSON.parse(localStorage.getItem(K) || "null") || seed();
     } catch {
       D = seed();
     }
@@ -908,9 +922,11 @@ function POSApp() {
     CURRENCY_SYMBOL = D.currencies?.find((currency: any) => currency.id == D.settings.currencyId)?.symbol || String.fromCharCode(2547);
 
     const save = () => {
-      try {
-        localStorage.setItem(K, JSON.stringify(D));
-      } catch {}
+      try { localStorage.setItem(K, JSON.stringify(D)); } catch {}
+      void setDoc(doc(db, "users", owner.uid, "private", "pos"), {
+        data: D,
+        updatedAt: new Date().toISOString(),
+      }).catch((error) => console.error("Could not sync data to cloud", error));
     };
 
     const uid = () => D.seq++;
@@ -3783,7 +3799,7 @@ function POSApp() {
 
     render();
 
-    return () => {
+    cleanup = () => {
       window.removeEventListener(
         "hashchange",
         onHash,
@@ -3794,6 +3810,9 @@ function POSApp() {
         "nav",
       );
     };
+    };
+    void boot();
+    return () => { disposed = true; cleanup?.(); };
   }, []);
 
   return (
