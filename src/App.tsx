@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  deleteApp,
+  initializeApp,
+} from "firebase/app";
+import {
   createUserWithEmailAndPassword,
+  deleteUser,
   EmailAuthProvider,
+  getAuth,
   onAuthStateChanged,
   reauthenticateWithCredential,
   browserLocalPersistence,
@@ -16,8 +22,8 @@ import {
   type User,
 } from "firebase/auth";
 import { Eye, EyeOff, LockKeyhole, Mail, UserRound } from "lucide-react";
-import { auth, db } from "./firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import app, { auth, db } from "./firebase";
+import { doc, getDoc, getFirestore, setDoc } from "firebase/firestore";
 
 const ORIGINAL_APP = String.raw`
 <style>
@@ -233,9 +239,23 @@ body.nav .main{
 .setting-toggle{display:flex;align-items:center;justify-content:space-between;max-width:620px;padding:13px 0;border-bottom:1px solid var(--ln)}
 .setting-toggle input{width:18px;height:18px;accent-color:var(--pu)}
 .setting-toggle:last-of-type{margin-bottom:18px}
-.role-permissions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
-.role-permissions label{display:flex;align-items:center;gap:7px;color:var(--tx)}
+.role-form{width:min(760px,94vw);max-height:90vh;padding:0;overflow:auto}
+.role-form-content{padding:22px}
+.role-form-title{margin-bottom:5px}
+.role-form-help{margin:0 0 22px;color:var(--mut);font-size:13px}
+.role-fields{display:grid;grid-template-columns:1fr 1fr;gap:20px 22px;padding:8px 0 22px}
+.role-field{position:relative;display:block;padding:0 11px 4px;border:1px solid var(--ln);border-radius:7px;background:var(--in);color:var(--tx);font-size:13px}
+.role-field span{position:absolute;top:-9px;left:11px;padding:0 6px;background:var(--pn);font-weight:500}
+.role-field input{height:38px;padding:8px 0 0;border:0;outline:0;background:transparent}
+.role-section-title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:9px;font-weight:700}
+.role-section-title small{color:var(--mut);font-size:12px;font-weight:400}
+.role-permissions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px 12px;padding:12px;border:1px solid var(--ln);border-radius:8px;background:var(--bg)}
+.role-permissions label{display:flex;align-items:center;gap:8px;min-height:34px;color:var(--tx);font-size:13px;cursor:pointer}
 .role-permissions input{width:16px;height:16px;accent-color:var(--pu)}
+.role-select-all{font-size:12px;color:var(--pu);cursor:pointer}
+.role-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.role-actions button{min-width:100px}
+@media(max-width:620px){.settings-form-grid{grid-template-columns:1fr}.settings-wide{grid-column:auto}.role-fields{grid-template-columns:1fr;gap:17px}.role-permissions{grid-template-columns:repeat(2,minmax(0,1fr))}.role-form-content{padding:18px}}
 @media(max-width:760px){.profile-layout{grid-template-columns:1fr}.profile-form{grid-template-columns:1fr;gap:7px}.profile-form input{margin-bottom:9px}.profile-form .profile-save{grid-column:1;margin-top:10px}}
 @media(max-width:620px){.settings-form-grid{grid-template-columns:1fr}.settings-wide{grid-column:auto}.role-permissions{grid-template-columns:1fr}}
 
@@ -1333,7 +1353,7 @@ function POSApp() {
     const editSale = (id: number) => {
       const sale = D.sales.find((item: any) => item.id == id);
       if (!sale) return;
-      const dialog = $("#dlg");
+      const dialog = $("#dlg") as HTMLDialogElement;
       dialog.innerHTML = `
         <h3>Edit Invoice ${esc(sale.inv)}</h3>
         <label>Date</label><input id="editSaleDate" type="date" value="${esc(sale.date)}">
@@ -2427,10 +2447,10 @@ function POSApp() {
     };
 
     const generalSettingsPage = () => {
-      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role<select id="settingRole">${opts(D.roles, D.user.roleId)}</select></label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
+      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${D.user.authUid ? `<input value="${esc(D.roles.find((entry: any) => entry.id == D.user.roleId)?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
       $("#generalSettingsForm").addEventListener("submit", (event: Event) => {
         event.preventDefault();
-        D.user = { ...D.user, roleId: +$("#settingRole").value, shop: $("#settingShop").value.trim(), shopEmail: $("#settingEmail").value.trim(), phone: $("#settingPhone").value.trim(), address: $("#settingAddress").value.trim() };
+        D.user = { ...D.user, roleId: D.user.authUid ? D.user.roleId : +$("#settingRole").value, shop: $("#settingShop").value.trim(), shopEmail: $("#settingEmail").value.trim(), phone: $("#settingPhone").value.trim(), address: $("#settingAddress").value.trim() };
         D.settings.currencyId = +$("#settingCurrency").value;
         D.settings.taxRate = Math.max(0, +$("#settingTax").value || 0);
         D.settings.invoiceFooter = $("#settingFooter").value.trim();
@@ -2439,7 +2459,7 @@ function POSApp() {
       });
     };
 
-    const ROLE_PERMISSIONS = ["Dashboard", "Sales", "Purchases", "Products", "Stock List", "Employee", "Salary Slip", "Warehouse", "Customers", "Suppliers", "Expenses", "Due List", "Profit & Loss", "Profile", "Settings"];
+    const ROLE_PERMISSIONS = ["Dashboard", "Sales", "Purchases", "Products", "Stock List", "Employee", "Salary Slip", "Warehouse", "Customers", "Suppliers", "Expenses", "Due List", "Profit & Loss List", "Profile", "Settings"];
     const rolesPage = () => {
       const rows = D.roles.map((role: any, index: number) => `<tr><td>${index + 1}</td><td>${esc(role.name)}</td><td>${esc((role.permissions || []).join(", "))}</td><td><button class="mini edit-role" data-id="${role.id}">Edit</button><button class="mini delete-role" data-id="${role.id}">Delete</button></td></tr>`).join("");
       $("#app").innerHTML = `<section class="card"><div class="hd"><h2>User Roles</h2><button class="btn pu" id="addRole">+ Add Role</button></div><div class="wrap"><table><thead><tr><th>SL.</th><th>Role</th><th>Permissions</th><th>Action</th></tr></thead><tbody>${rows || empty(4)}</tbody></table></div></section>`;
@@ -2456,18 +2476,75 @@ function POSApp() {
     const roleForm = (id?: number) => {
       const role = id ? D.roles.find((entry: any) => entry.id === id) : null;
       const permissions = role?.permissions || [];
-      $("#dlg").innerHTML = `<h3>${role ? "Edit" : "Add"} User Role</h3><label>Role Name</label><input id="roleName" value="${esc(role?.name || "")}" placeholder="Role name"><label>Permissions</label><div class="role-permissions">${ROLE_PERMISSIONS.map((permission) => `<label><input type="checkbox" value="${permission}" ${permissions.includes("All permissions") || permissions.includes(permission) ? "checked" : ""}>${permission}</label>`).join("")}</div><div class="two" style="margin-top:16px"><button class="btn or" id="cancelRole" type="button">Cancel</button><button class="btn pu" id="saveRole" type="button">Save</button></div>`;
-      $("#dlg").showModal();
+      const dialog = $("#dlg") as HTMLDialogElement;
+      dialog.classList.add("role-form");
+      dialog.addEventListener("close", () => dialog.classList.remove("role-form"), { once: true });
+      dialog.innerHTML = `<div class="role-form-content"><h2 class="role-form-title">${role ? "Edit User Role" : "Add User Role"}</h2><p class="role-form-help">${role ? "Update this role’s access to workspace sections." : "Create a login account and choose the sections it can access."}</p>${role ? "" : `<div class="role-fields"><label class="role-field"><span>User Title</span><input id="memberName" autocomplete="name" placeholder="e.g. Sales Executive" required></label><label class="role-field"><span>Email Address</span><input id="memberEmail" type="email" autocomplete="email" placeholder="name@example.com" required></label><label class="role-field"><span>Password</span><input id="memberPassword" type="password" autocomplete="new-password" minlength="6" placeholder="At least 6 characters" required></label><label class="role-field"><span>Confirm Password</span><input id="memberConfirm" type="password" autocomplete="new-password" minlength="6" placeholder="Re-enter password" required></label></div>`}<label class="role-field" style="margin-bottom:20px"><span>Role Name</span><input id="roleName" value="${esc(role?.name || "")}" placeholder="e.g. Sales Team" required></label><div class="role-section-title"><span>Permissions</span><label class="role-select-all"><input id="roleSelectAll" type="checkbox"> Select all</label></div><div class="role-permissions">${ROLE_PERMISSIONS.map((permission) => `<label><input type="checkbox" value="${permission}" ${permissions.includes("All permissions") || permissions.includes(permission) ? "checked" : ""}>${permission}</label>`).join("")}</div><div class="role-actions"><button class="btn" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)" id="cancelRole" type="button">Cancel</button><button class="btn pu" id="saveRole" type="button">${role ? "Save Changes" : "Create Account"}</button></div></div>`;
+      const allBox = $("#roleSelectAll") as HTMLInputElement;
+      const permissionBoxes = [...dialog.querySelectorAll<HTMLInputElement>(".role-permissions input")];
+      allBox.checked = permissionBoxes.length > 0 && permissionBoxes.every((box) => box.checked);
+      allBox.addEventListener("change", () => permissionBoxes.forEach((box) => { box.checked = allBox.checked; }));
+      permissionBoxes.forEach((box) => box.addEventListener("change", () => { allBox.checked = permissionBoxes.every((item) => item.checked); }));
+      dialog.showModal();
       $("#cancelRole").addEventListener("click", () => $("#dlg").close());
-      $("#saveRole").addEventListener("click", () => {
+      $("#saveRole").addEventListener("click", async () => {
         const name = $("#roleName").value.trim();
         if (!name) { toast("Enter a role name"); return; }
-        const selected = [...document.querySelectorAll<HTMLInputElement>(".role-permissions input:checked")].map((input) => input.value);
+        const selected = [...dialog.querySelectorAll<HTMLInputElement>(".role-permissions input:checked")].map((input) => input.value);
         if (!selected.length) { toast("Choose at least one permission"); return; }
-        const data = { name, permissions: selected };
-        if (role) Object.assign(role, data);
-        else D.roles.push({ id: uid(), ...data });
-        save(); $("#dlg").close(); rolesPage(); toast("Role saved");
+        const saveButton = $("#saveRole") as HTMLButtonElement;
+        saveButton.disabled = true;
+        try {
+          if (role) {
+            Object.assign(role, { name, permissions: selected });
+            save(); dialog.close(); rolesPage(); toast("Role saved");
+            return;
+          }
+          const memberName = $("#memberName").value.trim();
+          const memberEmail = $("#memberEmail").value.trim().toLowerCase();
+          const password = $("#memberPassword").value;
+          const confirmPassword = $("#memberConfirm").value;
+          if (!memberName || !memberEmail || !password || !confirmPassword) { toast("Complete all account fields"); return; }
+          if (password.length < 6) { toast("Password must contain at least 6 characters"); return; }
+          if (password !== confirmPassword) { toast("Passwords do not match"); return; }
+
+          const roleId = uid();
+          const newRole = { id: roleId, name, permissions: selected };
+          const secondaryApp = initializeApp(app.options, `role-account-${Date.now()}`);
+          try {
+            const memberAuth = getAuth(secondaryApp);
+            const memberDb = getFirestore(secondaryApp);
+            const credential = await createUserWithEmailAndPassword(memberAuth, memberEmail, password);
+            try {
+              await updateProfile(credential.user, { displayName: memberName });
+              const memberData = seed();
+              memberData.roles = [...D.roles, newRole];
+              memberData.user = { ...memberData.user, name: memberName, email: memberEmail, roleId, authUid: credential.user.uid };
+              await setDoc(doc(memberDb, "users", credential.user.uid, "private", "pos"), { data: memberData, updatedAt: new Date().toISOString() });
+            } catch (error) {
+              await deleteUser(credential.user);
+              throw error;
+            }
+            D.roles.push(newRole);
+            save();
+          } finally {
+            await deleteApp(secondaryApp);
+          }
+          dialog.close(); rolesPage(); toast("Login account created with this role");
+        } catch (error) {
+          const code = (error as { code?: string }).code;
+          const accountErrors: Record<string, string> = {
+            "auth/email-already-in-use": "An account already exists for this email",
+            "auth/invalid-email": "Enter a valid email address",
+            "auth/weak-password": "Choose a stronger password",
+            "auth/operation-not-allowed": "Email and password sign-in is disabled in Firebase",
+            "permission-denied": "Firebase rules prevented saving the account profile",
+            "firestore/permission-denied": "Firebase rules prevented saving the account profile",
+          };
+          toast(accountErrors[code || ""] || "Could not create the login account. Check Firebase settings and try again.");
+        } finally {
+          saveButton.disabled = false;
+        }
       });
     };
 
