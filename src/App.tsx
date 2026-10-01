@@ -1754,6 +1754,27 @@ function POSApp() {
       }
     };
 
+    const setCartPrice = (index: number, value: string) => {
+      if (!CART[index]) return;
+      CART[index].price = +value || 0;
+      calc();
+    };
+
+    const setCartQty = (index: number, value: string) => {
+      const item = CART[index];
+      if (!item) return;
+      item.qty = prod(item.id)?.hasSerial && PT === "sale"
+        ? item.serials.length
+        : Math.max(1, +value || 1);
+      calc();
+    };
+
+    const removeCartItem = (index: number) => {
+      if (index < 0 || index >= CART.length) return;
+      CART.splice(index, 1);
+      draw();
+    };
+
     const draw = () => {
       $("#ct").innerHTML =
         CART.map(
@@ -1771,10 +1792,7 @@ function POSApp() {
                   type="number"
                   style="width:80px"
                   value="${c.price}"
-                  oninput="
-                    CART[${i}].price=+this.value;
-                    calc()
-                  "
+                  oninput="setCartPrice(${i},this.value)"
                 >
               </td>
 
@@ -1785,13 +1803,7 @@ function POSApp() {
                   style="width:64px"
                   value="${c.qty}"
                   ${PT === "sale" && prod(c.id)?.hasSerial ? "readonly title=\"Add one unit by selecting the product and entering its serial number\"" : ""}
-                  oninput="
-                    CART[${i}].qty=Math.max(
-                      1,
-                      +this.value||1
-                    );
-                    calc()
-                  "
+                  oninput="setCartQty(${i},this.value)"
                 >
               </td>
 
@@ -1800,10 +1812,7 @@ function POSApp() {
               <td>
                 <button
                   class="mini"
-                  onclick="
-                    CART.splice(${i},1);
-                    draw()
-                  "
+                  onclick="removeCartItem(${i})"
                 >
                   ✕
                 </button>
@@ -3842,6 +3851,10 @@ function POSApp() {
       window as any
     ).calc = calc;
 
+    (window as any).setCartPrice = setCartPrice;
+    (window as any).setCartQty = setCartQty;
+    (window as any).removeCartItem = removeCartItem;
+
     (
       window as any
     ).savePos = savePos;
@@ -3849,10 +3862,6 @@ function POSApp() {
     (
       window as any
     ).rtab = rtab;
-
-    (
-      window as any
-    ).CART = CART;
 
     (
       window as any
