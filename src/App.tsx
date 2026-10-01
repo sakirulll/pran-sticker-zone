@@ -734,10 +734,36 @@ function POSApp() {
     const boot = async () => {
     const owner = auth.currentUser;
     if (!owner) return;
-    const K = `pran_pos_v1_${owner.uid}`;
+    let personalData: AnyData | null = null;
+    try {
+      const personalSnapshot = await getDoc(doc(db, "users", owner.uid, "private", "pos"));
+      if (personalSnapshot.exists()) personalData = personalSnapshot.data().data as AnyData;
+    } catch (error) {
+      console.error("Could not load account profile", error);
+    }
+    if (personalData?.user?.authUid === owner.uid && !personalData.user.workspaceOwnerUid) {
+      root.innerHTML = `<div class="auth-feedback error" style="margin:48px auto;max-width:600px">This staff account was created before shared shop data was enabled. Ask the owner to link or recreate this account for the shared workspace.</div>`;
+      return;
+    }
+    const workspaceOwnerUid = personalData?.user?.workspaceOwnerUid || owner.uid;
+    const isWorkspaceOwner = workspaceOwnerUid === owner.uid;
+    let membership: AnyData | null = null;
+    if (!isWorkspaceOwner) {
+      try {
+        const membershipSnapshot = await getDoc(doc(db, "users", workspaceOwnerUid, "members", owner.uid));
+        if (membershipSnapshot.exists()) membership = membershipSnapshot.data() as AnyData;
+      } catch (error) {
+        console.error("Could not load workspace role", error);
+      }
+      if (!membership || membership.active === false) {
+        root.innerHTML = `<div class="auth-feedback error" style="margin:48px auto;max-width:600px">This account is not linked to an active shop workspace. Ask the shop owner to create or link your account.</div>`;
+        return;
+      }
+    }
+    const K = `pran_pos_v1_${workspaceOwnerUid}`;
     let cloudData: AnyData | null = null;
     try {
-      const snapshot = await getDoc(doc(db, "users", owner.uid, "private", "pos"));
+      const snapshot = await getDoc(doc(db, "users", workspaceOwnerUid, "private", "pos"));
       if (snapshot.exists()) cloudData = snapshot.data().data as AnyData;
     } catch (error) {
       console.error("Could not load cloud data", error);
@@ -939,11 +965,15 @@ function POSApp() {
       if (!Number.isFinite(D.seq)) D.seq = defaults.seq;
     }
 
+    const activeRoleId = isWorkspaceOwner
+      ? D.user.roleId
+      : (membership?.roleId ?? personalData?.user?.roleId ?? null);
+
     CURRENCY_SYMBOL = D.currencies?.find((currency: any) => currency.id == D.settings.currencyId)?.symbol || String.fromCharCode(2547);
 
     const save = () => {
       try { localStorage.setItem(K, JSON.stringify(D)); } catch {}
-      void setDoc(doc(db, "users", owner.uid, "private", "pos"), {
+      void setDoc(doc(db, "users", workspaceOwnerUid, "private", "pos"), {
         data: D,
         updatedAt: new Date().toISOString(),
       }).catch((error) => console.error("Could not sync data to cloud", error));
@@ -2456,10 +2486,10 @@ function POSApp() {
     };
 
     const generalSettingsPage = () => {
-      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${D.user.authUid ? `<input value="${esc(D.roles.find((entry: any) => entry.id == D.user.roleId)?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
+      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner || D.user.authUid ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
       $("#generalSettingsForm").addEventListener("submit", (event: Event) => {
         event.preventDefault();
-        D.user = { ...D.user, roleId: D.user.authUid ? D.user.roleId : +$("#settingRole").value, shop: $("#settingShop").value.trim(), shopEmail: $("#settingEmail").value.trim(), phone: $("#settingPhone").value.trim(), address: $("#settingAddress").value.trim() };
+        D.user = { ...D.user, roleId: !isWorkspaceOwner || D.user.authUid ? D.user.roleId : +$("#settingRole").value, shop: $("#settingShop").value.trim(), shopEmail: $("#settingEmail").value.trim(), phone: $("#settingPhone").value.trim(), address: $("#settingAddress").value.trim() };
         D.settings.currencyId = +$("#settingCurrency").value;
         D.settings.taxRate = Math.max(0, +$("#settingTax").value || 0);
         D.settings.invoiceFooter = $("#settingFooter").value.trim();
@@ -2528,8 +2558,15 @@ function POSApp() {
               await updateProfile(credential.user, { displayName: memberName });
               const memberData = seed();
               memberData.roles = [...D.roles, newRole];
-              memberData.user = { ...memberData.user, name: memberName, email: memberEmail, roleId, authUid: credential.user.uid };
+              memberData.user = { ...memberData.user, name: memberName, email: memberEmail, roleId, authUid: credential.user.uid, workspaceOwnerUid: owner.uid };
               await setDoc(doc(memberDb, "users", credential.user.uid, "private", "pos"), { data: memberData, updatedAt: new Date().toISOString() });
+              await setDoc(doc(db, "users", owner.uid, "members", credential.user.uid), {
+                roleId,
+                active: true,
+                name: memberName,
+                email: memberEmail,
+                createdAt: new Date().toISOString(),
+              });
             } catch (error) {
               await deleteUser(credential.user);
               throw error;
@@ -3575,19 +3612,16 @@ function POSApp() {
       const un = $("#un");
       const ua = $("#ua");
       const signedInUser = auth.currentUser;
-
-      if (signedInUser?.displayName) D.user.name = signedInUser.displayName;
-      if (signedInUser?.email) D.user.email = signedInUser.email;
+      const visibleName = signedInUser?.displayName || D.user.name;
 
       if (un) {
-        un.textContent =
-          D.user.name;
+        un.textContent = visibleName;
       }
 
       if (ua) {
         ua.innerHTML = D.user.avatar?.startsWith("data:image/")
           ? `<img src="${esc(D.user.avatar)}" alt="Profile">`
-          : esc((D.user.name?.[0] || "A").toUpperCase());
+          : esc((visibleName?.[0] || "A").toUpperCase());
       }
     };
 
@@ -3600,16 +3634,18 @@ function POSApp() {
 
       if (!menu) return;
 
-      const role = D.roles?.find((entry: any) => entry.id == D.user.roleId);
-      const permissions: string[] = role?.permissions || ["All permissions"];
-      const navItems: any[] = !role || permissions.includes("All permissions")
-        ? M
-        : M.map((item: any[]) => {
+      const role = D.roles?.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId));
+      const permissions: string[] = role?.permissions || (isWorkspaceOwner ? ["All permissions"] : []);
+      const hasAllPermissions = isWorkspaceOwner || permissions.includes("All permissions");
+      const navItems: any[] = M.map((item: any[]) => {
             if (Array.isArray(item[2])) {
-              const children = item[2].filter((child: any[]) => permissions.includes(item[0]) || permissions.includes(child[0]));
+              const children = item[2].filter((child: any[]) =>
+                (isWorkspaceOwner || child[1] !== "settings-roles") &&
+                (hasAllPermissions || permissions.includes(item[0]) || permissions.includes(child[0])),
+              );
               return children.length ? [item[0], item[1], children] : null;
             }
-            return permissions.includes(item[0]) ? item : null;
+            return hasAllPermissions || permissions.includes(item[0]) ? item : null;
           }).filter(Boolean);
       const routeVisible = navItems.some((item: any[]) => Array.isArray(item[2])
         ? item[2].some((child: any[]) => child[1] === r)
@@ -3618,6 +3654,10 @@ function POSApp() {
         const firstItem = navItems[0];
         const firstRoute = firstItem && (Array.isArray(firstItem[2]) ? firstItem[2][0]?.[1] : firstItem[2]);
         if (firstRoute && firstRoute !== r) { location.hash = firstRoute; return; }
+        if (!firstRoute) {
+          $("#app").innerHTML = `<section class="card"><h2>Access restricted</h2><p>Your account has not been assigned access to any section.</p></section>`;
+          return;
+        }
       }
 
       menu.innerHTML = navItems.map(
