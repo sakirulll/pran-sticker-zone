@@ -255,6 +255,8 @@ body.nav .main{
 .role-select-all{font-size:12px;color:var(--pu);cursor:pointer}
 .role-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
 .role-actions button{min-width:100px}
+.role-form-status{display:none;margin-top:14px;padding:10px 12px;border-radius:7px;background:#fff0f0;color:#b42318;font-size:13px;line-height:1.45}
+.role-form-status.visible{display:block}
 @media(max-width:620px){.settings-form-grid{grid-template-columns:1fr}.settings-wide{grid-column:auto}.role-fields{grid-template-columns:1fr;gap:17px}.role-permissions{grid-template-columns:repeat(2,minmax(0,1fr))}.role-form-content{padding:18px}}
 @media(max-width:760px){.profile-layout{grid-template-columns:1fr}.profile-form{grid-template-columns:1fr;gap:7px}.profile-form input{margin-bottom:9px}.profile-form .profile-save{grid-column:1;margin-top:10px}}
 @media(max-width:620px){.settings-form-grid{grid-template-columns:1fr}.settings-wide{grid-column:auto}.role-permissions{grid-template-columns:1fr}}
@@ -2518,7 +2520,7 @@ function POSApp() {
       const dialog = $("#dlg") as HTMLDialogElement;
       dialog.classList.add("role-form");
       dialog.addEventListener("close", () => dialog.classList.remove("role-form"), { once: true });
-      dialog.innerHTML = `<div class="role-form-content"><h2 class="role-form-title">${role ? "Edit User Role" : "Add User Role"}</h2><p class="role-form-help">${role ? "Update this role’s access to workspace sections." : "Create a login account and choose the sections it can access."}</p>${role ? "" : `<div class="role-fields"><label class="role-field"><span>User Title</span><input id="memberName" autocomplete="name" placeholder="e.g. Sales Executive" required></label><label class="role-field"><span>Email Address</span><input id="memberEmail" type="email" autocomplete="email" placeholder="name@example.com" required></label><label class="role-field"><span>Password</span><input id="memberPassword" type="password" autocomplete="new-password" minlength="6" placeholder="At least 6 characters" required></label><label class="role-field"><span>Confirm Password</span><input id="memberConfirm" type="password" autocomplete="new-password" minlength="6" placeholder="Re-enter password" required></label></div>`}<label class="role-field" style="margin-bottom:20px"><span>Role Name</span><input id="roleName" value="${esc(role?.name || "")}" placeholder="e.g. Sales Team" required></label><div class="role-section-title"><span>Permissions</span><label class="role-select-all"><input id="roleSelectAll" type="checkbox"> Select all</label></div><div class="role-permissions">${ROLE_PERMISSIONS.map((permission) => `<label><input type="checkbox" value="${permission}" ${permissions.includes("All permissions") || permissions.includes(permission) ? "checked" : ""}>${permission}</label>`).join("")}</div><div class="role-actions"><button class="btn" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)" id="cancelRole" type="button">Cancel</button><button class="btn pu" id="saveRole" type="button">${role ? "Save Changes" : "Create Account"}</button></div></div>`;
+      dialog.innerHTML = `<div class="role-form-content"><h2 class="role-form-title">${role ? "Edit User Role" : "Add User Role"}</h2><p class="role-form-help">${role ? "Update this role’s access to workspace sections." : "Create a login account and choose the sections it can access."}</p>${role ? "" : `<div class="role-fields"><label class="role-field"><span>User Title</span><input id="memberName" autocomplete="name" placeholder="e.g. Sales Executive" required></label><label class="role-field"><span>Email Address</span><input id="memberEmail" type="email" autocomplete="email" placeholder="name@example.com" required></label><label class="role-field"><span>Password</span><input id="memberPassword" type="password" autocomplete="new-password" minlength="6" placeholder="At least 6 characters" required></label><label class="role-field"><span>Confirm Password</span><input id="memberConfirm" type="password" autocomplete="new-password" minlength="6" placeholder="Re-enter password" required></label></div>`}<label class="role-field" style="margin-bottom:20px"><span>Role Name</span><input id="roleName" value="${esc(role?.name || "")}" placeholder="e.g. Sales Team" required></label><div class="role-section-title"><span>Permissions</span><label class="role-select-all"><input id="roleSelectAll" type="checkbox"> Select all</label></div><div class="role-permissions">${ROLE_PERMISSIONS.map((permission) => `<label><input type="checkbox" value="${permission}" ${permissions.includes("All permissions") || permissions.includes(permission) ? "checked" : ""}>${permission}</label>`).join("")}</div><div id="roleFormStatus" class="role-form-status" role="status" aria-live="polite"></div><div class="role-actions"><button class="btn" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)" id="cancelRole" type="button">Cancel</button><button class="btn pu" id="saveRole" type="button">${role ? "Save Changes" : "Create Account"}</button></div></div>`;
       const allBox = $("#roleSelectAll") as HTMLInputElement;
       const permissionBoxes = [...dialog.querySelectorAll<HTMLInputElement>(".role-permissions input")];
       allBox.checked = permissionBoxes.length > 0 && permissionBoxes.every((box) => box.checked);
@@ -2527,10 +2529,18 @@ function POSApp() {
       dialog.showModal();
       $("#cancelRole").addEventListener("click", () => $("#dlg").close());
       $("#saveRole").addEventListener("click", async () => {
+        const status = $("#roleFormStatus");
+        const showRoleError = (message: string) => {
+          status.textContent = message;
+          status.classList.add("visible");
+          status.scrollIntoView({ block: "nearest" });
+        };
+        status.textContent = "";
+        status.classList.remove("visible");
         const name = $("#roleName").value.trim();
-        if (!name) { toast("Enter a role name"); return; }
+        if (!name) { showRoleError("Enter a role name."); $("#roleName").focus(); return; }
         const selected = [...dialog.querySelectorAll<HTMLInputElement>(".role-permissions input:checked")].map((input) => input.value);
-        if (!selected.length) { toast("Choose at least one permission"); return; }
+        if (!selected.length) { showRoleError("Choose at least one permission for this account."); return; }
         const saveButton = $("#saveRole") as HTMLButtonElement;
         saveButton.disabled = true;
         try {
@@ -2543,9 +2553,9 @@ function POSApp() {
           const memberEmail = $("#memberEmail").value.trim().toLowerCase();
           const password = $("#memberPassword").value;
           const confirmPassword = $("#memberConfirm").value;
-          if (!memberName || !memberEmail || !password || !confirmPassword) { toast("Complete all account fields"); return; }
-          if (password.length < 6) { toast("Password must contain at least 6 characters"); return; }
-          if (password !== confirmPassword) { toast("Passwords do not match"); return; }
+          if (!memberName || !memberEmail || !password || !confirmPassword) { showRoleError("Fill in the title, email, password, and password confirmation."); return; }
+          if (password.length < 6) { showRoleError("Password must contain at least 6 characters."); $("#memberPassword").focus(); return; }
+          if (password !== confirmPassword) { showRoleError("Passwords do not match."); $("#memberConfirm").focus(); return; }
 
           const roleId = uid();
           const newRole = { id: roleId, name, permissions: selected };
@@ -2587,7 +2597,7 @@ function POSApp() {
             "permission-denied": "Firebase rules prevented saving the account profile",
             "firestore/permission-denied": "Firebase rules prevented saving the account profile",
           };
-          toast(accountErrors[code || ""] || "Could not create the login account. Check Firebase settings and try again.");
+          showRoleError(accountErrors[code || ""] || `Could not create the login account (${code || "unknown error"}). Check Firebase settings and try again.`);
         } finally {
           saveButton.disabled = false;
         }
