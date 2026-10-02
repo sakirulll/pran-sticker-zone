@@ -22,8 +22,9 @@ import {
   type User,
 } from "firebase/auth";
 import { Eye, EyeOff, LockKeyhole, Mail, UserRound } from "lucide-react";
-import app, { auth, db } from "./firebase";
-import { doc, getDoc, getFirestore, setDoc } from "firebase/firestore";
+import app, { auth, db, storage } from "./firebase";
+import { collection, doc, getDoc, getDocs, getFirestore, setDoc, writeBatch } from "firebase/firestore";
+import { deleteObject, getDownloadURL, ref as storageRef, uploadString } from "firebase/storage";
 
 const ORIGINAL_APP = String.raw`
 <style>
@@ -763,12 +764,31 @@ function POSApp() {
       }
     }
     const K = `pran_pos_v1_${workspaceOwnerUid}`;
+    const productsCollection = collection(db, "users", workspaceOwnerUid, "private", "pos", "products");
+    const productDocument = (productId: any) => doc(db, "users", workspaceOwnerUid, "private", "pos", "products", String(productId));
+    const uploadProductImage = async (productId: any, imageData: string) => {
+      const path = `workspaces/${workspaceOwnerUid}/products/${productId}.jpg`;
+      const uploaded = await uploadString(storageRef(storage, path), imageData, "data_url", { contentType: "image/jpeg" });
+      return { image: await getDownloadURL(uploaded.ref), imagePath: path };
+    };
+    const removeProductImage = async (path: string) => {
+      if (path) await deleteObject(storageRef(storage, path));
+    };
     let cloudData: AnyData | null = null;
     try {
       const snapshot = await getDoc(doc(db, "users", workspaceOwnerUid, "private", "pos"));
       if (snapshot.exists()) cloudData = snapshot.data().data as AnyData;
     } catch (error) {
       console.error("Could not load cloud data", error);
+    }
+    let cloudProducts: AnyData[] | null = null;
+    try {
+      const productsSnapshot = await getDocs(productsCollection);
+      cloudProducts = productsSnapshot.docs.map((entry) => ({ ...entry.data(), id: entry.data().id ?? entry.id }));
+    } catch (error) {
+      console.error("Could not load separate product records", error);
+      root.innerHTML = `<div class="auth-feedback error" style="margin:48px auto;max-width:600px">Could not load products from the shop database. Refresh after the owner updates the Firebase rules.</div>`;
+      return;
     }
     if (disposed) return;
 
@@ -967,22 +987,80 @@ function POSApp() {
       if (!Number.isFinite(D.seq)) D.seq = defaults.seq;
     }
 
+    let imageMigrationWarning = false;
+    if (cloudProducts.length) {
+      D.products = cloudProducts;
+    } else if (D.products.length) {
+      // Move the legacy embedded product array into its own Firestore subcollection.
+      // Product photos are copied to Storage when available; if Storage is not
+      // enabled yet, each product still gets its own Firestore document.
+      for (const product of D.products) {
+        if (typeof product.image === "string" && product.image.startsWith("data:image/")) {
+          try {
+            const image = await uploadProductImage(product.id, product.image);
+            product.image = image.image;
+            product.imagePath = image.imagePath;
+          } catch (error) {
+            imageMigrationWarning = true;
+            console.warn("Product image remains in its product document until Firebase Storage is enabled", error);
+          }
+        }
+      }
+      try {
+      for (let start = 0; start < D.products.length; start += 450) {
+          const batch = writeBatch(db);
+          D.products.slice(start, start + 450).forEach((product: AnyData) => batch.set(productDocument(product.id), product));
+          await batch.commit();
+        }
+        const { products: _legacyProducts, ...posData } = D;
+        await setDoc(doc(db, "users", workspaceOwnerUid, "private", "pos"), { data: posData, updatedAt: new Date().toISOString() });
+        cloudProducts = D.products;
+      } catch (error) {
+        console.error("Could not migrate the product list", error);
+        root.innerHTML = `<div class="auth-feedback error" style="margin:48px auto;max-width:600px">Products could not be migrated safely. Check Firebase access and refresh to try again.</div>`;
+        return;
+      }
+    }
+
     const activeRoleId = isWorkspaceOwner
       ? D.user.roleId
       : (membership?.roleId ?? personalData?.user?.roleId ?? null);
 
     CURRENCY_SYMBOL = D.currencies?.find((currency: any) => currency.id == D.settings.currencyId)?.symbol || String.fromCharCode(2547);
 
+    let lastSyncedProducts = new Map<string, string>((D.products || []).map((product: AnyData) => [String(product.id), JSON.stringify(product)]));
+    let cloudSaveQueue: Promise<void> = Promise.resolve();
     const save = () => {
       try { localStorage.setItem(K, JSON.stringify(D)); } catch {}
-      void setDoc(doc(db, "users", workspaceOwnerUid, "private", "pos"), {
-        data: D,
-        updatedAt: new Date().toISOString(),
+      const productSnapshot = JSON.parse(JSON.stringify(D.products || [])) as AnyData[];
+      const { products: _products, ...posData } = D;
+      const posSnapshot = JSON.parse(JSON.stringify(posData));
+      cloudSaveQueue = cloudSaveQueue.then(async () => {
+        await setDoc(doc(db, "users", workspaceOwnerUid, "private", "pos"), {
+          data: posSnapshot,
+          updatedAt: new Date().toISOString(),
+        });
+        const nextProducts = new Map(productSnapshot.map((product) => [String(product.id), JSON.stringify(product)]));
+        const writes = productSnapshot.filter((product) => lastSyncedProducts.get(String(product.id)) !== JSON.stringify(product));
+        const deletes = [...lastSyncedProducts.keys()].filter((productId) => !nextProducts.has(productId));
+        const operations: Array<{ type: "set"; product: AnyData } | { type: "delete"; id: string }> = [
+          ...writes.map((product) => ({ type: "set" as const, product })),
+          ...deletes.map((id) => ({ type: "delete" as const, id })),
+        ];
+        for (let start = 0; start < operations.length; start += 450) {
+          const batch = writeBatch(db);
+          operations.slice(start, start + 450).forEach((operation) => {
+            if (operation.type === "set") batch.set(productDocument(operation.product.id), operation.product);
+            else batch.delete(productDocument(operation.id));
+          });
+          await batch.commit();
+        }
+        lastSyncedProducts = nextProducts;
       }).catch((error) => {
         console.error("Could not sync data to cloud", error);
         const detail = String((error as { message?: string })?.message || "");
         toast(/maximum size|1\s*MiB|too large|larger than/i.test(detail)
-          ? "Cloud save failed: shop data is too large. Reduce product photos and try again."
+          ? "Cloud save failed: a record is too large. Reduce its size and try again."
           : "Cloud save failed. Check your internet connection and Firebase access.");
       });
     };
@@ -1323,6 +1401,7 @@ function POSApp() {
     const del = (k: string, id: number) => {
       if (confirm("Delete this record?")) {
         const record = D[k].find((x: any) => x.id === id);
+        const productImagePath = k === "products" ? record?.imagePath : "";
         if (record?.items && !record.ret) {
           record.items.forEach((item: any) => {
             const product = prod(item.id);
@@ -1332,6 +1411,8 @@ function POSApp() {
           });
         }
         D[k] = D[k].filter((x: any) => x.id !== id);
+
+        if (productImagePath) void removeProductImage(productImagePath).catch((error) => console.warn("Could not delete product image from Storage", error));
 
         save();
 
@@ -2217,22 +2298,21 @@ function POSApp() {
             return;
           }
         }
-        // Product images are stored inside the shared POS document. Compress older
-        // images too before the document grows beyond Firestore's 1 MiB limit.
-        try {
-          for (const existingProduct of D.products) {
-            if (typeof existingProduct.image === "string" && existingProduct.image.startsWith("data:image/")) {
-              const oldImage = await fetch(existingProduct.image).then((response) => response.blob());
-              existingProduct.image = await optimizeProductImage(oldImage);
-            }
+        const productId = uid();
+        let imagePath = "";
+        if (image) {
+          try {
+            const uploadedImage = await uploadProductImage(productId, image);
+            image = uploadedImage.image;
+            imagePath = uploadedImage.imagePath;
+          } catch (error) {
+            console.error("Could not upload product image", error);
+            imagePath = "";
+            toast("Firebase Storage is not active yet; the compressed image will stay with this product record.");
           }
-        } catch (error) {
-          console.error("Could not compress existing product images", error);
-          toast("Could not prepare existing product images. Try again or remove some product photos.");
-          return;
         }
         const product: AnyData = {
-          id: uid(),
+          id: productId,
           name: value("name"),
           code: value("code"),
           warehouse: +value("warehouse"),
@@ -2250,6 +2330,7 @@ function POSApp() {
           manufactureDate: value("manufactureDate"),
           expireDate: value("expireDate"),
           image,
+          imagePath,
           hasSerial: value("hasSerial") === "Yes",
           serials: value("hasSerial") === "Yes"
             ? [...new Set(value("serials").split(/[\n,;]+/).map((serial: string) => serial.trim()).filter(Boolean))]
@@ -2358,7 +2439,7 @@ function POSApp() {
       const rows = visible.map((product: any, index: number) => `
         <tr>
           <td>${(PRODUCT_LIST_PAGE - 1) * PRODUCT_LIST_LIMIT + index + 1}</td>
-          <td>${typeof product.image === "string" && product.image.startsWith("data:image/")
+          <td>${typeof product.image === "string" && product.image
             ? `<img class="product-thumb" src="${esc(product.image)}" alt="${esc(product.name)}">`
             : `<span class="product-thumb-empty">No image</span>`}</td>
           <td>${esc(product.name)}</td><td>${esc(product.code)}</td>
@@ -2445,9 +2526,19 @@ function POSApp() {
       $("#saveProductEdit")?.addEventListener("click", async () => {
         const imageFile = $("#ep_image")?.files?.[0] as File | undefined;
         let image = product.image || "";
+        let imagePath = product.imagePath || "";
         if (imageFile) {
-          try { image = await optimizeProductImage(imageFile); }
-          catch { toast("Could not load this image"); return; }
+          try {
+            const optimizedImage = await optimizeProductImage(imageFile);
+            const uploadedImage = await uploadProductImage(product.id, optimizedImage);
+            image = uploadedImage.image;
+            imagePath = uploadedImage.imagePath;
+          } catch (error) {
+            console.error("Could not upload replacement product image", error);
+            image = await optimizeProductImage(imageFile).catch(() => product.image || "");
+            imagePath = "";
+            toast("Firebase Storage is not active yet; the compressed image will stay with this product record.");
+          }
         }
         Object.assign(product, {
           name: $("#ep_name").value.trim(), code: $("#ep_code").value.trim(),
@@ -2456,7 +2547,7 @@ function POSApp() {
           stock: Math.max(0, +$("#ep_stock").value || 0), hasSerial: $("#ep_serial").value === "true",
           serials: $("#ep_serial").value === "true"
             ? [...new Set(String($("#ep_serials").value).split(/[\n,;]+/).map((serial: string) => serial.trim()).filter(Boolean))]
-            : [], image,
+            : [], image, imagePath,
         });
         save(); dialog.close(); render(); toast("Product updated");
       });
@@ -2594,8 +2685,9 @@ function POSApp() {
             const credential = await createUserWithEmailAndPassword(memberAuth, memberEmail, password);
             try {
               await updateProfile(credential.user, { displayName: memberName });
-              const memberData = seed();
-              memberData.roles = [...D.roles, newRole];
+            const memberData = seed();
+            memberData.roles = [...D.roles, newRole];
+            memberData.products = [];
               memberData.user = { ...memberData.user, name: memberName, email: memberEmail, roleId, authUid: credential.user.uid, workspaceOwnerUid: owner.uid };
               await setDoc(doc(memberDb, "users", credential.user.uid, "private", "pos"), { data: memberData, updatedAt: new Date().toISOString() });
               await setDoc(doc(db, "users", owner.uid, "members", credential.user.uid), {
@@ -3962,6 +4054,7 @@ function POSApp() {
     hdr();
 
     render();
+    if (imageMigrationWarning) toast("Products moved to separate records. Enable Firebase Storage on the Blaze plan to move existing photos out of Firestore.");
 
     cleanup = () => {
       window.removeEventListener(
