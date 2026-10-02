@@ -978,7 +978,13 @@ function POSApp() {
       void setDoc(doc(db, "users", workspaceOwnerUid, "private", "pos"), {
         data: D,
         updatedAt: new Date().toISOString(),
-      }).catch((error) => console.error("Could not sync data to cloud", error));
+      }).catch((error) => {
+        console.error("Could not sync data to cloud", error);
+        const detail = String((error as { message?: string })?.message || "");
+        toast(/maximum size|1\s*MiB|too large|larger than/i.test(detail)
+          ? "Cloud save failed: shop data is too large. Reduce product photos and try again."
+          : "Cloud save failed. Check your internet connection and Firebase access.");
+      });
     };
 
     const uid = () => D.seq++;
@@ -2116,21 +2122,29 @@ function POSApp() {
       );
     };
 
-    const optimizeProductImage = async (file: File) => {
+    const optimizeProductImage = async (file: Blob) => {
       const bitmap = await createImageBitmap(file);
-      const maxSide = 420;
-      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      let scale = Math.min(1, 280 / Math.max(bitmap.width, bitmap.height));
       const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
       const context = canvas.getContext("2d");
       if (!context) {
         bitmap.close();
         throw new Error("Could not process the selected image");
       }
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      let image = "";
+      for (let attempt = 0; attempt < 8; attempt++) {
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        const quality = Math.max(0.38, 0.72 - attempt * 0.07);
+        image = canvas.toDataURL("image/jpeg", quality);
+        const approximateBytes = (image.length - image.indexOf(",") - 1) * 0.75;
+        if (approximateBytes <= 28 * 1024) break;
+        scale *= 0.78;
+      }
       bitmap.close();
-      return canvas.toDataURL("image/jpeg", 0.76);
+      return image;
     };
 
     const productForm = () => {
@@ -2202,6 +2216,20 @@ function POSApp() {
             toast("Could not load this image");
             return;
           }
+        }
+        // Product images are stored inside the shared POS document. Compress older
+        // images too before the document grows beyond Firestore's 1 MiB limit.
+        try {
+          for (const existingProduct of D.products) {
+            if (typeof existingProduct.image === "string" && existingProduct.image.startsWith("data:image/")) {
+              const oldImage = await fetch(existingProduct.image).then((response) => response.blob());
+              existingProduct.image = await optimizeProductImage(oldImage);
+            }
+          }
+        } catch (error) {
+          console.error("Could not compress existing product images", error);
+          toast("Could not prepare existing product images. Try again or remove some product photos.");
+          return;
         }
         const product: AnyData = {
           id: uid(),
