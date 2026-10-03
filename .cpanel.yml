@@ -3,3 +3,5 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/pranmzcs/public_html/
     - /bin/cp -R dist/. $DEPLOYPATH
+    - /bin/mkdir -p $DEPLOYPATH/api
+    - /bin/cp -R api/. $DEPLOYPATH/api/

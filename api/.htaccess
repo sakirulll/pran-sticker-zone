@@ -1,0 +1,9 @@
+Options -Indexes
+
+<FilesMatch "\.(sql|md|example|sample)$">
+  Require all denied
+</FilesMatch>
+
+<FilesMatch "^(bootstrap|config)\.php$">
+  Require all denied
+</FilesMatch>
