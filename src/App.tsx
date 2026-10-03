@@ -716,7 +716,7 @@ dialog label{
     </div>
   </div>
 
-  <div id="app"></div>
+  <div id="app"><section class="card"><h2>Loading shop data…</h2><p>Please wait while your account and shop information loads.</p></section></div>
 </div>
 
 <dialog id="dlg"></dialog>
@@ -4068,7 +4068,23 @@ function POSApp() {
       );
     };
     };
-    void boot();
+    void boot().catch((error: unknown) => {
+      console.error("Could not start the shop app", error);
+      if (disposed || !root) return;
+      const message = error instanceof Error ? error.message : String(error);
+      root.replaceChildren();
+      const panel = document.createElement("section");
+      panel.className = "card";
+      panel.style.cssText = "margin:32px auto;max-width:720px;padding:20px;background:#fff;color:#141420;border:1px solid #e5e7eb;border-radius:10px;font:14px/1.5 system-ui, sans-serif";
+      const heading = document.createElement("h2");
+      heading.textContent = "The shop app could not finish loading.";
+      const detail = document.createElement("p");
+      detail.textContent = `Error: ${message}`;
+      const help = document.createElement("p");
+      help.textContent = "Please send this message to the shop administrator.";
+      panel.append(heading, detail, help);
+      root.append(panel);
+    });
     return () => { disposed = true; cleanup?.(); };
   }, []);
 
