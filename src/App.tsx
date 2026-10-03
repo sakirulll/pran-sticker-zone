@@ -22,6 +22,7 @@ import {
   type User,
 } from "firebase/auth";
 import { Eye, EyeOff, LockKeyhole, Mail, UserRound } from "lucide-react";
+import { hostingApi } from "./hostingApi";
 import app, { auth, db, storage } from "./firebase";
 import { collection, doc, getDoc, getDocs, getFirestore, setDoc, writeBatch } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref as storageRef, uploadString } from "firebase/storage";
@@ -1033,6 +1034,52 @@ function POSApp() {
           ? "Cloud save failed: a record is too large. Reduce its size and try again."
           : "Cloud save failed. Check your internet connection and Firebase access.");
       });
+    };
+
+    const dataUrlForMigration = async (source: string) => {
+      if (!source || source.startsWith("/uploads/")) return source;
+      if (source.startsWith("data:image/")) return source;
+      const response = await fetch(source);
+      if (!response.ok) throw new Error("Could not download an existing image.");
+      const blob = await response.blob();
+      if (!blob.type.startsWith("image/")) throw new Error("An existing file is not an image.");
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read the image."));
+        reader.onerror = () => reject(new Error("Could not read the image."));
+        reader.readAsDataURL(blob);
+      });
+    };
+
+    const moveImageToHosting = async (source: string) => {
+      const image = await dataUrlForMigration(source);
+      if (!image || image.startsWith("/uploads/")) return image;
+      const uploaded = await hostingApi.uploadImage(image);
+      return uploaded.url;
+    };
+
+    const migrateToHosting = async (password: string) => {
+      const firebaseUser = auth.currentUser;
+      const name = String(firebaseUser?.displayName || D.user.name || "Shop owner").trim();
+      const email = String(firebaseUser?.email || D.user.email || "").trim().toLowerCase();
+      if (!email) throw new Error("Your Firebase account does not have an email address.");
+      try {
+        await hostingApi.register(name, email, password);
+      } catch (error) {
+        if ((error as { status?: number }).status !== 409) throw error;
+        await hostingApi.login(email, password);
+      }
+      const copy = JSON.parse(JSON.stringify(D)) as AnyData;
+      copy.user = { ...copy.user, name, email };
+      delete copy.user.authUid;
+      delete copy.user.workspaceOwnerUid;
+      if (copy.user.avatar) copy.user.avatar = await moveImageToHosting(copy.user.avatar);
+      copy.products = await Promise.all((copy.products || []).map(async (product: AnyData) => {
+        if (!product.image) return { ...product, imagePath: "" };
+        const image = await moveImageToHosting(product.image);
+        return { ...product, image, imagePath: "" };
+      }));
+      await hostingApi.saveShop(copy);
     };
 
     const uid = () => D.seq++;
@@ -3492,6 +3539,7 @@ function POSApp() {
                 <input id="profileOpeningBalance" type="number" min="0" step="0.01" value="${+u.open || 0}">
                 <button class="btn pu profile-save" type="submit">Save Changes</button>
               </form>
+              ${isWorkspaceOwner ? `<div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--ln)"><h3 style="margin:0 0 8px">Move data to Namecheap</h3><p class="settings-help">Create a new Namecheap password once. Your shop data and product images will then be copied to this hosting account.</p><button class="btn gn" id="migrateHosting" type="button">Move my data to Namecheap</button></div>` : ""}
             </section>
           </div>`;
 
@@ -3561,6 +3609,36 @@ function POSApp() {
                 : "Profile could not be updated. Check your details and try again.";
             toast(message);
           }
+        });
+
+        $("#migrateHosting")?.addEventListener("click", () => {
+          const dialog = $("#dlg") as HTMLDialogElement;
+          dialog.innerHTML = `<h3>Move data to Namecheap</h3><p>Your current shop data will be copied to Namecheap. Choose a new password for the Namecheap account. Firebase will remain unchanged for now.</p><label>New Password</label><input id="hostingPassword" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters"><label>Confirm Password</label><input id="hostingPasswordConfirm" type="password" autocomplete="new-password" minlength="8" placeholder="Enter the password again"><p id="hostingMigrationError" class="auth-feedback error" style="display:none"></p><div class="two" style="margin-top:16px"><button class="btn or" id="cancelHostingMigration" type="button">Cancel</button><button class="btn gn" id="confirmHostingMigration" type="button">Move data</button></div>`;
+          dialog.showModal();
+          $("#cancelHostingMigration").addEventListener("click", () => dialog.close());
+          $("#confirmHostingMigration").addEventListener("click", async () => {
+            const password = $("#hostingPassword").value;
+            const confirmPassword = $("#hostingPasswordConfirm").value;
+            const error = $("#hostingMigrationError");
+            const button = $("#confirmHostingMigration") as HTMLButtonElement;
+            error.style.display = "none";
+            if (password.length < 8) { error.textContent = "Password must contain at least 8 characters."; error.style.display = "block"; return; }
+            if (password !== confirmPassword) { error.textContent = "Passwords do not match."; error.style.display = "block"; return; }
+            button.disabled = true;
+            button.textContent = "Moving data...";
+            try {
+              await migrateToHosting(password);
+              dialog.close();
+              toast("Your data was copied to Namecheap successfully");
+            } catch (migrationError) {
+              const message = migrationError instanceof Error ? migrationError.message : "Could not move your data. Please try again.";
+              error.textContent = message;
+              error.style.display = "block";
+            } finally {
+              button.disabled = false;
+              button.textContent = "Move data";
+            }
+          });
         });
       },
     };
