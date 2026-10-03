@@ -987,40 +987,7 @@ function POSApp() {
       if (!Number.isFinite(D.seq)) D.seq = defaults.seq;
     }
 
-    let imageMigrationWarning = false;
-    if (cloudProducts.length) {
-      D.products = cloudProducts;
-    } else if (D.products.length) {
-      // Move the legacy embedded product array into its own Firestore subcollection.
-      // Product photos are copied to Storage when available; if Storage is not
-      // enabled yet, each product still gets its own Firestore document.
-      for (const product of D.products) {
-        if (typeof product.image === "string" && product.image.startsWith("data:image/")) {
-          try {
-            const image = await uploadProductImage(product.id, product.image);
-            product.image = image.image;
-            product.imagePath = image.imagePath;
-          } catch (error) {
-            imageMigrationWarning = true;
-            console.warn("Product image remains in its product document until Firebase Storage is enabled", error);
-          }
-        }
-      }
-      try {
-      for (let start = 0; start < D.products.length; start += 450) {
-          const batch = writeBatch(db);
-          D.products.slice(start, start + 450).forEach((product: AnyData) => batch.set(productDocument(product.id), product));
-          await batch.commit();
-        }
-        const { products: _legacyProducts, ...posData } = D;
-        await setDoc(doc(db, "users", workspaceOwnerUid, "private", "pos"), { data: posData, updatedAt: new Date().toISOString() });
-        cloudProducts = D.products;
-      } catch (error) {
-        console.error("Could not migrate the product list", error);
-        root.innerHTML = `<div class="auth-feedback error" style="margin:48px auto;max-width:600px">Products could not be migrated safely. Check Firebase access and refresh to try again.</div>`;
-        return;
-      }
-    }
+    if (cloudProducts.length) D.products = cloudProducts;
 
     const activeRoleId = isWorkspaceOwner
       ? D.user.roleId
@@ -1028,7 +995,10 @@ function POSApp() {
 
     CURRENCY_SYMBOL = D.currencies?.find((currency: any) => currency.id == D.settings.currencyId)?.symbol || String.fromCharCode(2547);
 
-    let lastSyncedProducts = new Map<string, string>((D.products || []).map((product: AnyData) => [String(product.id), JSON.stringify(product)]));
+    // If product records still live in the older shared POS document, leave
+    // them there during startup. The first normal save writes them to their
+    // own documents, avoiding a long blocking image upload/migration on login.
+    let lastSyncedProducts = new Map<string, string>((cloudProducts.length ? D.products || [] : []).map((product: AnyData) => [String(product.id), JSON.stringify(product)]));
     let cloudSaveQueue: Promise<void> = Promise.resolve();
     const save = () => {
       try { localStorage.setItem(K, JSON.stringify(D)); } catch {}
@@ -4054,7 +4024,6 @@ function POSApp() {
     hdr();
 
     render();
-    if (imageMigrationWarning) toast("Products moved to separate records. Enable Firebase Storage on the Blaze plan to move existing photos out of Firestore.");
 
     cleanup = () => {
       window.removeEventListener(
