@@ -2,7 +2,7 @@
 //
 // Code 128 is what ordinary shop scanners read, and it can hold letters, digits
 // and punctuation, so a product code such as "BS-001" fits as it is. This uses
-// code set B (every printable ASCII character).
+// code set B (every printable ASCII character), or set C for all-digit codes.
 
 // The widths of the six bars and spaces for each of the 107 symbols, in modules.
 const PATTERNS = [
@@ -19,6 +19,7 @@ const PATTERNS = [
   "114131", "311141", "411131", "211412", "211214", "211232", "2331112",
 ];
 const START_B = 104;
+const START_C = 105;
 const STOP = 106;
 const QUIET_ZONE = 10;
 
@@ -30,7 +31,11 @@ export function canEncode(text: string): boolean {
 /** The bars for `text` as a run of "1" (bar) and "0" (space) modules, or null if it cannot be encoded. */
 export function code128Modules(text: string): string | null {
   if (!canEncode(text)) return null;
-  const symbols = [START_B, ...[...text].map((character) => character.charCodeAt(0) - 32)];
+  // A code made only of digits packs two digits into each symbol (code set C),
+  // which makes the barcode about half as wide and so easier to scan on a small label.
+  const symbols = /^(\d\d){2,}$/.test(text)
+    ? [START_C, ...(text.match(/\d\d/g) || []).map(Number)]
+    : [START_B, ...[...text].map((character) => character.charCodeAt(0) - 32)];
   const checksum = symbols.reduce((sum, value, index) => sum + value * Math.max(index, 1), 0) % 103;
   let modules = "";
   for (const symbol of [...symbols, checksum, STOP]) {

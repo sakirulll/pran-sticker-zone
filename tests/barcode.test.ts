@@ -28,6 +28,15 @@ test("known barcodes come out exactly", () => {
   for (const [text, modules] of Object.entries(known)) assert.equal(code128Modules(text), modules);
 });
 
+test("a code of digits only is packed two digits to a symbol, making it much narrower", () => {
+  // Reference value from JsBarcode, code set C.
+  assert.equal(code128Modules("123456789004"), "11010011100101100111001000101100011100010110110000101001101111011010010001100100110010001100011101011");
+  assert.equal(code128Modules("123456789004")!.length, 101);
+  // An odd number of digits, or any other character, cannot be paired and stays in set B.
+  assert.equal(code128Modules("12345")!.length, 11 * (5 + 2) + 13);
+  assert.equal(code128Modules("1234-5")!.length, 11 * (6 + 2) + 13);
+});
+
 test("only text a scanner can read is accepted", () => {
   assert.equal(canEncode("BS-001"), true);
   assert.equal(canEncode("Item 12/A (x)"), true);
