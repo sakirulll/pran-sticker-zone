@@ -37,10 +37,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const hostingApi = {
   session: () => request<{ ok: true; user: HostingUser | null }>("auth.php?action=session"),
 
-  register: (name: string, email: string, password: string) =>
+  register: (name: string, shopName: string, email: string, password: string) =>
     request<{ ok: true; user: HostingUser }>("auth.php?action=register", {
       method: "POST",
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name, shopName, email, password }),
     }),
 
   login: (email: string, password: string) =>
@@ -66,6 +66,7 @@ export const hostingApi = {
   loadShop: () => request<{
     ok: true;
     rev: number;
+    shopName: string;
     membership: ShopMembership;
     records: RecordRow[];
   }>("shop.php"),

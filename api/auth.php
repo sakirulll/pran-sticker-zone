@@ -53,6 +53,10 @@ if ($action === 'register' && $method === 'POST') {
     $name = value($data, 'name');
     $email = strtolower(value($data, 'email'));
     $password = (string)($data['password'] ?? '');
+    $shopName = value($data, 'shopName');
+    if (strlen($shopName) > 480) {
+        fail('The shop name is too long.');
+    }
     if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) < 8) {
         fail('Enter a name, valid email, and password with at least 8 characters.');
     }
@@ -64,7 +68,7 @@ if ($action === 'register' && $method === 'POST') {
         $user = $pdo->prepare('INSERT INTO pos_users (id, email, display_name, password_hash) VALUES (?, ?, ?, ?)');
         $user->execute([$userId, $email, $name, password_hash($password, PASSWORD_DEFAULT)]);
         $shop = $pdo->prepare('INSERT INTO pos_shops (id, owner_user_id, name) VALUES (?, ?, ?)');
-        $shop->execute([$shopId, $userId, $name . "'s shop"]);
+        $shop->execute([$shopId, $userId, $shopName !== '' ? $shopName : $name . "'s Shop"]);
         $pdo->commit();
     } catch (PDOException $error) {
         if ($pdo->inTransaction()) {
@@ -128,7 +132,7 @@ if ($action === 'request-reset' && $method === 'POST') {
             $link = app_url() . '/?reset=' . $token;
             send_mail(
                 $email,
-                'Password reset - PRAN Sticker Zone POS',
+                'Password reset - ' . APP_NAME,
                 "Hello {$account['display_name']},\n\n"
                 . "Open this link to choose a new password. It works once and expires in {$minutes} minutes.\n\n{$link}\n\n"
                 . "নতুন password বেছে নিতে উপরের link টি খুলুন। এটি একবারই কাজ করবে এবং {$minutes} মিনিট পর বাতিল হয়ে যাবে।\n\n"

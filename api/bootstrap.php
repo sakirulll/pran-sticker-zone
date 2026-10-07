@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 const POS_CONFIG_FILE = '/home/pranmzcs/pos-private-config.php';
 const POS_SCHEMA_VERSION = 3;
+const APP_NAME = 'HishabPOS';
 
 function respond(array $data, int $status = 200): never
 {
@@ -207,7 +208,7 @@ function send_mail(string $to, string $subject, string $body): bool
     $host = preg_replace('/:\d+$/', '', (string)parse_url(app_url(), PHP_URL_HOST));
     $from = is_string($settings['mail_from'] ?? null) && $settings['mail_from'] !== '' ? $settings['mail_from'] : 'no-reply@' . $host;
     $headers = [
-        'From: PRAN Sticker Zone POS <' . $from . '>',
+        'From: ' . APP_NAME . ' <' . $from . '>',
         'MIME-Version: 1.0',
         'Content-Type: text/plain; charset=UTF-8',
         'Content-Transfer-Encoding: 8bit',

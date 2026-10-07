@@ -220,6 +220,10 @@ if ($method === 'GET') {
         }
         $pdo->commit();
 
+        $shop = $pdo->prepare('SELECT name FROM pos_shops WHERE id = ?');
+        $shop->execute([$shopId]);
+        $shopName = (string)$shop->fetchColumn();
+
         // Written out row by row so a large shop does not have to fit in memory.
         $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
         $query = $pdo->prepare('SELECT collection, record_id, pos, payload FROM pos_records WHERE shop_id = ? AND deleted = 0');
@@ -231,7 +235,7 @@ if ($method === 'GET') {
         fail('Could not load the shop data. Try again.', 500);
     }
     send_json_start();
-    echo '{"ok":true,"rev":', $rev, ',"membership":', encode(['owner' => $membership['owner'], 'roleId' => $membership['role_id']]), ',"records":[';
+    echo '{"ok":true,"rev":', $rev, ',"shopName":', encode($shopName), ',"membership":', encode(['owner' => $membership['owner'], 'roleId' => $membership['role_id']]), ',"records":[';
     $separator = '';
     while ($row = $query->fetch(PDO::FETCH_NUM)) {
         echo $separator, record_row($row[0], $row[1], $row[2], $row[3]);

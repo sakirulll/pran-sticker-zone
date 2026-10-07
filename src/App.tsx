@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { CircleAlert, CircleCheck, Eye, EyeOff, LockKeyhole, Mail, Package, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
+import { CircleAlert, CircleCheck, Eye, EyeOff, LockKeyhole, Mail, Package, ShieldCheck, ShoppingCart, Store, UserRound } from "lucide-react";
 import { hostingApi, type HostingUser, type ShopBackup } from "./hostingApi";
 import { buildShopData, chunkChanges, ShopSync, type RecordRow } from "./shopSync";
 
@@ -88,6 +88,19 @@ body.nav .main{
 
 .brand b{
   color:#ff3b47
+}
+
+.brand img{
+  display:block;
+  max-width:100%;
+  max-height:64px;
+  margin:0 0 10px;
+  border-radius:8px
+}
+
+.brand span{
+  display:block;
+  overflow-wrap:anywhere
 }
 
 .brand small{
@@ -663,11 +676,7 @@ dialog label{
 </style>
 
 <aside class="side">
-  <div class="brand">
-    PRAN
-    <small>STICKER</small>
-    <b>ZONE</b>
-  </div>
+  <div class="brand" id="shopBrand"></div>
   <div id="menu"></div>
 </aside>
 
@@ -718,8 +727,10 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
     let isWorkspaceOwner = false;
     let loadedRevision = 0;
     let loadedRecords: RecordRow[] = [];
+    let registeredShopName = "";
     try {
       const shop = await hostingApi.loadShop();
+      registeredShopName = shop.shopName;
       loadedRevision = shop.rev;
       loadedRecords = shop.records;
       cloudData = buildShopData(shop.records);
@@ -782,68 +793,21 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
         seq: 100,
 
         categories: m(
-          "Bike Sticker",
-          "Tank Pad",
-          "Rim Tape",
+          "General",
         ),
 
         brands: m(
-          "Honda",
-          "Yamaha",
-          "Pran",
+          "No Brand",
         ),
 
         units: m(
           "Pcs",
           "Set",
+          "Box",
+          "Kg",
         ),
 
-        products: [
-          {
-            id: 20,
-            name: "Bike Sticker (Honda)",
-            code: "BS-001",
-            brand: 4,
-            category: 1,
-            unit: 7,
-            buy: 120,
-            sell: 185,
-            stock: 40,
-          },
-          {
-            id: 21,
-            name: "Graphic Sticker Set",
-            code: "GS-002",
-            brand: 6,
-            category: 1,
-            unit: 8,
-            buy: 130,
-            sell: 198,
-            stock: 8,
-          },
-          {
-            id: 22,
-            name: "Tank Pad",
-            code: "TP-003",
-            brand: 6,
-            category: 2,
-            unit: 7,
-            buy: 90,
-            sell: 145,
-            stock: 10,
-          },
-          {
-            id: 23,
-            name: "Rim Tape",
-            code: "RT-004",
-            brand: 6,
-            category: 3,
-            unit: 8,
-            buy: 80,
-            sell: 150,
-            stock: 25,
-          },
-        ],
+        products: [],
 
         customers: [
           {
@@ -854,20 +818,13 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
           },
         ],
 
-        suppliers: [
-          {
-            id: 31,
-            name: "Dhaka Sticker Supplier",
-            phone: "",
-            address: "",
-          },
-        ],
+        suppliers: [],
 
         warehouses: [
           {
             id: 32,
             name: "Main Warehouse",
-            location: "Dhaka",
+            location: "",
           },
         ],
 
@@ -899,10 +856,10 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
         },
 
         user: {
-          name: "Admin",
-          email: "pranstickerzone@gmail.com",
-          shop: "PRAN Sticker Zone",
-          open: 500000,
+          name: user.display_name,
+          email: user.email,
+          shop: registeredShopName || "My Shop",
+          open: 0,
           roleId: 41,
           printer: {
   paperSize: "58mm",
@@ -2358,7 +2315,9 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       const total = +sale.total || 0;
       const paid = +sale.paid || 0;
       const due = +(sale.due ?? Math.max(total - paid, 0));
-      const shopName = esc(D.user.shop || "PRAN Sticker Zone");
+      const shopName = esc(D.user.shop || "My Shop");
+      // The receipt opens in its own window, so the logo needs its full address.
+      const shopLogo = D.user.logo ? `<img src="${esc(new URL(D.user.logo, window.location.href).href)}" alt="" style="max-height:${compact ? "48px" : "80px"};max-width:100%;margin-bottom:6px">` : "";
 
       invoiceWindow.document.write(`
         <!doctype html>
@@ -2377,7 +2336,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
         </style></head><body>
         <div class="toolbar"><button onclick="window.print()">Print</button><button onclick="window.print()">Save PDF</button></div>
         <main class="paper">
-          <header class="center"><div class="brand">${shopName}</div><div class="sub">${esc(D.user.phone || "")}</div><div class="sub">${esc(D.user.address || "")}</div><div class="sub">Money Receipt</div></header>
+          <header class="center">${shopLogo}<div class="brand">${shopName}</div><div class="sub">${esc(D.user.phone || "")}</div><div class="sub">${esc(D.user.address || "")}</div><div class="sub">Money Receipt</div></header>
           <div class="rule"></div>
           <div class="row"><span>Invoice</span><b>${esc(sale.inv)}</b></div>
           <div class="row"><span>Date</span><span>${esc(sale.date)}</span></div>
@@ -2592,10 +2551,26 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
     };
 
     const generalSettingsPage = () => {
-      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
-      $("#generalSettingsForm").addEventListener("submit", (event: Event) => {
+      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
+      $("#generalSettingsForm").addEventListener("submit", async (event: Event) => {
         event.preventDefault();
-        D.user = { ...D.user, roleId: !isWorkspaceOwner ? D.user.roleId : +$("#settingRole").value, shop: $("#settingShop").value.trim(), shopEmail: $("#settingEmail").value.trim(), phone: $("#settingPhone").value.trim(), address: $("#settingAddress").value.trim() };
+        const logoFile = $("#settingLogo")?.files?.[0] as File | undefined;
+        let logo = D.user.logo || "";
+        if (logoFile) {
+          try {
+            const uploaded = await hostingApi.uploadImage(await optimizeProductImage(logoFile));
+            void removeProductImage(logo).catch((error) => console.warn("Could not delete the old logo", error));
+            logo = uploaded.url;
+          } catch (error) {
+            console.error("Could not upload the shop logo", error);
+            toast("The logo could not be uploaded. Try again.");
+            return;
+          }
+        } else if ($("#settingLogoRemove")?.checked) {
+          void removeProductImage(logo).catch((error) => console.warn("Could not delete the old logo", error));
+          logo = "";
+        }
+        D.user = { ...D.user, logo, roleId: !isWorkspaceOwner ? D.user.roleId : +$("#settingRole").value, shop: $("#settingShop").value.trim(), shopEmail: $("#settingEmail").value.trim(), phone: $("#settingPhone").value.trim(), address: $("#settingAddress").value.trim() };
         D.settings.currencyId = +$("#settingCurrency").value;
         D.settings.taxRate = Math.max(0, +$("#settingTax").value || 0);
         D.settings.invoiceFooter = $("#settingFooter").value.trim();
@@ -3728,6 +3703,11 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       const un = $("#un");
       const ua = $("#ua");
       const visibleName = sessionUser.display_name || D.user.name;
+      const brand = $("#shopBrand");
+
+      if (brand) {
+        brand.innerHTML = `${D.user.logo ? `<img src="${esc(D.user.logo)}" alt="">` : ""}<span>${esc(D.user.shop || "My Shop")}</span><small>HishabPOS</small>`;
+      }
 
       if (un) {
         un.textContent = visibleName;
@@ -4093,6 +4073,7 @@ function AuthScreen({ onSignedIn }: { onSignedIn: (user: HostingUser) => void })
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
+  const [shopName, setShopName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -4127,7 +4108,7 @@ function AuthScreen({ onSignedIn }: { onSignedIn: (user: HostingUser) => void })
         setNotice("Password বদলানো হয়েছে। এখন নতুন password দিয়ে login করুন।");
       } else {
         const result = mode === "register"
-          ? await hostingApi.register(name.trim(), email.trim(), password)
+          ? await hostingApi.register(name.trim(), shopName.trim(), email.trim(), password)
           : await hostingApi.login(email.trim(), password);
         onSignedIn(result.user);
       }
@@ -4164,10 +4145,10 @@ function AuthScreen({ onSignedIn }: { onSignedIn: (user: HostingUser) => void })
   return (
     <main className="auth-page">
       <aside className="auth-brand">
-        <img className="auth-logo" src="/logo.jpg" alt="PRAN Sticker Zone" width={1136} height={1082} />
+        <div className="auth-logo"><img src="/favicon.svg" alt="" width={58} height={58} />Hishab<span>POS</span></div>
         <div className="auth-pitch">
           <h2>Run your whole shop from one place.</h2>
-          <p>Sales, stock, customers and reports for PRAN Sticker Zone, ready on any device.</p>
+          <p>Sales, stock, customers and reports for your shop, ready on any device.</p>
         </div>
         <ul className="auth-points">
           <li><span><ShoppingCart size={19} /></span>Fast billing with printable invoices</li>
@@ -4181,6 +4162,7 @@ function AuthScreen({ onSignedIn }: { onSignedIn: (user: HostingUser) => void })
           <p className="auth-subtitle">{copy[mode].subtitle}</p>
           <form onSubmit={submit}>
             {mode === "register" && <label className="auth-label">Your name<span className="auth-field"><span className="auth-icon"><UserRound size={18} /></span><input autoComplete="name" placeholder="e.g. Rahim Uddin" value={name} onChange={(e) => setName(e.target.value)} required /></span></label>}
+            {mode === "register" && <label className="auth-label">Shop name<span className="auth-field"><span className="auth-icon"><Store size={18} /></span><input autoComplete="organization" placeholder="e.g. Rahim Store" value={shopName} onChange={(e) => setShopName(e.target.value)} maxLength={160} required /></span></label>}
             {mode !== "reset" && <label className="auth-label">Email address<span className="auth-field"><span className="auth-icon"><Mail size={18} /></span><input type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required /></span></label>}
             {mode === "login" && passwordField("Password", password, setPassword, "Enter your password")}
             {mode === "register" && passwordField("Password", password, setPassword, "At least 8 characters")}
