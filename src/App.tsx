@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { Eye, EyeOff, LockKeyhole, Mail, UserRound } from "lucide-react";
+import { CircleAlert, Eye, EyeOff, LockKeyhole, Mail, Package, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
 import { hostingApi, type HostingUser } from "./hostingApi";
 
 const ORIGINAL_APP = String.raw`
@@ -4012,26 +4012,46 @@ function AuthScreen({ onSignedIn }: { onSignedIn: (user: HostingUser) => void })
         409: "এই email দিয়ে account আগে থেকেই আছে।",
         429: "অনেকবার ভুল চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।",
       };
-      setError(messages[status || 0] || "অনুরোধটি সম্পন্ন হয়নি। আবার চেষ্টা করুন।");
+      // No usable status means the API itself did not answer (offline, or the server is down).
+      const unreachable = !status || status === 200 || status >= 500;
+      setError(messages[status || 0] || (unreachable
+        ? "সার্ভারের সাথে যোগাযোগ করা যায়নি। Internet সংযোগ দেখে একটু পরে আবার চেষ্টা করুন।"
+        : "অনুরোধটি সম্পন্ন হয়নি। আবার চেষ্টা করুন।"));
     } finally {
       setBusy(false);
     }
   };
 
+  const isLogin = mode === "login";
+
   return (
     <main className="auth-page">
-      <section className="auth-card" aria-labelledby="auth-title">
-        <h1 id="auth-title">Welcome to <span>PRAN Sticker Zone</span></h1>
-        <p className="auth-subtitle">{mode === "login" ? "Welcome back, Please login in to your account" : "Create your account to get started"}</p>
-        <form onSubmit={submit}>
-          {mode === "register" && <label className="auth-field"><span className="auth-icon"><UserRound size={19} /></span><input autoComplete="name" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required /></label>}
-          <label className="auth-field"><span className="auth-icon"><Mail size={19} /></span><input type="email" autoComplete="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-          <label className="auth-field"><span className="auth-icon"><LockKeyhole size={19} /></span><input type={showPassword ? "text" : "password"} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={mode === "register" ? 8 : undefined} required /><button className="auth-eye" type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button></label>
-          {error && <p className="auth-feedback error" role="alert">{error}</p>}
-          <button className="auth-submit" type="submit" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Log In" : "Create Account"}</button>
-        </form>
-        <div className="auth-switch"><button type="button" onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>{mode === "login" ? "Create an account." : "Back to login."}</button></div>
-      </section>
+      <aside className="auth-brand">
+        <img className="auth-logo" src="/logo.jpg" alt="PRAN Sticker Zone" width={1136} height={1082} />
+        <div className="auth-pitch">
+          <h2>Run your whole shop from one place.</h2>
+          <p>Sales, stock, customers and reports for PRAN Sticker Zone, ready on any device.</p>
+        </div>
+        <ul className="auth-points">
+          <li><span><ShoppingCart size={19} /></span>Fast billing with printable invoices</li>
+          <li><span><Package size={19} /></span>Live stock and purchase tracking</li>
+          <li><span><ShieldCheck size={19} /></span>Separate staff logins with their own permissions</li>
+        </ul>
+      </aside>
+      <div className="auth-panel">
+        <section className="auth-card" aria-labelledby="auth-title">
+          <h1 id="auth-title">{isLogin ? "Log in to your account" : "Create your account"}</h1>
+          <p className="auth-subtitle">{isLogin ? "Welcome back. Enter your details to continue." : "Set up a new shop account in a minute."}</p>
+          <form onSubmit={submit}>
+            {!isLogin && <label className="auth-label">Your name<span className="auth-field"><span className="auth-icon"><UserRound size={18} /></span><input autoComplete="name" placeholder="e.g. Rahim Uddin" value={name} onChange={(e) => setName(e.target.value)} required /></span></label>}
+            <label className="auth-label">Email address<span className="auth-field"><span className="auth-icon"><Mail size={18} /></span><input type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required /></span></label>
+            <label className="auth-label">Password<span className="auth-field"><span className="auth-icon"><LockKeyhole size={18} /></span><input type={showPassword ? "text" : "password"} autoComplete={isLogin ? "current-password" : "new-password"} placeholder={isLogin ? "Enter your password" : "At least 8 characters"} value={password} onChange={(e) => setPassword(e.target.value)} minLength={isLogin ? undefined : 8} required /><button className="auth-eye" type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></span>{!isLogin && <span className="auth-hint">Use 8 or more characters.</span>}</label>
+            {error && <p className="auth-feedback error" role="alert"><CircleAlert size={17} />{error}</p>}
+            <button className="auth-submit" type="submit" disabled={busy}>{busy && <span className="auth-spinner" aria-hidden="true" />}{busy ? "Please wait…" : isLogin ? "Log In" : "Create Account"}</button>
+          </form>
+          <div className="auth-switch">{isLogin ? "New here? " : "Already have an account? "}<button type="button" onClick={() => { setMode(isLogin ? "register" : "login"); setError(""); }}>{isLogin ? "Create an account" : "Log in"}</button></div>
+        </section>
+      </div>
     </main>
   );
 }
