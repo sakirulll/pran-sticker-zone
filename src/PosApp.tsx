@@ -2098,7 +2098,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const BARCODE_STYLE = `.bc-sheet{display:grid;grid-template-columns:repeat(var(--bc-columns,3),var(--bc-width,50mm));gap:2mm;justify-content:start}.bc-label{display:flex;flex-direction:column;justify-content:center;width:var(--bc-width,50mm);height:var(--bc-height,30mm);padding:1mm 2mm;border:1px dashed #cbd5e1;border-radius:1mm;background:#fff;color:#000;text-align:center;font:8pt/1.1 Arial,sans-serif;break-inside:avoid;overflow:hidden}.bc-label svg{display:block;flex:0 0 auto;width:100%;height:var(--bc-bars,12mm);margin:.8mm 0 .4mm}.bc-shop{font-weight:700}.bc-name,.bc-shop{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-code{letter-spacing:.3mm}.bc-price{font-weight:700;font-size:9pt}`;
     const barcodeSizes = () => `--bc-columns:${BARCODE_OPTIONS.paper === "roll" ? 1 : BARCODE_OPTIONS.columns};--bc-width:${BARCODE_OPTIONS.width}mm;--bc-height:${BARCODE_OPTIONS.height}mm;--bc-bars:${BARCODE_OPTIONS.bars}mm`;
     const barcodeOf = (product: any) => String(product?.code || "").trim();
-    const barcodeLabels = () => BARCODE_ITEMS.flatMap(({ id, qty }) => {
+    // The labels for the whole list, or for one listed product when `only` is its id.
+    const barcodeLabels = (only?: any) => BARCODE_ITEMS.filter((item) => only === undefined || item.id == only).flatMap(({ id, qty }) => {
       const product = prod(id);
       const bars = code128Svg(barcodeOf(product));
       if (!product || !bars) return [];
@@ -2116,12 +2117,13 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const sheetWidth = BARCODE_OPTIONS.columns * BARCODE_OPTIONS.width + (BARCODE_OPTIONS.columns - 1) * 2;
       const rows = BARCODE_ITEMS.map((item, index) => {
         const product = prod(item.id);
-        return `<tr><td>${index + 1}</td><td>${esc(product.name)}</td><td>${esc(barcodeOf(product))}</td><td><span style="display:inline-flex;align-items:center;gap:6px"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="-1" aria-label="One label fewer">−</button><input class="bc-qty" data-id="${esc(item.id)}" type="number" min="1" max="500" step="1" value="${item.qty}" style="width:80px;text-align:center"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="1" aria-label="One label more">+</button></span></td><td><button class="mini bc-remove" data-id="${esc(item.id)}">Delete</button></td></tr>`;
+        return `<tr><td>${index + 1}</td><td>${esc(product.name)}</td><td>${esc(barcodeOf(product))}</td><td><span style="display:inline-flex;align-items:center;gap:6px"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="-1" aria-label="One label fewer">−</button><input class="bc-qty" data-id="${esc(item.id)}" type="number" min="1" max="500" step="1" value="${item.qty}" style="width:80px;text-align:center"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="1" aria-label="One label more">+</button></span></td><td><button class="mini bc-print-one" data-id="${esc(item.id)}">Print</button><button class="mini bc-remove" data-id="${esc(item.id)}">Delete</button></td></tr>`;
       }).join("");
       const check = (key: "shop" | "name" | "price", text: string) => `<label style="display:flex;align-items:center;gap:6px;font-weight:400"><input class="bc-option" data-key="${key}" type="checkbox" style="width:auto" ${BARCODE_OPTIONS[key] ? "checked" : ""}> ${text}</label>`;
       const size = (key: keyof typeof BARCODE_LIMITS, text: string) => `<label>${text}<input class="bc-size" data-key="${key}" type="number" min="${BARCODE_LIMITS[key][0]}" max="${BARCODE_LIMITS[key][1]}" step="1" value="${BARCODE_OPTIONS[key]}"></label>`;
-      $("#app").innerHTML = `<style>${BARCODE_STYLE}</style><section class="card"><div class="hd"><h2>Print Barcode</h2><button class="btn pu" id="bcPrint" ${labels.length ? "" : "disabled"}>Print</button></div>
+      $("#app").innerHTML = `<style>${BARCODE_STYLE}</style><section class="card"><div class="hd"><h2>Print Barcode</h2><button class="btn pu" id="bcPrint" ${labels.length ? "" : "disabled"}>Print All</button></div>
         <p class="settings-help" style="padding:0 18px">Each label carries the product's code as a barcode. On the Sale screen, scan a label to add that product to the bill.</p>
+        <p class="settings-help" style="padding:0 18px">Print All prints every product in the list. To print one product, use the Print button on its row.</p>
         ${unusable ? `<p class="settings-help" style="padding:0 18px;color:var(--rd)">${unusable} products are left out because their code is empty or has letters a barcode cannot hold. Give them a code using English letters and digits.</p>` : ""}
         <div class="settings-form-grid" style="padding:0 18px 12px">
           <label>Product<select id="bcProduct"><option value="">Select one</option>${usable.map((product: any) => `<option value="${esc(product.id)}">${esc(product.name)} (${esc(barcodeOf(product))})</option>`).join("")}</select></label>
@@ -2190,7 +2192,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         BARCODE_ITEMS = BARCODE_ITEMS.filter((item) => String(item.id) !== (button as HTMLElement).dataset.id);
         barcodePage();
       }));
-      $("#bcPrint").addEventListener("click", () => {
+      const printLabels = (only?: any) => {
         const sheet = window.open("", "_blank", "width=900,height=900");
         if (!sheet) { toast("Allow pop-ups to print the labels"); return; }
         // A label printer gets one label per page, the page being exactly the label.
@@ -2203,9 +2205,11 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           ${BARCODE_STYLE}
           @media print{body{padding:0;background:#fff}.toolbar{display:none}}
           ${page}
-        </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button></div><div class="bc-sheet" style="${barcodeSizes()}">${barcodeLabels().join("")}</div></body></html>`);
+        </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button></div><div class="bc-sheet" style="${barcodeSizes()}">${barcodeLabels(only).join("")}</div></body></html>`);
         sheet.document.close();
-      });
+      };
+      $("#bcPrint").addEventListener("click", () => printLabels());
+      document.querySelectorAll(".bc-print-one").forEach((button) => button.addEventListener("click", () => printLabels((button as HTMLElement).dataset.id)));
     };
 
     const backupPage = async () => {

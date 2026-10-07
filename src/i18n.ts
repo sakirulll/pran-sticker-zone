@@ -84,6 +84,8 @@ const words: Record<string, string> = {
   "Add all products (one label per item in stock)": "সব পণ্য যোগ করুন (স্টকের প্রতিটির জন্য একটি লেবেল)", "Clear list": "তালিকা খালি করুন", "Preview": "নমুনা",
   "Choose a product first": "আগে একটি পণ্য বাছুন", "Allow pop-ups to print the labels": "লেবেল প্রিন্ট করতে pop-up চালু করুন",
   "Each label carries the product's code as a barcode. On the Sale screen, scan a label to add that product to the bill.": "প্রতিটি লেবেলে পণ্যের কোড বারকোড আকারে থাকে। বিক্রির পাতায় লেবেল স্ক্যান করলে পণ্যটি বিলে যোগ হয়।",
+  "Print All": "সব প্রিন্ট করুন",
+  "Print All prints every product in the list. To print one product, use the Print button on its row.": "\"সব প্রিন্ট করুন\" তালিকার সব পণ্য ছাপে। শুধু একটি পণ্য ছাপতে তার সারির প্রিন্ট বাটন চাপুন।",
   "Label size": "লেবেলের মাপ", "Paper": "কাগজ", "A4 sheet": "A4 কাগজ", "Label printer (one label per page)": "লেবেল প্রিন্টার (প্রতি পাতায় একটি লেবেল)",
   "Label width (mm)": "লেবেলের চওড়া (মিমি)", "Label height (mm)": "লেবেলের উচ্চতা (মিমি)", "Barcode height (mm)": "বারকোডের উচ্চতা (মিমি)",
   "Shown at the size it will print.": "যে মাপে ছাপা হবে সেই মাপেই দেখানো হচ্ছে।", "One label fewer": "একটি লেবেল কম", "One label more": "একটি লেবেল বেশি",
