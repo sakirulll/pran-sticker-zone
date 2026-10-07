@@ -140,6 +140,8 @@ const words: Record<string, string> = {
   "Only the shop owner can pay for the subscription.": "শুধু দোকানের মালিক সাবস্ক্রিপশনের টাকা দিতে পারেন।",
   "Payment submitted. Your plan will start as soon as it is checked.": "পেমেন্ট জমা হয়েছে। যাচাই হলেই আপনার প্ল্যান চালু হবে।",
   "HishabPOS subscription": "HishabPOS সাবস্ক্রিপশন", "Confirm your email address to keep using the shop.": "দোকান চালু রাখতে আপনার ইমেইল ঠিকানা নিশ্চিত করুন।",
+  "The payment number has not been set up yet. Please contact support.": "টাকা পাঠানোর নম্বর এখনো বসানো হয়নি। সাপোর্টে যোগাযোগ করুন।",
+  "e.g. 9FK3A7B2XY": "যেমন: 9FK3A7B2XY",
   "Send the link again": "লিংক আবার পাঠান", "Send again": "আবার পাঠান",
   "A new link has been sent. Check your inbox and spam folder.": "নতুন লিংক পাঠানো হয়েছে। Inbox ও Spam ফোল্ডার দেখুন।",
   "No internet. You can keep working: changes are saved on this device and sent when the internet is back.":
@@ -230,6 +232,7 @@ const patterns: [RegExp, (match: RegExpMatchArray) => string][] = [
   [/^This image is (.+)\. Choose one smaller than (\d+) KB\.$/, (m) => `এই ছবিটি ${m[1]}। ${m[2]} KB-এর ছোট একটি ছবি বাছুন।`],
   [/^Add (\d+) days to this shop\?$/, (m) => `এই দোকানে ${m[1]} দিন যোগ করবেন?`],
   [/^Send Money for the plan you chose to:$/, () => "যে প্ল্যান বেছেছেন তার টাকা Send Money করুন এই নম্বরে:"],
+  [/^The payment number has not been set up yet\. Need help\? Call (.+)\.$/, (m) => `টাকা পাঠানোর নম্বর এখনো বসানো হয়নি। সাহায্য লাগলে ফোন করুন: ${m[1]}।`],
   [/^Need help\? Call (.+)\.$/, (m) => `সাহায্য লাগলে ফোন করুন: ${m[1]}।`],
 ];
 
