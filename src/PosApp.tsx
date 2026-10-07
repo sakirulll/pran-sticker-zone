@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { ORIGINAL_APP } from "./appShell";
+import { canEncode, code128Svg } from "./barcode";
 import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
 import { currentLanguage, switchLanguage } from "./i18n";
 import { clearOfflineShop, readOfflineShop, writeOfflineShop } from "./offlineStore";
@@ -916,7 +917,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
               </div>
             ` : ""}
 
-            ${s ? `<div class="serial-scan"><label for="serialScan">Scan or enter product serial number, then press Enter</label><input id="serialScan" autocomplete="off" placeholder="Enter serial number"></div>` : ""}
+            ${s ? `<div class="serial-scan"><label for="serialScan">Scan a barcode, or enter a product code or serial number, then press Enter</label><input id="serialScan" autocomplete="off" placeholder="Barcode, product code or serial number"></div>` : ""}
 
             <div class="wrap">
               <table style="min-width:560px">
@@ -2081,6 +2082,85 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       });
     };
 
+    // ---- Barcode labels: choose products and how many labels of each, then print.
+    // A label carries the product's code, which the Sale screen accepts from a scanner.
+    let BARCODE_ITEMS: { id: any; qty: number }[] = [];
+    const BARCODE_OPTIONS = { shop: true, name: true, price: true, columns: 3 };
+    const BARCODE_STYLE = `.bc-sheet{display:grid;grid-template-columns:repeat(var(--bc-columns,3),minmax(0,1fr));gap:6px}.bc-label{padding:6px 8px;border:1px dashed #cbd5e1;border-radius:4px;background:#fff;color:#000;text-align:center;font:11px/1.25 Arial,sans-serif;break-inside:avoid;overflow:hidden}.bc-label svg{display:block;width:100%;height:38px;margin:3px 0 1px}.bc-shop{font-weight:700}.bc-name,.bc-shop{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-code{letter-spacing:1px}.bc-price{font-weight:700;font-size:12px}`;
+    const barcodeOf = (product: any) => String(product?.code || "").trim();
+    const barcodeLabels = () => BARCODE_ITEMS.flatMap(({ id, qty }) => {
+      const product = prod(id);
+      const bars = code128Svg(barcodeOf(product));
+      if (!product || !bars) return [];
+      const label = `<div class="bc-label">${BARCODE_OPTIONS.shop ? `<div class="bc-shop">${esc(D.user.shop || "")}</div>` : ""}${BARCODE_OPTIONS.name ? `<div class="bc-name">${esc(product.name)}</div>` : ""}${bars}<div class="bc-code">${esc(barcodeOf(product))}</div>${BARCODE_OPTIONS.price ? `<div class="bc-price">${tk(product.sell)}</div>` : ""}</div>`;
+      return new Array(qty).fill(label);
+    });
+    const barcodePage = () => {
+      BARCODE_ITEMS = BARCODE_ITEMS.filter((item) => prod(item.id));
+      const usable = D.products.filter((product: any) => canEncode(barcodeOf(product)));
+      const unusable = D.products.length - usable.length;
+      const labels = barcodeLabels();
+      const rows = BARCODE_ITEMS.map((item, index) => {
+        const product = prod(item.id);
+        return `<tr><td>${index + 1}</td><td>${esc(product.name)}</td><td>${esc(barcodeOf(product))}</td><td><input class="bc-qty" data-id="${esc(item.id)}" type="number" min="1" max="500" step="1" value="${item.qty}" style="width:90px"></td><td><button class="mini bc-remove" data-id="${esc(item.id)}">Delete</button></td></tr>`;
+      }).join("");
+      const check = (key: "shop" | "name" | "price", text: string) => `<label style="display:flex;align-items:center;gap:6px;font-weight:400"><input class="bc-option" data-key="${key}" type="checkbox" style="width:auto" ${BARCODE_OPTIONS[key] ? "checked" : ""}> ${text}</label>`;
+      $("#app").innerHTML = `<style>${BARCODE_STYLE}</style><section class="card"><div class="hd"><h2>Print Barcode</h2><button class="btn pu" id="bcPrint" ${labels.length ? "" : "disabled"}>Print</button></div>
+        <p class="settings-help" style="padding:0 18px">Each label carries the product's code as a barcode. On the Sale screen, scan a label to add that product to the bill.</p>
+        ${unusable ? `<p class="settings-help" style="padding:0 18px;color:var(--rd)">${unusable} products are left out because their code is empty or has letters a barcode cannot hold. Give them a code using English letters and digits.</p>` : ""}
+        <div class="settings-form-grid" style="padding:0 18px 12px">
+          <label>Product<select id="bcProduct"><option value="">Select one</option>${usable.map((product: any) => `<option value="${esc(product.id)}">${esc(product.name)} (${esc(barcodeOf(product))})</option>`).join("")}</select></label>
+          <label>Number of labels<input id="bcQty" type="number" min="1" max="500" step="1" value="10"></label>
+          <label>Labels per row<select id="bcColumns">${[1, 2, 3, 4, 5].map((count) => `<option value="${count}" ${BARCODE_OPTIONS.columns === count ? "selected" : ""}>${count}</option>`).join("")}</select></label>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px">${check("shop", "Shop Name")}${check("name", "Product Name")}${check("price", "Sale Price")}</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;padding:0 18px 14px"><button class="btn pu" id="bcAdd" type="button">Add to list</button><button class="btn" id="bcAddAll" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Add all products (one label per item in stock)</button>${BARCODE_ITEMS.length ? `<button class="btn" id="bcClear" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Clear list</button>` : ""}</div>
+        <div class="wrap"><table><thead><tr><th>SL.</th><th>Product</th><th>Code</th><th>Number of labels</th><th>Action</th></tr></thead><tbody>${rows || empty(5)}</tbody></table></div>
+        ${labels.length ? `<div style="padding:14px 18px 18px"><h3 style="margin:0 0 10px">Preview</h3><div class="bc-sheet" data-no-translate style="--bc-columns:${BARCODE_OPTIONS.columns}">${labels.slice(0, 60).join("")}</div>${labels.length > 60 ? `<p class="settings-help">Showing the first 60 of ${labels.length} labels. All of them are printed.</p>` : ""}</div>` : ""}
+      </section>`;
+      const setQty = (id: any, qty: number) => {
+        const amount = Math.min(500, Math.max(1, Math.floor(qty) || 1));
+        const existing = BARCODE_ITEMS.find((item) => item.id == id);
+        if (existing) existing.qty = amount;
+        else BARCODE_ITEMS.push({ id, qty: amount });
+      };
+      $("#bcAdd").addEventListener("click", () => {
+        const id = $("#bcProduct").value;
+        if (!id) { toast("Choose a product first"); return; }
+        setQty(prod(id).id, +$("#bcQty").value);
+        barcodePage();
+      });
+      $("#bcAddAll").addEventListener("click", () => {
+        usable.forEach((product: any) => setQty(product.id, Math.max(1, +product.stock || 1)));
+        barcodePage();
+      });
+      $("#bcClear")?.addEventListener("click", () => { BARCODE_ITEMS = []; barcodePage(); });
+      $("#bcColumns").addEventListener("change", () => { BARCODE_OPTIONS.columns = +$("#bcColumns").value; barcodePage(); });
+      document.querySelectorAll(".bc-option").forEach((box) => box.addEventListener("change", () => {
+        BARCODE_OPTIONS[(box as HTMLElement).dataset.key as "shop" | "name" | "price"] = (box as HTMLInputElement).checked;
+        barcodePage();
+      }));
+      document.querySelectorAll(".bc-qty").forEach((input) => input.addEventListener("change", () => {
+        setQty((input as HTMLElement).dataset.id, +(input as HTMLInputElement).value);
+        barcodePage();
+      }));
+      document.querySelectorAll(".bc-remove").forEach((button) => button.addEventListener("click", () => {
+        BARCODE_ITEMS = BARCODE_ITEMS.filter((item) => String(item.id) !== (button as HTMLElement).dataset.id);
+        barcodePage();
+      }));
+      $("#bcPrint").addEventListener("click", () => {
+        const sheet = window.open("", "_blank", "width=900,height=900");
+        if (!sheet) { toast("Allow pop-ups to print the labels"); return; }
+        sheet.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Barcode labels</title><style>
+          @page{size:A4;margin:8mm}*{box-sizing:border-box}body{margin:0;padding:12px;background:#f3f4f6;font-family:Arial,sans-serif}
+          .toolbar{display:flex;justify-content:center;padding:6px 0 14px}.toolbar button{border:0;border-radius:4px;padding:9px 22px;background:#07851b;color:#fff;font-weight:700;cursor:pointer}
+          ${BARCODE_STYLE}
+          @media print{body{padding:0;background:#fff}.toolbar{display:none}.bc-label{border-color:transparent}}
+        </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button></div><div class="bc-sheet" style="--bc-columns:${BARCODE_OPTIONS.columns}">${barcodeLabels().join("")}</div></body></html>`);
+        sheet.document.close();
+      });
+    };
+
     const backupPage = async () => {
       $("#app").innerHTML = `<section class="card"><div class="hd"><h2>Backups</h2><button class="btn pu" id="backupNow">Back up now</button></div><p class="settings-help" style="padding:0 18px">A copy of your shop is saved automatically every day and kept for 30 days. You can download a copy to keep yourself, or put the shop back to how it was on an earlier day.</p><div class="wrap" id="backupList"><p style="padding:18px">Loading…</p></div></section>`;
       const draw = (backups: ShopBackup[]) => {
@@ -2223,6 +2303,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       "settings-roles": rolesPage,
       "settings-notes": notesPage,
       "settings-backup": backupPage,
+      "barcodes": barcodePage,
       "settings-subscription": subscriptionPage,
       "admin-shops": () => adminPage("shops"),
       "admin-payments": () => adminPage("payments"),
@@ -3101,6 +3182,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           [
             "Add Product",
             "product-add",
+          ],
+          [
+            "Print Barcode",
+            "barcodes",
           ],
           [
             "Category",
