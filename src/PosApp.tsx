@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ORIGINAL_APP } from "./appShell";
 import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
+import { currentLanguage, switchLanguage } from "./i18n";
 import { clearOfflineShop, readOfflineShop, writeOfflineShop } from "./offlineStore";
 import { buildShopData, chunkChanges, ShopSync, type RecordRow, type StoredRow } from "./shopSync";
 import { canUseShop, daysLeft, escapeHtml, money, mountSubscriptionPanel, resendVerification, subscriptionBadge } from "./subscriptionPanel";
@@ -3375,6 +3376,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const open = userMenu?.classList.toggle("open") || false;
       avatarButton.setAttribute("aria-expanded", String(open));
     });
+    // The button names the language it switches to.
+    const languageButton = document.getElementById("langBtn");
+    if (languageButton) {
+      languageButton.textContent = currentLanguage() === "bn" ? "English" : "বাংলা";
+      languageButton.addEventListener("click", () => switchLanguage(currentLanguage() === "bn" ? "en" : "bn"));
+    }
     document.getElementById("logoutBtn")?.addEventListener("click", () => {
       if (unsaved && !confirm("Some changes have not reached the server yet. Logging out now will discard them. Log out anyway?")) return;
       stopSync();

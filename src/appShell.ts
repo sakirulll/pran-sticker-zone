@@ -681,6 +681,7 @@ dialog label{
   <div class="hdr">
     <button class="ib" id="menuBtn" aria-label="Menu">☰</button>
     <span class="sp"></span>
+    <button class="ib" id="langBtn" data-no-translate></button>
     <button class="ib" id="themeBtn">Theme</button>
     <span class="ib">🔔 0</span>
 

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, Eye, EyeOff, LockKeyhole, Mail, Package, ShieldCheck, ShoppingCart, Store, UserRound } from "lucide-react";
 import { hostingApi, type HostingUser } from "./hostingApi";
+import { currentLanguage, switchLanguage } from "./i18n";
 
 type AuthMode = "login" | "register" | "forgot" | "reset";
 
@@ -96,6 +97,7 @@ export function AuthScreen({ onSignedIn, initialNotice = "" }: { onSignedIn: (us
         </ul>
       </aside>
       <div className="auth-panel">
+        <button className="auth-language" type="button" data-no-translate onClick={() => switchLanguage(currentLanguage() === "bn" ? "en" : "bn")}>{currentLanguage() === "bn" ? "English" : "বাংলা"}</button>
         <section className="auth-card" aria-labelledby="auth-title">
           <h1 id="auth-title">{copy[mode].title}</h1>
           <p className="auth-subtitle">{copy[mode].subtitle}</p>
