@@ -67,11 +67,11 @@ function replaceInPlace(target: Record<string, any>, source: Record<string, any>
 export function buildShopData(rows: RecordRow[]): ShopData | null {
   if (!rows.length) return null;
   const data: ShopData = {};
-  const lists = new Map<string, { pos: number; value: unknown }[]>();
+  const lists = new Map<string, { pos: number; id: string; value: unknown }[]>();
   for (const [collection, id, pos, value] of rows) {
     if (collection !== META) {
       if (!lists.has(collection)) lists.set(collection, []);
-      lists.get(collection)!.push({ pos, value });
+      lists.get(collection)!.push({ pos, id, value });
     } else if (id === COLLECTION_LIST) {
       for (const name of Array.isArray(value) ? value : []) {
         if (!lists.has(name)) lists.set(name, []);
@@ -81,7 +81,8 @@ export function buildShopData(rows: RecordRow[]): ShopData | null {
     }
   }
   for (const [collection, entries] of lists) {
-    data[collection] = entries.sort((a, b) => a.pos - b.pos).map((entry) => entry.value);
+    // Same order every device uses: by position, then by id where positions are equal.
+    data[collection] = entries.sort((a, b) => a.pos - b.pos || (a.id > b.id ? 1 : a.id < b.id ? -1 : 0)).map((entry) => entry.value);
   }
   return data;
 }
@@ -159,20 +160,25 @@ export class ShopSync {
         next = this.entry(key, String(value[index].id))?.pos ?? next;
       }
       let previous: number | undefined;
+      let previousId = "";
       const used = new Set<string>();
       for (let index = 0; index < value.length; index++) {
         const id = String(value[index].id);
         if (!RECORD_ID.test(id) || used.has(id)) continue;
         used.add(id);
         let pos = this.entry(key, id)?.pos;
-        if (pos === undefined || (previous !== undefined && pos <= previous)) {
+        // Two devices can give different records the same position; the id then
+        // decides which comes first, the same way on every device.
+        const inOrder = pos !== undefined && (previous === undefined || pos > previous || (pos === previous && id > previousId));
+        if (!inOrder) {
           const after = following[index];
           const gap = after !== undefined && (previous === undefined || after > previous) ? after : undefined;
           if (previous === undefined) pos = gap === undefined ? 1 : gap - 1;
           else pos = gap === undefined ? previous + 1 : (previous + gap) / 2;
         }
-        previous = pos;
-        note(key, id, pos, value[index]);
+        previous = pos!;
+        previousId = id;
+        note(key, id, pos!, value[index]);
       }
     }
     note(META, COLLECTION_LIST, 0, collections.sort());
@@ -235,20 +241,26 @@ export class ShopSync {
       return;
     }
     if (!isObject(value)) return;
+    let record = value;
     if (index >= 0) {
       const local = list[index];
       const edited = !known || known.json !== JSON.stringify(local);
       const next = edited ? merge3(known ? JSON.parse(known.json) : undefined, local, value) : value;
       replaceInPlace(local, next as Record<string, any>);
-      return;
+      if (known?.pos === pos) return;
+      // Its place in the list changed too: take it out and put it back where it now belongs.
+      list.splice(index, 1);
+      record = local;
     }
-    // New from another device: goes where its position says, among the records already here.
+    // Goes where its position says among the records already here; records
+    // with the same position are ordered by id.
     let at = list.length;
     for (let i = 0; i < list.length; i++) {
-      const other = this.entry(collection, String(list[i]?.id))?.pos;
-      if (other !== undefined && other > pos) { at = i; break; }
+      const otherId = String(list[i]?.id);
+      const other = this.entry(collection, otherId)?.pos;
+      if (other !== undefined && (other > pos || (other === pos && otherId > id))) { at = i; break; }
     }
-    list.splice(at, 0, value);
+    list.splice(at, 0, record);
   }
 }
 

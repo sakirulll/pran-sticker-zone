@@ -295,3 +295,20 @@ test("work kept on the device while offline is sent later and combined with what
   }
   assert.deepEqual(reopened.sync.collectChanges(), []);
 });
+
+test("two devices adding to the same place in a list settle on one order and stop sending", { skip: !BASE }, async () => {
+  const { owner, email } = await newShop("settle");
+  const other = await secondDevice(email);
+  owner.data.sales.unshift({ id: 911 });
+  other.data.sales.unshift({ id: 912 });
+  await owner.save();
+  await other.save();
+  for (let round = 0; round < 3; round++) {
+    await owner.save();
+    await other.save();
+  }
+  assert.deepEqual(owner.data.sales.map((sale: any) => sale.id), other.data.sales.map((sale: any) => sale.id));
+  assert.deepEqual(owner.sync.collectChanges(), [], "nothing is left to send");
+  assert.deepEqual(other.sync.collectChanges(), []);
+  assert.deepEqual((await secondDevice(email)).data.sales.map((sale: any) => sale.id), owner.data.sales.map((sale: any) => sale.id));
+});
