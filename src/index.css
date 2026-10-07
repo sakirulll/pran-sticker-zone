@@ -170,3 +170,31 @@ code {
   .auth-panel { place-items:start center; padding:28px 16px 40px; }
 }
 @media (max-width:520px) { .auth-card { padding:28px 20px; } .auth-card h1 { font-size:24px; } }
+
+/* Subscription panel: shown inside the app and on the "subscription ended" page. */
+.plan-panel { color:var(--tx,#111827); font-size:14px; line-height:1.5; text-align:left; }
+.plan-status { margin:0 0 16px; padding:12px 14px; border-radius:10px; background:#fff4ed; color:#9a3412; font-weight:600; }
+.plan-status.ok { background:#ecfdf3; color:#166534; }
+.plan-status.bad { background:#fef3f2; color:#b42318; }
+.plan-prices { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:0 0 18px; }
+.plan-price { padding:16px; border:1px solid var(--ln,#e5e7eb); border-radius:12px; }
+.plan-price b { display:block; font-size:26px; line-height:1.2; }
+.plan-price span { color:#64748b; }
+.plan-steps { margin:0 0 18px; padding-left:20px; }
+.plan-steps li { margin:4px 0; }
+.plan-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin:0 0 18px; }
+.plan-form label { display:grid; gap:5px; font-weight:600; font-size:13px; }
+.plan-form input,.plan-form select { height:42px; padding:0 11px; border:1px solid var(--ln,#cbd5e1); border-radius:8px; background:var(--bg,#fff); color:inherit; font:inherit; font-weight:400; }
+.plan-form button,.blocked-logout { height:42px; padding:0 18px; border:0; border-radius:8px; background:#dc3f17; color:#fff; font:inherit; font-weight:700; cursor:pointer; align-self:end; }
+.plan-form button:disabled { opacity:.7; cursor:wait; }
+.plan-note { margin:0 0 14px; padding:10px 13px; border-radius:8px; background:#fef3f2; color:#b42318; }
+.plan-note.ok { background:#ecfdf3; color:#166534; }
+.plan-table { width:100%; border-collapse:collapse; font-size:13px; }
+.plan-table th,.plan-table td { padding:8px 6px; border-bottom:1px solid var(--ln,#e5e7eb); text-align:left; }
+.plan-scroll { overflow-x:auto; }
+#root:has(.blocked-page) { width:100%; border:0; text-align:left; }
+.blocked-page { min-height:100vh; padding:32px 16px; background:#f8fafc; color:#111827; font-family:"Segoe UI",system-ui,Roboto,Arial,sans-serif; letter-spacing:0; }
+.blocked-card { max-width:760px; margin:0 auto; padding:28px; border:1px solid #e5e7eb; border-radius:16px; background:#fff; box-shadow:0 20px 50px #0f172a14; }
+.blocked-card h1 { margin:0 0 6px; color:#0f172a; font-size:24px; font-weight:700; letter-spacing:-.3px; }
+.blocked-card > p { margin:0 0 20px; color:#64748b; font-size:15px; }
+.blocked-logout { margin-top:8px; background:#fff; color:#334155; border:1px solid #cbd5e1; }

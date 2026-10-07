@@ -9,6 +9,46 @@ import type { Change, RecordRow } from "./shopSync";
 
 export type ShopBackup = { name: string; size: number; createdAt: string };
 
+export type Subscription = {
+  /** "lifetime" is the platform admin's own shop; "active" is paid. */
+  state: "lifetime" | "active" | "trial" | "expired" | "suspended";
+  secondsLeft: number;
+};
+
+export type BillingSettings = {
+  priceMonthly: number;
+  priceYearly: number;
+  trialDays: number;
+  bkashNumber: string;
+  nagadNumber: string;
+  supportPhone: string;
+};
+
+export type Payment = {
+  id: number;
+  plan: "monthly" | "yearly";
+  amount: number;
+  method: string;
+  sender: string;
+  trxId: string;
+  status: "pending" | "approved" | "rejected";
+  note: string;
+  createdAt: string;
+  shopName: string | null;
+  ownerEmail: string | null;
+};
+
+export type AdminShop = {
+  id: string;
+  name: string;
+  ownerName: string;
+  ownerEmail: string;
+  createdAt: string;
+  staff: number;
+  records: number;
+  subscription: Subscription;
+};
+
 export type ShopMembership = {
   owner: boolean;
   roleId: number | null;
@@ -67,6 +107,8 @@ export const hostingApi = {
     ok: true;
     rev: number;
     shopName: string;
+    subscription: Subscription;
+    admin: boolean;
     membership: ShopMembership;
     records: RecordRow[];
   }>("shop.php"),
@@ -76,6 +118,33 @@ export const hostingApi = {
     request<{ ok: true; rev: number; remote: RecordRow[] }>("shop.php?action=sync", {
       method: "POST",
       body: JSON.stringify({ since, changes }),
+    }),
+
+  billingStatus: () => request<{
+    ok: true;
+    subscription: Subscription;
+    settings: BillingSettings;
+    payments: Payment[];
+    owner: boolean;
+  }>("billing.php?action=status"),
+
+  submitPayment: (plan: string, method: string, sender: string, trxId: string) =>
+    request<{ ok: true }>("billing.php?action=submit", {
+      method: "POST",
+      body: JSON.stringify({ plan, method, sender, trxId }),
+    }),
+
+  adminOverview: () => request<{
+    ok: true;
+    shops: AdminShop[];
+    payments: Payment[];
+    settings: BillingSettings;
+  }>("billing.php?action=admin-overview"),
+
+  adminAction: (action: "review" | "extend" | "suspend" | "settings", body: Record<string, unknown>) =>
+    request<{ ok: true }>(`billing.php?action=admin-${action}`, {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
 
   listBackups: () => request<{ ok: true; backups: ShopBackup[] }>("shop.php?action=backups"),

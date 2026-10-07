@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, Eye, EyeOff, LockKeyhole, Mail, Package, ShieldCheck, ShoppingCart, Store, UserRound } from "lucide-react";
-import { hostingApi, type HostingUser, type ShopBackup } from "./hostingApi";
+import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
 import { buildShopData, chunkChanges, ShopSync, type RecordRow } from "./shopSync";
 
 const ORIGINAL_APP = String.raw`
@@ -711,6 +711,86 @@ dialog label{
 
 type AnyData = Record<string, any>;
 
+const escapeHtml = (value: unknown) =>
+  String(value ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+const daysLeft = (subscription: Subscription) => Math.max(1, Math.ceil(subscription.secondsLeft / 86400));
+const canUseShop = (subscription: Subscription) => ["lifetime", "active", "trial"].includes(subscription.state);
+const subscriptionBadge = (subscription: Subscription) => ({
+  lifetime: "Lifetime",
+  active: `Paid · ${daysLeft(subscription)} days left`,
+  trial: `Trial · ${daysLeft(subscription)} days left`,
+  expired: "Expired",
+  suspended: "Suspended",
+}[subscription.state]);
+const money = (amount: number) => `${String.fromCharCode(2547)}${Number(amount).toLocaleString("en-BD")}`;
+
+// The subscription status, prices, how to pay and the payment form. It is used
+// both inside the app and on the page shown when the subscription has ended,
+// which is why it does not rely on anything from the running shop.
+async function mountSubscriptionPanel(container: HTMLElement, message?: { text: string; ok: boolean }) {
+  container.className = "plan-panel";
+  container.innerHTML = "<p>Loading…</p>";
+  let status: Awaited<ReturnType<typeof hostingApi.billingStatus>>;
+  try {
+    status = await hostingApi.billingStatus();
+  } catch (error) {
+    container.innerHTML = `<p class="plan-note">${escapeHtml(error instanceof Error ? error.message : "The subscription details could not be loaded.")}</p>`;
+    return;
+  }
+  const { subscription, settings, payments, owner } = status;
+  const summary = {
+    lifetime: "This shop has lifetime access.",
+    active: `Your subscription is paid. ${daysLeft(subscription)} days left.`,
+    trial: `You are on the free trial. ${daysLeft(subscription)} days left.`,
+    expired: "The free trial or paid period has ended. Pay for a plan to continue using the shop.",
+    suspended: "This shop has been suspended. Please contact support.",
+  }[subscription.state];
+  const numbers = [
+    settings.bkashNumber && `bKash: <b>${escapeHtml(settings.bkashNumber)}</b>`,
+    settings.nagadNumber && `Nagad: <b>${escapeHtml(settings.nagadNumber)}</b>`,
+  ].filter(Boolean).join(" &nbsp;·&nbsp; ");
+  const support = settings.supportPhone ? ` Need help? Call ${escapeHtml(settings.supportPhone)}.` : "";
+  const history = payments.length
+    ? `<h3>Your payments</h3><div class="plan-scroll"><table class="plan-table"><thead><tr><th>Date</th><th>Plan</th><th>Amount</th><th>Method</th><th>Transaction ID</th><th>Status</th></tr></thead><tbody>${payments.map((payment) => `<tr><td>${escapeHtml(payment.createdAt)}</td><td>${escapeHtml(payment.plan)}</td><td>${money(payment.amount)}</td><td>${escapeHtml(payment.method)}</td><td>${escapeHtml(payment.trxId)}</td><td>${escapeHtml(payment.status === "pending" ? "Waiting for approval" : payment.status)}${payment.note ? ` – ${escapeHtml(payment.note)}` : ""}</td></tr>`).join("")}</tbody></table></div>`
+    : "";
+  const form = !owner
+    ? "<p>Only the shop owner can pay for the subscription.</p>"
+    : subscription.state === "lifetime" || subscription.state === "suspended"
+      ? ""
+      : `<h3>How to pay</h3>
+        ${numbers
+          ? `<ol class="plan-steps"><li>Send Money for the plan you want to: ${numbers}</li><li>Copy the Transaction ID (TrxID) from the confirmation message.</li><li>Fill in the form below. Your plan starts as soon as the payment is checked.</li></ol>`
+          : `<p class="plan-note">The payment number has not been set up yet.${support || " Please contact support."}</p>`}
+        <form class="plan-form">
+          <label>Plan<select name="plan"><option value="yearly">Yearly – ${money(settings.priceYearly)}</option><option value="monthly">Monthly – ${money(settings.priceMonthly)}</option></select></label>
+          <label>Paid with<select name="method">${settings.nagadNumber && !settings.bkashNumber ? "" : '<option value="bkash">bKash</option>'}${settings.bkashNumber && !settings.nagadNumber ? "" : '<option value="nagad">Nagad</option>'}</select></label>
+          <label>Number you sent from<input name="sender" inputmode="tel" placeholder="01XXXXXXXXX" required></label>
+          <label>Transaction ID<input name="trxId" placeholder="e.g. 9FK3A7B2XY" required></label>
+          <button type="submit">Submit Payment</button>
+        </form>`;
+  container.innerHTML = `
+    <p class="plan-status ${subscription.state === "expired" || subscription.state === "suspended" ? "bad" : subscription.state === "trial" ? "" : "ok"}">${escapeHtml(summary)}</p>
+    ${message ? `<p class="plan-note ${message.ok ? "ok" : ""}" role="status">${escapeHtml(message.text)}</p>` : ""}
+    <div class="plan-prices">
+      <div class="plan-price"><span>Monthly</span><b>${money(settings.priceMonthly)}</b><span>per month</span></div>
+      <div class="plan-price"><span>Yearly</span><b>${money(settings.priceYearly)}</b><span>per year</span></div>
+    </div>
+    ${form}${history}${support && numbers ? `<p>${support}</p>` : ""}`;
+  const paymentForm = container.querySelector<HTMLFormElement>(".plan-form");
+  paymentForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const values = new FormData(paymentForm);
+    const button = paymentForm.querySelector("button")!;
+    button.disabled = true;
+    try {
+      await hostingApi.submitPayment(String(values.get("plan")), String(values.get("method")), String(values.get("sender")), String(values.get("trxId")));
+      await mountSubscriptionPanel(container, { text: "Payment submitted. Your plan will start as soon as it is checked.", ok: true });
+    } catch (error) {
+      await mountSubscriptionPanel(container, { text: error instanceof Error ? error.message : "The payment could not be submitted.", ok: false });
+    }
+  });
+}
+
 function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -728,9 +808,13 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
     let loadedRevision = 0;
     let loadedRecords: RecordRow[] = [];
     let registeredShopName = "";
+    let subscription: Subscription = { state: "trial", secondsLeft: 0 };
+    let isAdmin = false;
     try {
       const shop = await hostingApi.loadShop();
       registeredShopName = shop.shopName;
+      subscription = shop.subscription;
+      isAdmin = shop.admin;
       loadedRevision = shop.rev;
       loadedRecords = shop.records;
       cloudData = buildShopData(shop.records);
@@ -754,6 +838,16 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       if (path?.startsWith("/uploads/")) await hostingApi.deleteImage(path);
     };
     if (disposed) return;
+
+    // No trial or paid period left: show how to pay instead of the shop.
+    if (!canUseShop(subscription)) {
+      root.innerHTML = `<main class="blocked-page"><div class="blocked-card"><h1>${escapeHtml(registeredShopName || "Your shop")}</h1><p>HishabPOS subscription</p><div id="subscriptionPanel"></div><button class="blocked-logout" id="blockedLogout" type="button">Log Out</button></div></main>`;
+      void mountSubscriptionPanel(root.querySelector<HTMLElement>("#subscriptionPanel")!);
+      root.querySelector("#blockedLogout")!.addEventListener("click", () => {
+        void hostingApi.logout().catch((error) => console.error("Could not log out", error)).then(onLogout);
+      });
+      return;
+    }
 
     root.innerHTML = ORIGINAL_APP;
 
@@ -931,7 +1025,9 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
           onLogout();
           return;
         }
-        if (status === 409) {
+        // 402: the subscription ran out while the shop was open; reloading shows how to pay.
+        if (status === 409 || status === 402) {
+          unsaved = false;
           window.location.reload();
           return;
         }
@@ -2693,6 +2789,68 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       }
     };
 
+    // ---- Platform admin: every shop on the system, payments waiting to be checked, and prices.
+    const adminPage = async (view: "shops" | "payments" | "settings") => {
+      const title = { shops: "All Shops", payments: "Payments", settings: "Pricing & Payment Numbers" }[view];
+      $("#app").innerHTML = `<section class="card"><div class="hd"><h2>${title}</h2></div><div class="wrap" id="adminBody"><p style="padding:18px">Loading…</p></div></section>`;
+      let overview: Awaited<ReturnType<typeof hostingApi.adminOverview>>;
+      try {
+        overview = await hostingApi.adminOverview();
+      } catch (error) {
+        if ($("#adminBody")) $("#adminBody").innerHTML = `<p style="padding:18px">${esc(error instanceof Error ? error.message : "Could not load.")}</p>`;
+        return;
+      }
+      const body = $("#adminBody");
+      if (!body) return;
+      const run = async (action: "review" | "extend" | "suspend" | "settings", payload: AnyData, done: string) => {
+        try {
+          await hostingApi.adminAction(action, payload);
+          toast(done);
+          void adminPage(view);
+        } catch (error) {
+          toast(error instanceof Error ? error.message : "The change could not be saved.");
+        }
+      };
+
+      if (view === "shops") {
+        const rows = overview.shops.map((shop, index) => `<tr><td>${index + 1}</td><td>${esc(shop.name)}</td><td>${esc(shop.ownerName)}<br><small>${esc(shop.ownerEmail)}</small></td><td>${esc(shop.createdAt.slice(0, 10))}</td><td>${shop.staff}</td><td>${shop.records}</td><td>${esc(subscriptionBadge(shop.subscription))}</td><td>${shop.subscription.state === "lifetime" ? "" : `<button class="mini admin-extend" data-id="${esc(shop.id)}" data-days="30">+30 days</button><button class="mini admin-extend" data-id="${esc(shop.id)}" data-days="365">+1 year</button><button class="mini admin-suspend" data-id="${esc(shop.id)}" data-on="${shop.subscription.state === "suspended" ? "0" : "1"}">${shop.subscription.state === "suspended" ? "Restore" : "Suspend"}</button>`}</td></tr>`).join("");
+        body.innerHTML = `<table><thead><tr><th>SL.</th><th>Shop</th><th>Owner</th><th>Joined</th><th>Staff</th><th>Records</th><th>Subscription</th><th>Action</th></tr></thead><tbody>${rows || empty(8)}</tbody></table>`;
+        body.querySelectorAll(".admin-extend").forEach((button: Element) => button.addEventListener("click", () => {
+          const { id, days } = (button as HTMLElement).dataset;
+          if (confirm(`Add ${days} days to this shop?`)) void run("extend", { shopId: id, days: +days! }, "Days added");
+        }));
+        body.querySelectorAll(".admin-suspend").forEach((button: Element) => button.addEventListener("click", () => {
+          const { id, on } = (button as HTMLElement).dataset;
+          if (confirm(on === "1" ? "Suspend this shop? Nobody in it will be able to save anything." : "Restore this shop?")) void run("suspend", { shopId: id, suspended: on === "1" }, on === "1" ? "Shop suspended" : "Shop restored");
+        }));
+      } else if (view === "payments") {
+        const rows = overview.payments.map((payment, index) => `<tr><td>${index + 1}</td><td>${esc(payment.createdAt)}</td><td>${esc(payment.shopName)}<br><small>${esc(payment.ownerEmail)}</small></td><td>${esc(payment.plan)}</td><td>${money(payment.amount)}</td><td>${esc(payment.method)}<br><small>${esc(payment.sender)}</small></td><td>${esc(payment.trxId)}</td><td>${esc(payment.status)}${payment.note ? `<br><small>${esc(payment.note)}</small>` : ""}</td><td>${payment.status === "pending" ? `<button class="mini admin-approve" data-id="${payment.id}">Approve</button><button class="mini admin-reject" data-id="${payment.id}">Reject</button>` : ""}</td></tr>`).join("");
+        body.innerHTML = `<p class="settings-help" style="padding:0 18px">Check each Transaction ID in your bKash or Nagad app before approving. Approving adds the paid period to the shop straight away.</p><table><thead><tr><th>SL.</th><th>Date</th><th>Shop</th><th>Plan</th><th>Amount</th><th>Sent from</th><th>Transaction ID</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows || empty(9)}</tbody></table>`;
+        body.querySelectorAll(".admin-approve").forEach((button: Element) => button.addEventListener("click", () => {
+          if (confirm("Approve this payment? Make sure the money has arrived.")) void run("review", { id: +(button as HTMLElement).dataset.id!, approve: true }, "Payment approved");
+        }));
+        body.querySelectorAll(".admin-reject").forEach((button: Element) => button.addEventListener("click", () => {
+          const note = prompt("Reason shown to the shop owner (optional):", "Transaction not found");
+          if (note !== null) void run("review", { id: +(button as HTMLElement).dataset.id!, approve: false, note }, "Payment rejected");
+        }));
+      } else {
+        const s = overview.settings;
+        body.innerHTML = `<form id="adminSettingsForm" style="padding:0 18px 18px"><div class="settings-form-grid"><label>Monthly price (Taka)<input id="adminMonthly" type="number" min="0" step="1" value="${s.priceMonthly}" required></label><label>Yearly price (Taka)<input id="adminYearly" type="number" min="0" step="1" value="${s.priceYearly}" required></label><label>Free trial (days)<input id="adminTrial" type="number" min="0" max="365" step="1" value="${s.trialDays}" required></label><label>Support phone<input id="adminSupport" type="tel" value="${esc(s.supportPhone)}"></label><label>bKash number (customers send money here)<input id="adminBkash" type="tel" value="${esc(s.bkashNumber)}" placeholder="01XXXXXXXXX"></label><label>Nagad number<input id="adminNagad" type="tel" value="${esc(s.nagadNumber)}" placeholder="01XXXXXXXXX"></label></div><button class="btn pu" type="submit">Save Changes</button></form>`;
+        $("#adminSettingsForm").addEventListener("submit", (event: Event) => {
+          event.preventDefault();
+          void run("settings", {
+            price_monthly: +$("#adminMonthly").value, price_yearly: +$("#adminYearly").value, trial_days: +$("#adminTrial").value,
+            support_phone: $("#adminSupport").value, bkash_number: $("#adminBkash").value, nagad_number: $("#adminNagad").value,
+          }, "Settings saved");
+        });
+      }
+    };
+
+    const subscriptionPage = () => {
+      $("#app").innerHTML = `<section class="card"><div class="hd"><h2>Subscription</h2></div><div style="padding:0 18px 18px"><div id="subscriptionPanel"></div></div></section>`;
+      void mountSubscriptionPanel($("#subscriptionPanel"));
+    };
+
     const notesPage = () => {
       const rows = D.notes.map((note: any, index: number) => `<tr><td>${index + 1}</td><td>${esc(note.title)}</td><td>${esc(note.body)}</td><td>${esc(note.date)}</td><td><button class="mini edit-note" data-id="${note.id}">Edit</button><button class="mini delete-note" data-id="${note.id}">Delete</button></td></tr>`).join("");
       $("#app").innerHTML = `<section class="card"><div class="hd"><h2>Notes</h2><button class="btn pu" id="addNote">+ Add Note</button></div><div class="wrap"><table><thead><tr><th>SL.</th><th>Title</th><th>Note</th><th>Date</th><th>Action</th></tr></thead><tbody>${rows || empty(5)}</tbody></table></div></section>`;
@@ -2727,6 +2885,10 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       "settings-roles": rolesPage,
       "settings-notes": notesPage,
       "settings-backup": backupPage,
+      "settings-subscription": subscriptionPage,
+      "admin-shops": () => adminPage("shops"),
+      "admin-payments": () => adminPage("payments"),
+      "admin-settings": () => adminPage("settings"),
 
       dashboard: () => {
         const cm = today().slice(0, 7);
@@ -3696,8 +3858,20 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
           ["User Role", "settings-roles"],
           ["Notes", "settings-notes"],
           ["Backup", "settings-backup"],
+          ["Subscription", "settings-subscription"],
         ],
-      ],    ];
+      ],
+
+      [
+        "Admin",
+        "🛡️",
+        [
+          ["All Shops", "admin-shops"],
+          ["Payments", "admin-payments"],
+          ["Pricing", "admin-settings"],
+        ],
+      ],
+    ];
 
     const hdr = () => {
       const un = $("#un");
@@ -3733,9 +3907,11 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       const permissions: string[] = role?.permissions || (isWorkspaceOwner ? ["All permissions"] : []);
       const hasAllPermissions = isWorkspaceOwner || permissions.includes("All permissions");
       const navItems: any[] = M.map((item: any[]) => {
+            // The platform admin's own section; no shop role can grant it.
+            if (item[0] === "Admin") return isAdmin ? item : null;
             if (Array.isArray(item[2])) {
               const children = item[2].filter((child: any[]) =>
-                (isWorkspaceOwner || (child[1] !== "settings-roles" && child[1] !== "settings-backup")) &&
+                (isWorkspaceOwner || !["settings-roles", "settings-backup", "settings-subscription"].includes(child[1])) &&
                 (hasAllPermissions || permissions.includes(item[0]) || permissions.includes(child[0])),
               );
               return children.length ? [item[0], item[1], children] : null;
@@ -4019,6 +4195,15 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
     hdr();
 
     render();
+
+    // Tells the owner how long is left while there is still time to pay.
+    if (isWorkspaceOwner && (subscription.state === "trial" || (subscription.state === "active" && daysLeft(subscription) <= 7))) {
+      const bar = document.createElement("a");
+      bar.href = "#settings-subscription";
+      bar.style.cssText = "display:block;padding:8px 16px;background:#fff4ed;color:#9a3412;font-size:13px;font-weight:600;text-align:center;text-decoration:none";
+      bar.textContent = `${subscription.state === "trial" ? "Free trial" : "Subscription"}: ${daysLeft(subscription)} days left. Tap here to pay and keep your shop running.`;
+      document.querySelector(".main")?.prepend(bar);
+    }
 
     cleanup = () => {
       stopSync();

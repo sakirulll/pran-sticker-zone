@@ -86,3 +86,38 @@ CREATE TABLE IF NOT EXISTS pos_password_resets (
   KEY pos_resets_user (user_id, created_at),
   CONSTRAINT pos_resets_user_fk FOREIGN KEY (user_id) REFERENCES pos_users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pos_subscriptions (
+  shop_id CHAR(36) NOT NULL,
+  paid_until DATETIME NULL,
+  suspended TINYINT(1) NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (shop_id),
+  CONSTRAINT pos_subscriptions_shop_fk FOREIGN KEY (shop_id) REFERENCES pos_shops (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pos_payments (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  shop_id CHAR(36) NOT NULL,
+  plan VARCHAR(20) NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  method VARCHAR(20) NOT NULL,
+  sender VARCHAR(30) NOT NULL,
+  trx_id VARCHAR(40) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  note VARCHAR(255) NOT NULL DEFAULT '',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at DATETIME NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY pos_payments_trx_unique (trx_id),
+  KEY pos_payments_shop (shop_id),
+  KEY pos_payments_status (status),
+  CONSTRAINT pos_payments_shop_fk FOREIGN KEY (shop_id) REFERENCES pos_shops (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pos_admins (
+  user_id CHAR(36) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id),
+  CONSTRAINT pos_admins_user_fk FOREIGN KEY (user_id) REFERENCES pos_users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

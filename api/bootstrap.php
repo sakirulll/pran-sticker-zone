@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 const POS_CONFIG_FILE = '/home/pranmzcs/pos-private-config.php';
-const POS_SCHEMA_VERSION = 3;
+const POS_SCHEMA_VERSION = 4;
 const APP_NAME = 'HishabPOS';
 
 function respond(array $data, int $status = 200): never
@@ -109,6 +109,12 @@ function request_data(): array
 function value(array $data, string $key): string
 {
     return trim((string)($data[$key] ?? ''));
+}
+
+// Shortens text to at most $length characters without cutting a letter in half.
+function clip(string $text, int $length): string
+{
+    return function_exists('mb_substr') ? mb_substr($text, 0, $length) : substr($text, 0, $length);
 }
 
 function uuid(): string

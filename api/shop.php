@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
 require __DIR__ . '/backup.php';
+require __DIR__ . '/subscription.php';
 
 // Shop data is stored one record per row. Every write bumps the shop's revision
 // number, and a device asks for "everything after revision N" to catch up, so
@@ -223,6 +224,8 @@ if ($method === 'GET') {
         $shop = $pdo->prepare('SELECT name FROM pos_shops WHERE id = ?');
         $shop->execute([$shopId]);
         $shopName = (string)$shop->fetchColumn();
+        $subscription = shop_subscription($pdo, $shopId);
+        $isAdmin = is_admin($pdo, $user);
 
         // Written out row by row so a large shop does not have to fit in memory.
         $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
@@ -235,7 +238,7 @@ if ($method === 'GET') {
         fail('Could not load the shop data. Try again.', 500);
     }
     send_json_start();
-    echo '{"ok":true,"rev":', $rev, ',"shopName":', encode($shopName), ',"membership":', encode(['owner' => $membership['owner'], 'roleId' => $membership['role_id']]), ',"records":[';
+    echo '{"ok":true,"rev":', $rev, ',"shopName":', encode($shopName), ',"subscription":', encode($subscription), ',"admin":', $isAdmin ? 'true' : 'false', ',"membership":', encode(['owner' => $membership['owner'], 'roleId' => $membership['role_id']]), ',"records":[';
     $separator = '';
     while ($row = $query->fetch(PDO::FETCH_NUM)) {
         echo $separator, record_row($row[0], $row[1], $row[2], $row[3]);
@@ -269,6 +272,9 @@ if ($method === 'POST' && $action === 'sync') {
     }
 
     $pdo = db();
+    if (!subscription_allows_use(shop_subscription($pdo, $shopId))) {
+        fail('The subscription for this shop has ended.', 402);
+    }
     $rows = [];
     try {
         $pdo->beginTransaction();

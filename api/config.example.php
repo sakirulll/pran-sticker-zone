@@ -11,6 +11,10 @@ return [
     // Leave it out to use the address the visitor came in on.
     // 'app_url' => 'https://pranstickerzone.com',
 
+    // Optional. Accounts that run the platform (approve payments, manage shops).
+    // Without this, the owner of the first shop ever created is the admin.
+    // 'admin_emails' => ['you@example.com'],
+
     // Optional. Where the daily backups are kept. By default a "pos-backups"
     // folder next to this file, which is outside the public website folder.
     // 'backup_dir' => '/home/pranmzcs/pos-backups',
