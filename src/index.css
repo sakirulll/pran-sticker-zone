@@ -176,10 +176,6 @@ code {
 .plan-status { margin:0 0 16px; padding:12px 14px; border-radius:10px; background:#fff4ed; color:#9a3412; font-weight:600; }
 .plan-status.ok { background:#ecfdf3; color:#166534; }
 .plan-status.bad { background:#fef3f2; color:#b42318; }
-.plan-prices { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:0 0 18px; }
-.plan-price { padding:16px; border:1px solid var(--ln,#e5e7eb); border-radius:12px; }
-.plan-price b { display:block; font-size:26px; line-height:1.2; }
-.plan-price span { color:#64748b; }
 .plan-steps { margin:0 0 18px; padding-left:20px; }
 .plan-steps li { margin:4px 0; }
 .plan-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin:0 0 18px; }
@@ -198,3 +194,25 @@ code {
 .blocked-card h1 { margin:0 0 6px; color:#0f172a; font-size:24px; font-weight:700; letter-spacing:-.3px; }
 .blocked-card > p { margin:0 0 20px; color:#64748b; font-size:15px; }
 .blocked-logout { margin-top:8px; background:#fff; color:#334155; border:1px solid #cbd5e1; }
+.plan-cards { padding-top:10px; display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin:0 0 22px; align-items:start; }
+.plan-card { position:relative; padding:26px 20px 20px; border:1px solid var(--ln,#d7dbe2); border-radius:12px; text-align:center; }
+.plan-card.current { border-color:var(--pu,#dc3f17); box-shadow:0 0 0 1px var(--pu,#dc3f17); }
+.plan-card.current { padding-top:48px; }
+.plan-card h3 { margin:0 0 14px; padding:0 8px; font-size:22px; line-height:1.3; font-weight:800; }
+.plan-ribbon { position:absolute; top:10px; right:-6px; padding:5px 10px; border-radius:4px 4px 0 4px; background:#dc2626; color:#fff; font-size:12px; font-weight:700; }
+.plan-ribbon::after { content:""; position:absolute; right:0; bottom:-6px; border-top:6px solid #991b1b; border-right:6px solid transparent; }
+.plan-was { position:absolute; top:-16px; right:-10px; padding:14px 6px; border-radius:50%; background:#dc2626; color:#fff; font-size:11px; font-weight:700; text-decoration:line-through; transform:rotate(-8deg); }
+.plan-days { color:#64748b; font-size:15px; }
+.plan-amount { margin:2px 0 12px; font-size:38px; line-height:1.15; font-weight:800; letter-spacing:-1px; }
+.plan-buy,.plan-subscribed { display:block; width:100%; height:42px; border-radius:6px; font:inherit; font-weight:700; }
+.plan-buy { border:1.5px solid var(--pu,#dc3f17); background:transparent; color:var(--pu,#dc3f17); cursor:pointer; }
+.plan-buy:hover,.plan-card.current .plan-buy { background:var(--pu,#dc3f17); color:#fff; }
+.plan-subscribed { display:grid; place-items:center; background:#6ab187; color:#fff; }
+.plan-subscribed.off { background:#e5e7eb; color:#64748b; }
+.plan-expiry { display:block; margin-top:8px; color:#64748b; font-size:12px; }
+.plan-features { margin:18px 0 0; padding:0; list-style:none; text-align:left; }
+.plan-features li { position:relative; margin:9px 0; padding-left:26px; font-size:14.5px; }
+.plan-features li::before { content:"✓"; position:absolute; left:0; top:2px; width:17px; height:17px; display:grid; place-items:center; border-radius:50%; background:#16a34a; color:#fff; font-size:11px; font-weight:700; }
+.plan-features li.no::before { content:"✕"; background:#dc2626; }
+.plan-pay[hidden] { display:none; }
+.plan-pay { scroll-margin-top:80px; }
