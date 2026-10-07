@@ -2136,6 +2136,33 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       );
     };
 
+    // One rule for every picture chosen in the app (product, replacement, profile):
+    // an oversized or non-image file is refused the moment it is picked.
+    const MAX_IMAGE_FILE_KB = 200;
+    root.addEventListener("change", (event: Event) => {
+      const input = event.target as HTMLInputElement | null;
+      if (!input || input.type !== "file" || !input.accept.startsWith("image/")) return;
+      const file = input.files?.[0];
+      if (!file) return;
+      const problem = !file.type.startsWith("image/")
+        ? "Choose an image file (JPG, PNG or WebP)."
+        : file.size > MAX_IMAGE_FILE_KB * 1024
+          ? `This image is ${file.size >= 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(file.size / 1024)} KB`}. Choose one smaller than ${MAX_IMAGE_FILE_KB} KB.`
+          : "";
+      // Shown beside the field too, because a toast can sit behind an open dialog.
+      const note = input.nextElementSibling?.classList.contains("image-limit-note")
+        ? input.nextElementSibling as HTMLElement
+        : document.createElement("small");
+      note.className = "image-limit-note";
+      note.style.cssText = "display:block;margin-top:4px;color:#d92d20;font-size:12px";
+      note.textContent = problem;
+      if (!problem) { note.remove(); return; }
+      input.after(note);
+      input.value = "";
+      event.stopImmediatePropagation();
+      toast(problem);
+    }, true);
+
     const optimizeProductImage = async (file: Blob) => {
       const bitmap = await createImageBitmap(file);
       let scale = Math.min(1, 280 / Math.max(bitmap.width, bitmap.height));
@@ -2190,7 +2217,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
               ${textField("manufacturer", "Manufacturer", "Enter manufacturer name")}
               ${textField("manufactureDate", "Manufacture Date", "", "date")}
               ${textField("expireDate", "Expire Date", "", "date")}
-              <label class="product-field"><span>Image</span><input id="p_image" type="file" accept="image/*"><img id="productImagePreview" class="product-image-preview" alt="Product image preview"></label>
+              <label class="product-field"><span>Image (max ${MAX_IMAGE_FILE_KB} KB)</span><input id="p_image" type="file" accept="image/*"><img id="productImagePreview" class="product-image-preview" alt="Product image preview"></label>
               <label class="product-field"><span>Has Serial</span><select id="p_hasSerial"><option>No</option><option>Yes</option></select></label>
               <label class="product-field serial-inventory-field" id="serialInventoryField" hidden><span>Available Serial Numbers</span><textarea id="p_serials" class="product-serial-input" placeholder="Enter one serial number per line, or separate with commas"></textarea></label>
             </div>
@@ -2450,7 +2477,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
         <div class="two"><div><label>Purchase Price</label><input id="ep_buy" type="number" min="0" step="0.01" value="${+product.buy || 0}"></div><div><label>Sale Price</label><input id="ep_sell" type="number" min="0" step="0.01" value="${+product.sell || 0}"></div></div>
         <div class="two"><div><label>Stock</label><input id="ep_stock" type="number" min="0" step="1" value="${+product.stock || 0}"></div><div><label>Serial</label><select id="ep_serial"><option value="false" ${product.hasSerial ? "" : "selected"}>No</option><option value="true" ${product.hasSerial ? "selected" : ""}>Yes</option></select></div></div>
         <label id="editSerialInventoryField">Available Serial Numbers<textarea id="ep_serials" class="product-serial-input" placeholder="Enter one serial number per line, or separate with commas">${esc((product.serials || []).join("\n"))}</textarea></label>
-        <label>Replace Image (optional)</label><input id="ep_image" type="file" accept="image/*">
+        <label>Replace Image (optional, max ${MAX_IMAGE_FILE_KB} KB)</label><input id="ep_image" type="file" accept="image/*">
         <div class="two" style="margin-top:16px"><button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button><button class="btn pu" type="button" id="saveProductEdit">Save Changes</button></div>`;
       dialog.showModal();
       const syncEditSerialField = () => { $("#editSerialInventoryField").hidden = $("#ep_serial").value !== "true"; };
@@ -3408,7 +3435,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
                 <input id="profileName" value="${esc(sessionUser.display_name || u.name)}" required>
                 <label for="profileEmail">Email</label>
                 <input id="profileEmail" type="email" value="${esc(sessionUser.email || u.email)}" required>
-                ${isWorkspaceOwner ? `<label for="profilePhoto">Profile Picture</label>
+                ${isWorkspaceOwner ? `<label for="profilePhoto">Profile Picture (max ${MAX_IMAGE_FILE_KB} KB)</label>
                 <input id="profilePhoto" type="file" accept="image/*">` : ""}
                 <label for="profileCurrentPassword">Current Password</label>
                 <input id="profileCurrentPassword" type="password" autocomplete="current-password" placeholder="Enter your current password">
