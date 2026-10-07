@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
+require __DIR__ . '/backup.php';
 
 // Shop data is stored one record per row. Every write bumps the shop's revision
 // number, and a device asks for "everything after revision N" to catch up, so
@@ -168,6 +169,46 @@ function send_json_start(): void
     header('Cache-Control: no-store');
 }
 
+$action = (string)($_GET['action'] ?? '');
+
+// Backups hold the whole shop, so only the owner may list, download or restore them.
+if (in_array($action, ['backups', 'backup-download', 'backup-now', 'restore'], true)) {
+    if (!$membership['owner']) {
+        fail('Only the shop owner can manage backups.', 403);
+    }
+    try {
+        if ($action === 'backups' && $method === 'GET') {
+            respond(['ok' => true, 'backups' => list_backups($shopId)]);
+        }
+        if ($action === 'backup-download' && $method === 'GET') {
+            $name = (string)($_GET['name'] ?? '');
+            $path = backup_path($shopId, $name);
+            if (!is_file($path)) {
+                fail('That backup does not exist.', 404);
+            }
+            header('Content-Type: application/gzip');
+            header('Content-Disposition: attachment; filename="shop-backup-' . $name . '"');
+            header('Content-Length: ' . filesize($path));
+            header('Cache-Control: no-store');
+            readfile($path);
+            exit;
+        }
+        if ($action === 'backup-now' && $method === 'POST') {
+            backup_shop(db(), $shopId, date('Y-m-d') . '.json.gz');
+            respond(['ok' => true, 'backups' => list_backups($shopId)]);
+        }
+        if ($action === 'restore' && $method === 'POST') {
+            restore_shop(db(), $shopId, value(request_data(), 'name'));
+            respond(['ok' => true]);
+        }
+    } catch (RuntimeException $error) {
+        fail($error->getMessage(), 400);
+    } catch (PDOException) {
+        fail('The backup could not be completed. Try again.', 500);
+    }
+    fail('Unknown request.', 404);
+}
+
 if ($method === 'GET') {
     $pdo = db();
     try {
@@ -197,10 +238,25 @@ if ($method === 'GET') {
         $separator = ',';
     }
     echo ']}';
+    $query->closeCursor();
+    $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
+
+    // The page already has its answer; take today's backup without making it wait.
+    ignore_user_abort(true);
+    if (function_exists('litespeed_finish_request')) {
+        litespeed_finish_request();
+    } elseif (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    } else {
+        flush();
+    }
+    if ($rev > 0) {
+        backup_if_due($pdo, $shopId);
+    }
     exit;
 }
 
-if ($method === 'POST' && ($_GET['action'] ?? '') === 'sync') {
+if ($method === 'POST' && $action === 'sync') {
     $data = request_data();
     $since = max(0, (int)($data['since'] ?? 0));
     $changes = $data['changes'] ?? [];

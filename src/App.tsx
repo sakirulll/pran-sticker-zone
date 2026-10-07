@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, Eye, EyeOff, LockKeyhole, Mail, Package, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
-import { hostingApi, type HostingUser } from "./hostingApi";
+import { hostingApi, type HostingUser, type ShopBackup } from "./hostingApi";
 import { buildShopData, chunkChanges, ShopSync, type RecordRow } from "./shopSync";
 
 const ORIGINAL_APP = String.raw`
@@ -2675,6 +2675,49 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       });
     };
 
+    const backupPage = async () => {
+      $("#app").innerHTML = `<section class="card"><div class="hd"><h2>Backups</h2><button class="btn pu" id="backupNow">Back up now</button></div><p class="settings-help" style="padding:0 18px">A copy of your shop is saved automatically every day and kept for 30 days. You can download a copy to keep yourself, or put the shop back to how it was on an earlier day.</p><div class="wrap" id="backupList"><p style="padding:18px">Loading…</p></div></section>`;
+      const draw = (backups: ShopBackup[]) => {
+        const rows = backups.map((backup, index) => {
+          const safety = backup.name.startsWith("before-restore-");
+          return `<tr><td>${index + 1}</td><td>${esc(new Date(backup.createdAt).toLocaleString())}</td><td>${safety ? "Saved before a restore" : "Daily backup"}</td><td>${(backup.size / 1024).toFixed(1)} KB</td><td><a class="mini" href="${esc(hostingApi.backupDownloadUrl(backup.name))}" download>Download</a><button class="mini restore-backup" data-name="${esc(backup.name)}">Restore</button></td></tr>`;
+        }).join("");
+        $("#backupList").innerHTML = `<table><thead><tr><th>SL.</th><th>Date</th><th>Type</th><th>Size</th><th>Action</th></tr></thead><tbody>${rows || empty(5)}</tbody></table>`;
+        document.querySelectorAll(".restore-backup").forEach((button) => button.addEventListener("click", async () => {
+          const name = (button as HTMLElement).dataset.name!;
+          if (!confirm("Put the shop back to this backup? Everything changed after it will be undone. A copy of the shop as it is now is saved first.")) return;
+          (button as HTMLButtonElement).disabled = true;
+          try {
+            await hostingApi.restoreBackup(name);
+            // Reloading is the simplest way to show the restored shop everywhere on this device.
+            unsaved = false;
+            window.location.reload();
+          } catch (error) {
+            (button as HTMLButtonElement).disabled = false;
+            toast(error instanceof Error ? error.message : "The backup could not be restored.");
+          }
+        }));
+      };
+      $("#backupNow").addEventListener("click", async () => {
+        const button = $("#backupNow") as HTMLButtonElement;
+        button.disabled = true;
+        try {
+          draw((await hostingApi.backupNow()).backups);
+          toast("Backup saved");
+        } catch (error) {
+          toast(error instanceof Error ? error.message : "The backup could not be saved.");
+        } finally {
+          button.disabled = false;
+        }
+      });
+      try {
+        const { backups } = await hostingApi.listBackups();
+        if ($("#backupList")) draw(backups);
+      } catch (error) {
+        if ($("#backupList")) $("#backupList").innerHTML = `<p style="padding:18px">${esc(error instanceof Error ? error.message : "Backups could not be loaded.")}</p>`;
+      }
+    };
+
     const notesPage = () => {
       const rows = D.notes.map((note: any, index: number) => `<tr><td>${index + 1}</td><td>${esc(note.title)}</td><td>${esc(note.body)}</td><td>${esc(note.date)}</td><td><button class="mini edit-note" data-id="${note.id}">Edit</button><button class="mini delete-note" data-id="${note.id}">Delete</button></td></tr>`).join("");
       $("#app").innerHTML = `<section class="card"><div class="hd"><h2>Notes</h2><button class="btn pu" id="addNote">+ Add Note</button></div><div class="wrap"><table><thead><tr><th>SL.</th><th>Title</th><th>Note</th><th>Date</th><th>Action</th></tr></thead><tbody>${rows || empty(5)}</tbody></table></div></section>`;
@@ -2708,6 +2751,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       "settings-general": generalSettingsPage,
       "settings-roles": rolesPage,
       "settings-notes": notesPage,
+      "settings-backup": backupPage,
 
       dashboard: () => {
         const cm = today().slice(0, 7);
@@ -3676,6 +3720,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
           ["General Settings", "settings-general"],
           ["User Role", "settings-roles"],
           ["Notes", "settings-notes"],
+          ["Backup", "settings-backup"],
         ],
       ],    ];
 
@@ -3710,7 +3755,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       const navItems: any[] = M.map((item: any[]) => {
             if (Array.isArray(item[2])) {
               const children = item[2].filter((child: any[]) =>
-                (isWorkspaceOwner || child[1] !== "settings-roles") &&
+                (isWorkspaceOwner || (child[1] !== "settings-roles" && child[1] !== "settings-backup")) &&
                 (hasAllPermissions || permissions.includes(item[0]) || permissions.includes(child[0])),
               );
               return children.length ? [item[0], item[1], children] : null;

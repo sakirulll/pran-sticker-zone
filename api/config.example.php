@@ -11,6 +11,10 @@ return [
     // Leave it out to use the address the visitor came in on.
     // 'app_url' => 'https://pranstickerzone.com',
 
+    // Optional. Where the daily backups are kept. By default a "pos-backups"
+    // folder next to this file, which is outside the public website folder.
+    // 'backup_dir' => '/home/pranmzcs/pos-backups',
+
     // Optional. The address emails are sent from. It should be a mailbox that
     // exists on this hosting account, or the emails may land in spam.
     // 'mail_from' => 'no-reply@pranstickerzone.com',

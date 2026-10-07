@@ -7,6 +7,8 @@ export type HostingUser = {
 
 import type { Change, RecordRow } from "./shopSync";
 
+export type ShopBackup = { name: string; size: number; createdAt: string };
+
 export type ShopMembership = {
   owner: boolean;
   roleId: number | null;
@@ -74,6 +76,18 @@ export const hostingApi = {
       method: "POST",
       body: JSON.stringify({ since, changes }),
     }),
+
+  listBackups: () => request<{ ok: true; backups: ShopBackup[] }>("shop.php?action=backups"),
+
+  backupNow: () => request<{ ok: true; backups: ShopBackup[] }>("shop.php?action=backup-now", { method: "POST" }),
+
+  restoreBackup: (name: string) =>
+    request<{ ok: true }>("shop.php?action=restore", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+
+  backupDownloadUrl: (name: string) => `/api/shop.php?action=backup-download&name=${encodeURIComponent(name)}`,
 
   createMember: (name: string, email: string, password: string, roleId: number) =>
     request<{ ok: true }>("auth.php?action=create-member", {

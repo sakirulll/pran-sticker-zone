@@ -216,3 +216,53 @@ test("someone who is not signed in gets nothing", { skip: !BASE }, async () => {
   assert.equal((await stranger.call("shop.php")).status, 401);
   assert.equal((await stranger.call("shop.php?action=sync", { since: 0, changes: [] })).status, 401);
 });
+
+test("a daily backup is taken, and restoring it undoes later changes on every device", { skip: !BASE }, async () => {
+  const { owner, email } = await newShop("backup");
+  // Opening the shop takes the day's backup once the reply has gone out; give it a moment.
+  await owner.load();
+  let backups: { name: string }[] = [];
+  for (let attempt = 0; attempt < 20 && !backups.length; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    backups = (await owner.call("shop.php?action=backups")).body.backups;
+  }
+  assert.equal(backups.length, 1);
+  assert.match(backups[0].name, /^\d{4}-\d{2}-\d{2}\.json\.gz$/);
+
+  const other = await secondDevice(email);
+  owner.data.products = [];
+  owner.data.sales.unshift({ id: 801 });
+  owner.data.user.shop = "Changed after backup";
+  await owner.save();
+  await other.save();
+  assert.deepEqual(other.data.products, []);
+
+  const restored = await owner.call("shop.php?action=restore", { name: backups[0].name });
+  assert.equal(restored.status, 200, JSON.stringify(restored.body));
+  await other.save();
+  const fresh = await secondDevice(email);
+  for (const device of [other, fresh]) {
+    assert.deepEqual(device.data.products, seed().products);
+    assert.deepEqual(device.data.sales, []);
+    assert.equal(device.data.user.shop, "Test Shop");
+  }
+
+  const after = (await owner.call("shop.php?action=backups")).body.backups as { name: string }[];
+  assert.ok(after.some((backup) => backup.name.startsWith("before-restore-")), "the state before the restore is kept too");
+});
+
+test("backups belong to the owner only, and only real backup names are accepted", { skip: !BASE }, async () => {
+  const { owner, email } = await newShop("backupguard");
+  await owner.call("auth.php?action=create-member", { name: "Cashier", email: `cashier-${email}`, password: "password123", roleId: 42 });
+  const staff = await secondDevice(`cashier-${email}`);
+  assert.equal((await staff.call("shop.php?action=backups")).status, 403);
+  assert.equal((await staff.call("shop.php?action=restore", { name: "2026-01-01.json.gz" })).status, 403);
+
+  assert.equal((await owner.call("shop.php?action=restore", { name: "../../pos-config.php" })).status, 400);
+  assert.equal((await owner.call("shop.php?action=restore", { name: "2001-01-01.json.gz" })).status, 400);
+  const made = await owner.call("shop.php?action=backup-now", {});
+  assert.equal(made.status, 200, JSON.stringify(made.body));
+  const download = await fetch(`${BASE}/api/shop.php?action=backup-download&name=${made.body.backups[0].name}`, { headers: { Cookie: owner.cookie } });
+  assert.equal(download.status, 200);
+  assert.equal(download.headers.get("content-type"), "application/gzip");
+});

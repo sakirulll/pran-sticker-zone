@@ -18,11 +18,16 @@ function fail(string $message, int $status = 400): never
     respond(['ok' => false, 'error' => $message], $status);
 }
 
+// A development machine points this at its own file; the live server uses the default.
+function config_file(): string
+{
+    $override = getenv('POS_CONFIG_FILE');
+    return is_string($override) && $override !== '' ? $override : POS_CONFIG_FILE;
+}
+
 function config(): array
 {
-    // A development machine points this at its own file; the live server uses the default.
-    $override = getenv('POS_CONFIG_FILE');
-    $file = is_string($override) && $override !== '' ? $override : POS_CONFIG_FILE;
+    $file = config_file();
     if (!is_file($file)) {
         fail('The server database configuration is not ready yet.', 503);
     }
@@ -210,4 +215,6 @@ function send_mail(string $to, string $subject, string $body): bool
     return @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $body, implode("\r\n", $headers));
 }
 
+// Dates in backups and emails follow the shop's clock, not the server's.
+date_default_timezone_set('Asia/Dhaka');
 require_same_origin();
