@@ -8,6 +8,8 @@
 export type ShopData = Record<string, any>;
 /** [collection, record id, position in its list, value (null when deleted)] */
 export type RecordRow = [collection: string, id: string, pos: number, data: unknown];
+/** A row as kept on the device: the value stays as JSON text so storing it is cheap. */
+export type StoredRow = [collection: string, id: string, pos: number, json: string];
 export type Change = { c: string; id: string; pos: number; data?: string; prev?: string | null; del?: boolean };
 
 const META = "_meta";
@@ -95,6 +97,22 @@ export class ShopSync {
     this.getData = getData;
     this.rev = rev;
     for (const [collection, id, pos, value] of rows) this.remember(collection, id, JSON.stringify(value), pos);
+  }
+
+  /** Rebuilds the state saved by exportRows(), for starting without the server. */
+  static restore(getData: () => ShopData, rev: number, rows: StoredRow[]) {
+    const sync = new ShopSync(getData, rev, []);
+    for (const [collection, id, pos, json] of rows) sync.remember(collection, id, json, pos);
+    return sync;
+  }
+
+  /** What the server is known to hold, in a form that can be stored on the device. */
+  exportRows(): StoredRow[] {
+    const rows: StoredRow[] = [];
+    for (const [collection, entries] of this.synced) {
+      for (const [id, entry] of entries) rows.push([collection, id, entry.pos, entry.json]);
+    }
+    return rows;
   }
 
   private entry(collection: string, id: string) {

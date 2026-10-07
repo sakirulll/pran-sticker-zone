@@ -266,3 +266,32 @@ test("backups belong to the owner only, and only real backup names are accepted"
   assert.equal(download.status, 200);
   assert.equal(download.headers.get("content-type"), "application/gzip");
 });
+
+test("work kept on the device while offline is sent later and combined with what others did", { skip: !BASE }, async () => {
+  const { owner, email } = await newShop("offline");
+  const other = await secondDevice(email);
+
+  // What the app stores on the device: the last known server state and the shop with unsent changes.
+  owner.data.products[0].stock -= 4;
+  owner.data.sales.unshift({ id: 901, items: [{ id: 20, qty: 4 }] });
+  const kept = structuredClone({ rev: owner.sync.rev, rows: owner.sync.exportRows(), data: owner.data });
+
+  other.data.products[0].stock -= 1;
+  other.data.sales.unshift({ id: 902, items: [{ id: 20, qty: 1 }] });
+  await other.save();
+
+  // The device is reopened later: it starts from its own copy, not the server's.
+  const reopened = new Device();
+  reopened.cookie = owner.cookie;
+  reopened.data = kept.data;
+  reopened.sync = ShopSync.restore(() => reopened.data, kept.rev, kept.rows);
+  assert.equal(reopened.sync.collectChanges().length > 0, true, "the unsent changes are still there");
+  await reopened.save();
+  await other.save();
+
+  for (const device of [reopened, other, await secondDevice(email)]) {
+    assert.equal(device.data.products[0].stock, 5);
+    assert.deepEqual(device.data.sales.map((sale: any) => sale.id).sort(), [901, 902]);
+  }
+  assert.deepEqual(reopened.sync.collectChanges(), []);
+});

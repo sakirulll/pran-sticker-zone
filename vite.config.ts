@@ -17,10 +17,7 @@ const phpServer: ProxyOptions = {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  server: {
-    proxy: {
-      '/api': phpServer,
-      '/uploads': phpServer,
-    },
-  },
+  server: { proxy: { '/api': phpServer, '/uploads': phpServer } },
+  // "vite preview" serves the built app the same way, which is how offline support is tested.
+  preview: { proxy: { '/api': phpServer, '/uploads': phpServer } },
 })

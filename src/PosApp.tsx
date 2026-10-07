@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { ORIGINAL_APP } from "./appShell";
 import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
-import { buildShopData, chunkChanges, ShopSync, type RecordRow } from "./shopSync";
+import { clearOfflineShop, readOfflineShop, writeOfflineShop } from "./offlineStore";
+import { buildShopData, chunkChanges, ShopSync, type RecordRow, type StoredRow } from "./shopSync";
 import { canUseShop, daysLeft, escapeHtml, money, mountSubscriptionPanel, resendVerification, subscriptionBadge } from "./subscriptionPanel";
 
 type AnyData = Record<string, any>;
@@ -27,25 +28,52 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     let registeredShopName = "";
     let subscription: Subscription = { state: "trial", secondsLeft: 0, emailVerified: true };
     let isAdmin = false;
+    // Set when the shop starts from the copy kept on this device instead of the server's.
+    let localRows: StoredRow[] | null = null;
+    let startedOffline = false;
+    const kept = await readOfflineShop(user.id);
+    const keptHasUnsent = Boolean(kept) && ShopSync.restore(() => kept!.data, kept!.rev, kept!.rows).collectChanges().length > 0;
+    const startFromKept = () => {
+      localRows = kept!.rows;
+      loadedRevision = kept!.rev;
+      cloudData = kept!.data;
+    };
     try {
       const shop = await hostingApi.loadShop();
       registeredShopName = shop.shopName;
       subscription = shop.subscription;
       isAdmin = shop.admin;
-      loadedRevision = shop.rev;
-      loadedRecords = shop.records;
-      cloudData = buildShopData(shop.records);
       membership = { roleId: shop.membership.roleId };
       isWorkspaceOwner = shop.membership.owner;
+      if (keptHasUnsent) {
+        // Changes made without internet were never sent. Start from them; the
+        // first sync sends them and brings in what happened on the server meanwhile.
+        startFromKept();
+      } else {
+        loadedRevision = shop.rev;
+        loadedRecords = shop.records;
+        cloudData = buildShopData(shop.records);
+      }
     } catch (error) {
+      const unreachable = (error as { status?: number })?.status === undefined;
+      if (unreachable && kept) {
+        startedOffline = true;
+        registeredShopName = kept.shopName;
+        subscription = kept.subscription;
+        isAdmin = kept.admin;
+        membership = { roleId: kept.membership.roleId };
+        isWorkspaceOwner = kept.membership.owner;
+        startFromKept();
+      } else {
       console.error("Could not load shop data", error);
       const message = error instanceof Error ? error.message : "Could not load shop data.";
       const notice = document.createElement("div");
       notice.className = "auth-feedback error";
       notice.style.cssText = "margin:48px auto;max-width:600px";
-      notice.textContent = message;
+      notice.textContent = unreachable ? "No internet connection. Open the shop once while online and it will work offline afterwards." : message;
       root.replaceChildren(notice);
       return;
+      }
     }
     const uploadProductImage = async (_productId: any, imageData: string) => {
       const uploaded = await hostingApi.uploadImage(imageData);
@@ -225,7 +253,37 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     // Saving sends only the records that changed, and each exchange also brings
     // in what other devices saved, so several people can work at the same time.
-    const shopSync = new ShopSync(() => D, loadedRevision, loadedRecords);
+    const shopSync = localRows ? ShopSync.restore(() => D, loadedRevision, localRows) : new ShopSync(() => D, loadedRevision, loadedRecords);
+
+    // Every change is also written to this device, so closing the browser or
+    // losing internet does not lose it.
+    let keptOnDevice = false;
+    let keepTimer: number | undefined;
+    const keepNow = async () => {
+      window.clearTimeout(keepTimer);
+      keptOnDevice = await writeOfflineShop(user.id, {
+        rev: shopSync.rev,
+        rows: shopSync.exportRows(),
+        data: D,
+        shopName: registeredShopName,
+        membership: { owner: isWorkspaceOwner, roleId: membership?.roleId ?? null },
+        subscription,
+        admin: isAdmin,
+      });
+    };
+    const keepSoon = () => {
+      window.clearTimeout(keepTimer);
+      keepTimer = window.setTimeout(() => void keepNow(), 300);
+    };
+
+    const offlineBar = document.createElement("div");
+    offlineBar.style.cssText = "padding:8px 16px;background:#fef9c3;color:#854d0e;font-size:13px;font-weight:600;text-align:center";
+    offlineBar.textContent = "No internet. You can keep working: changes are saved on this device and sent when the internet is back.";
+    offlineBar.hidden = !startedOffline;
+    document.querySelector(".main")?.prepend(offlineBar);
+    // Keep a first copy straight away, and send anything left over from an offline session.
+    window.setTimeout(() => { keepSoon(); if (localRows) void runSync(); }, 0);
+
     let syncing = false;
     let syncAgain = false;
     let unsaved = false;
@@ -244,6 +302,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           }
         } while (syncAgain);
         unsaved = false;
+        offlineBar.hidden = true;
+        keepSoon();
       } catch (error) {
         console.error("Could not sync shop data", error);
         const status = (error as { status?: number })?.status;
@@ -254,18 +314,22 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         }
         // 402: the subscription ran out while the shop was open; reloading shows how to pay.
         if (status === 409 || status === 402) {
+          // 409: the copy on this device no longer lines up with the server; start again from the server's.
+          if (status === 409) await clearOfflineShop(user.id);
           unsaved = false;
           window.location.reload();
           return;
         }
+        if (status === undefined) offlineBar.hidden = false;
         if (!unsaved) return;
         // Nothing is lost: the change stays on this device and is sent again shortly.
         retryTimer = window.setTimeout(() => void runSync(), 5000);
-        if (Date.now() - lastSaveWarning > 30000) {
+        // Without internet the bar above already says what is happening.
+        if (status !== undefined && Date.now() - lastSaveWarning > 30000) {
           lastSaveWarning = Date.now();
           toast(status === 413 || status === 403 || status === 400
             ? (error as Error).message
-            : "Not saved yet. Check your internet connection; it will retry automatically.");
+            : "Not saved to the server yet. It will retry automatically.");
         }
       } finally {
         syncing = false;
@@ -273,6 +337,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
     const save = () => {
       unsaved = true;
+      keepSoon();
       void runSync();
     };
 
@@ -281,14 +346,22 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       if (document.visibilityState === "visible") void runSync();
     }, 30000);
     const onVisible = () => { if (document.visibilityState === "visible") void runSync(); };
-    const warnUnsaved = (event: BeforeUnloadEvent) => { if (unsaved) event.preventDefault(); };
+    // Only worth a warning when the change is neither on the server nor kept on this device.
+    const warnUnsaved = (event: BeforeUnloadEvent) => { if (unsaved && !keptOnDevice) event.preventDefault(); };
+    const onOnline = () => void runSync();
+    const onHide = () => { if (document.visibilityState === "hidden") void keepNow(); };
     document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", onHide);
     window.addEventListener("beforeunload", warnUnsaved);
+    window.addEventListener("online", onOnline);
     const stopSync = () => {
       window.clearInterval(pollTimer);
       window.clearTimeout(retryTimer);
+      window.clearTimeout(keepTimer);
       document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("beforeunload", warnUnsaved);
+      window.removeEventListener("online", onOnline);
     };
 
     // Ids must not clash between devices working at the same time, so they come
@@ -3303,7 +3376,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       avatarButton.setAttribute("aria-expanded", String(open));
     });
     document.getElementById("logoutBtn")?.addEventListener("click", () => {
-      void hostingApi.logout().catch((error) => console.error("Could not log out", error)).then(onLogout);
+      if (unsaved && !confirm("Some changes have not reached the server yet. Logging out now will discard them. Log out anyway?")) return;
+      stopSync();
+      void clearOfflineShop(user.id)
+        .then(() => hostingApi.logout())
+        .catch((error) => console.error("Could not log out", error))
+        .then(onLogout);
     });
     const closeUserMenu = (event: MouseEvent) => {
       if (userMenuWrap && !userMenuWrap.contains(event.target as Node)) {
