@@ -304,6 +304,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         } while (syncAgain);
         unsaved = false;
         offlineBar.hidden = true;
+        updateBell();
         keepSoon();
       } catch (error) {
         console.error("Could not sync shop data", error);
@@ -338,6 +339,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
     const save = () => {
       unsaved = true;
+      updateBell();
       keepSoon();
       void runSync();
     };
@@ -379,6 +381,29 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     const prod = (id: any) =>
       D.products.find((p: any) => p.id == id);
+
+    // A product is low when its stock is at or under its own alert quantity
+    // (10 when none was set). The dashboard, the bell and the sale message all use this.
+    const alertQty = (product: any) => (+product.lowAlert > 0 ? +product.lowAlert : 10);
+    const isLowStock = (product: any) => (+product.stock || 0) <= alertQty(product);
+    const lowStockProducts = () => D.products.filter(isLowStock);
+
+    // The bell: what needs attention now, according to the alerts switched on in Settings.
+    const updateBell = () => {
+      const button = $("#bellBtn");
+      const panel = $("#bellPanel");
+      if (!button || !panel) return;
+      const low = D.settings.notifications.lowStock ? lowStockProducts() : [];
+      const dues = D.settings.notifications.dueReminders ? D.sales.filter((sale: any) => +sale.due > 0 && !sale.ret) : [];
+      const count = low.length + dues.length;
+      $("#bellCount").textContent = String(count);
+      button.classList.toggle("has-alerts", count > 0);
+      const shown = 30;
+      panel.innerHTML = count === 0
+        ? "<p>Nothing needs your attention.</p>"
+        : (low.length ? `<h4>Low Stock (${low.length})</h4>${low.slice(0, shown).map((product: any) => `<a href="#stocks"><span>${esc(product.name)}</span><small>${(+product.stock || 0) <= 0 ? "Out of stock" : `Stock ${+product.stock}`} · Alert Qty ${alertQty(product)}</small></a>`).join("")}` : "")
+          + (dues.length ? `<h4>Customer Due (${dues.length})</h4>${dues.slice(0, shown).map((sale: any) => `<a href="#dues"><span>${esc(sale.party || "Customer")}</span><small>${esc(sale.inv)} · ${tk(sale.due)}</small></a>`).join("")}` : "");
+    };
 
     const toast = (t: string) => {
       const e = $("#toast");
@@ -1428,7 +1453,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
       const lowStockItem = s && CART.find((item) => {
         const product = prod(item.id);
-        return product && product.stock <= (+product.lowAlert || 10);
+        return product && isLowStock(product);
       });
       const notice = s
         ? lowStockItem && D.settings.notifications.lowStock
@@ -1864,7 +1889,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <label>Category</label><select id="ep_category">${opts(D.categories, product.category)}</select>
         <label>Unit</label><select id="ep_unit">${opts(D.units, product.unit)}</select>
         <div class="two"><div><label>Purchase Price</label><input id="ep_buy" type="number" min="0" step="0.01" value="${+product.buy || 0}"></div><div><label>Sale Price</label><input id="ep_sell" type="number" min="0" step="0.01" value="${+product.sell || 0}"></div></div>
-        <div class="two"><div><label>Stock</label><input id="ep_stock" type="number" min="0" step="1" value="${+product.stock || 0}"></div><div><label>Serial</label><select id="ep_serial"><option value="false" ${product.hasSerial ? "" : "selected"}>No</option><option value="true" ${product.hasSerial ? "selected" : ""}>Yes</option></select></div></div>
+        <div class="two"><div><label>Stock</label><input id="ep_stock" type="number" min="0" step="1" value="${+product.stock || 0}"></div><div><label>Low Stock Alert</label><input id="ep_lowAlert" type="number" min="0" step="1" placeholder="EX: 5" value="${+product.lowAlert || ""}"></div><div><label>Serial</label><select id="ep_serial"><option value="false" ${product.hasSerial ? "" : "selected"}>No</option><option value="true" ${product.hasSerial ? "selected" : ""}>Yes</option></select></div></div>
         <label id="editSerialInventoryField">Available Serial Numbers<textarea id="ep_serials" class="product-serial-input" placeholder="Enter one serial number per line, or separate with commas">${esc((product.serials || []).join("\n"))}</textarea></label>
         <label>Replace Image (optional, max ${MAX_IMAGE_FILE_KB} KB)</label><input id="ep_image" type="file" accept="image/*">
         <div class="two" style="margin-top:16px"><button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button><button class="btn pu" type="button" id="saveProductEdit">Save Changes</button></div>`;
@@ -1894,7 +1919,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           name: $("#ep_name").value.trim(), code: $("#ep_code").value.trim(),
           brand: +$("#ep_brand").value, category: +$("#ep_category").value, unit: +$("#ep_unit").value,
           buy: Math.max(0, +$("#ep_buy").value || 0), sell: Math.max(0, +$("#ep_sell").value || 0),
-          stock: Math.max(0, +$("#ep_stock").value || 0), hasSerial: $("#ep_serial").value === "true",
+          stock: Math.max(0, +$("#ep_stock").value || 0), lowAlert: Math.max(0, +$("#ep_lowAlert").value || 0), hasSerial: $("#ep_serial").value === "true",
           serials: $("#ep_serial").value === "true"
             ? [...new Set(String($("#ep_serials").value).split(/[\n,;]+/).map((serial: string) => serial.trim()).filter(Boolean))]
             : [], image, imagePath,
@@ -2352,11 +2377,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             (S / Ta) * 100
           : 66;
 
-        const low =
-          D.products.filter(
-            (p: any) =>
-              p.stock <= 10,
-          );
+        const low = lowStockProducts();
 
         $("#app").innerHTML = `
 
@@ -2498,7 +2519,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                   (p: any, i: number) => [
                     i + 1,
                     esc(p.name),
-                    10,
+                    alertQty(p),
                     p.stock,
                   ],
                 ),
@@ -3213,6 +3234,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const render = () => {
+      updateBell();
       const r =
         location.hash.slice(1) ||
         "dashboard";
@@ -3390,11 +3412,26 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         .catch((error) => console.error("Could not log out", error))
         .then(onLogout);
     });
+    const bellButton = document.getElementById("bellBtn");
+    const bellPanel = document.getElementById("bellPanel");
+    const closeBell = () => {
+      bellPanel?.classList.remove("open");
+      bellButton?.setAttribute("aria-expanded", "false");
+    };
+    bellButton?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      updateBell();
+      const open = bellPanel?.classList.toggle("open") || false;
+      bellButton.setAttribute("aria-expanded", String(open));
+    });
+    // Choosing an entry goes to its list, so the panel has done its job.
+    bellPanel?.addEventListener("click", closeBell);
     const closeUserMenu = (event: MouseEvent) => {
       if (userMenuWrap && !userMenuWrap.contains(event.target as Node)) {
         userMenu?.classList.remove("open");
         avatarButton?.setAttribute("aria-expanded", "false");
       }
+      if (!bellPanel?.contains(event.target as Node)) closeBell();
     };
     document.addEventListener("click", closeUserMenu);
 

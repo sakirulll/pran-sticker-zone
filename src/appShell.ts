@@ -198,6 +198,15 @@ body.nav .main{
 .av img{width:100%;height:100%;object-fit:cover}
 .user-menu{display:none;position:absolute;top:46px;right:0;z-index:30;width:168px;padding:5px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 24px #0002}
 .user-menu.open{display:block}
+.bell-wrap{position:relative}
+.ib.has-alerts b{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--rd);color:#fff;font-size:12px;line-height:18px;text-align:center}
+.bell-panel{display:none;position:absolute;top:46px;right:0;z-index:30;width:min(330px,calc(100vw - 24px));max-height:65vh;overflow:auto;padding:6px;background:var(--pn);border:1px solid var(--ln);border-radius:8px;box-shadow:0 10px 24px #0002;text-align:left}
+.bell-panel.open{display:block}
+.bell-panel h4{margin:8px 8px 4px;color:var(--mut);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.bell-panel a{display:block;padding:8px;border-radius:5px;color:var(--tx);text-decoration:none;font-size:13px}
+.bell-panel a:hover{background:var(--bg)}
+.bell-panel a small{display:block;color:var(--mut)}
+.bell-panel p{margin:0;padding:14px 8px;color:var(--mut);font-size:13px;text-align:center}
 .user-menu a,.user-menu button{display:flex;align-items:center;gap:9px;width:100%;padding:10px;border:0;border-radius:5px;background:transparent;color:var(--tx);text-align:left;text-decoration:none;font:inherit;cursor:pointer}
 .user-menu a:hover,.user-menu button:hover{background:var(--bg)}
 .user-menu svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -683,7 +692,10 @@ dialog label{
     <span class="sp"></span>
     <button class="ib" id="langBtn" data-no-translate></button>
     <button class="ib" id="themeBtn">Theme</button>
-    <span class="ib">🔔 0</span>
+    <span class="bell-wrap">
+      <button class="ib" id="bellBtn" type="button" aria-expanded="false" aria-label="Notifications">🔔 <b id="bellCount">0</b></button>
+      <div class="bell-panel" id="bellPanel"></div>
+    </span>
 
     <div>
       <small style="color:var(--mut)">Hello 👋</small>
