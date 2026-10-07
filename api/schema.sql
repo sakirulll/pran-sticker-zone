@@ -38,3 +38,13 @@ CREATE TABLE IF NOT EXISTS pos_shop_data (
   PRIMARY KEY (shop_id),
   CONSTRAINT pos_data_shop_fk FOREIGN KEY (shop_id) REFERENCES pos_shops (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pos_login_attempts (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  email VARCHAR(254) NOT NULL,
+  ip VARCHAR(45) NOT NULL,
+  attempted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY pos_login_attempts_email (email, attempted_at),
+  KEY pos_login_attempts_ip (ip, attempted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

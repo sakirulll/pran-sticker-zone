@@ -1,31 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import {
-  deleteApp,
-  initializeApp,
-} from "firebase/app";
-import {
-  createUserWithEmailAndPassword,
-  deleteUser,
-  EmailAuthProvider,
-  getAuth,
-  onAuthStateChanged,
-  reauthenticateWithCredential,
-  browserLocalPersistence,
-  browserSessionPersistence,
-  sendPasswordResetEmail,
-  setPersistence,
-  signInWithEmailAndPassword,
-  signOut,
-  updateEmail,
-  updatePassword,
-  updateProfile,
-  type User,
-} from "firebase/auth";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Eye, EyeOff, LockKeyhole, Mail, UserRound } from "lucide-react";
-import { hostingApi } from "./hostingApi";
-import app, { auth, db, storage } from "./firebase";
-import { collection, doc, getDoc, getDocs, getFirestore, setDoc, writeBatch } from "firebase/firestore";
-import { deleteObject, getDownloadURL, ref as storageRef, uploadString } from "firebase/storage";
+import { hostingApi, type HostingUser } from "./hostingApi";
 
 const ORIGINAL_APP = String.raw`
 <style>
@@ -726,7 +701,7 @@ dialog label{
 
 type AnyData = Record<string, any>;
 
-function POSApp() {
+function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -736,61 +711,35 @@ function POSApp() {
     let disposed = false;
     let cleanup: (() => void) | undefined;
     const boot = async () => {
-    const owner = auth.currentUser;
-    if (!owner) return;
-    let personalData: AnyData | null = null;
+    let sessionUser = user;
+    let cloudData: AnyData | null = null;
+    let membership: AnyData | null = null;
+    let isWorkspaceOwner = false;
+    let revision: string | null = null;
     try {
-      const personalSnapshot = await getDoc(doc(db, "users", owner.uid, "private", "pos"));
-      if (personalSnapshot.exists()) personalData = personalSnapshot.data().data as AnyData;
+      const shop = await hostingApi.loadShop();
+      cloudData = shop.data as AnyData | null;
+      revision = shop.revision;
+      membership = { roleId: shop.membership.roleId };
+      isWorkspaceOwner = shop.membership.owner;
     } catch (error) {
-      console.error("Could not load account profile", error);
-    }
-    if (personalData?.user?.authUid === owner.uid && !personalData.user.workspaceOwnerUid) {
-      root.innerHTML = `<div class="auth-feedback error" style="margin:48px auto;max-width:600px">This staff account was created before shared shop data was enabled. Ask the owner to link or recreate this account for the shared workspace.</div>`;
+      console.error("Could not load shop data", error);
+      const message = error instanceof Error ? error.message : "Could not load shop data.";
+      const notice = document.createElement("div");
+      notice.className = "auth-feedback error";
+      notice.style.cssText = "margin:48px auto;max-width:600px";
+      notice.textContent = message;
+      root.replaceChildren(notice);
       return;
     }
-    const workspaceOwnerUid = personalData?.user?.workspaceOwnerUid || owner.uid;
-    const isWorkspaceOwner = workspaceOwnerUid === owner.uid;
-    let membership: AnyData | null = null;
-    if (!isWorkspaceOwner) {
-      try {
-        const membershipSnapshot = await getDoc(doc(db, "users", workspaceOwnerUid, "members", owner.uid));
-        if (membershipSnapshot.exists()) membership = membershipSnapshot.data() as AnyData;
-      } catch (error) {
-        console.error("Could not load workspace role", error);
-      }
-      if (!membership || membership.active === false) {
-        root.innerHTML = `<div class="auth-feedback error" style="margin:48px auto;max-width:600px">This account is not linked to an active shop workspace. Ask the shop owner to create or link your account.</div>`;
-        return;
-      }
-    }
-    const K = `pran_pos_v1_${workspaceOwnerUid}`;
-    const productsCollection = collection(db, "users", workspaceOwnerUid, "private", "pos", "products");
-    const productDocument = (productId: any) => doc(db, "users", workspaceOwnerUid, "private", "pos", "products", String(productId));
-    const uploadProductImage = async (productId: any, imageData: string) => {
-      const path = `workspaces/${workspaceOwnerUid}/products/${productId}.jpg`;
-      const uploaded = await uploadString(storageRef(storage, path), imageData, "data_url", { contentType: "image/jpeg" });
-      return { image: await getDownloadURL(uploaded.ref), imagePath: path };
+    const K = `pran_pos_v2_${user.id}`;
+    const uploadProductImage = async (_productId: any, imageData: string) => {
+      const uploaded = await hostingApi.uploadImage(imageData);
+      return { image: uploaded.url, imagePath: uploaded.url };
     };
     const removeProductImage = async (path: string) => {
-      if (path) await deleteObject(storageRef(storage, path));
+      if (path?.startsWith("/uploads/")) await hostingApi.deleteImage(path);
     };
-    let cloudData: AnyData | null = null;
-    try {
-      const snapshot = await getDoc(doc(db, "users", workspaceOwnerUid, "private", "pos"));
-      if (snapshot.exists()) cloudData = snapshot.data().data as AnyData;
-    } catch (error) {
-      console.error("Could not load cloud data", error);
-    }
-    let cloudProducts: AnyData[] | null = null;
-    try {
-      const productsSnapshot = await getDocs(productsCollection);
-      cloudProducts = productsSnapshot.docs.map((entry) => ({ ...entry.data(), id: entry.data().id ?? entry.id }));
-    } catch (error) {
-      console.error("Could not load separate product records", error);
-      root.innerHTML = `<div class="auth-feedback error" style="margin:48px auto;max-width:600px">Could not load products from the shop database. Refresh after the owner updates the Firebase rules.</div>`;
-      return;
-    }
     if (disposed) return;
 
     root.innerHTML = ORIGINAL_APP;
@@ -964,7 +913,7 @@ function POSApp() {
     let D: AnyData;
 
     try {
-      D = cloudData || JSON.parse(localStorage.getItem(K) || "null") || seed();
+      D = cloudData || seed();
     } catch {
       D = seed();
     }
@@ -988,98 +937,61 @@ function POSApp() {
       if (!Number.isFinite(D.seq)) D.seq = defaults.seq;
     }
 
-    if (cloudProducts.length) D.products = cloudProducts;
-
     const activeRoleId = isWorkspaceOwner
       ? D.user.roleId
-      : (membership?.roleId ?? personalData?.user?.roleId ?? null);
+      : (membership?.roleId ?? null);
 
     CURRENCY_SYMBOL = D.currencies?.find((currency: any) => currency.id == D.settings.currencyId)?.symbol || String.fromCharCode(2547);
 
-    // If product records still live in the older shared POS document, leave
-    // them there during startup. The first normal save writes them to their
-    // own documents, avoiding a long blocking image upload/migration on login.
-    let lastSyncedProducts = new Map<string, string>((cloudProducts.length ? D.products || [] : []).map((product: AnyData) => [String(product.id), JSON.stringify(product)]));
+    // Shown when another device saved first. Saving again would erase that
+    // device's work, so the only way forward is to reload the latest data.
+    let saveConflict = false;
+    const showSaveConflict = () => {
+      const overlay = document.createElement("div");
+      overlay.setAttribute("role", "alertdialog");
+      overlay.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,23,42,.6)";
+      const panel = document.createElement("div");
+      panel.style.cssText = "max-width:420px;padding:24px;border-radius:12px;background:#fff;color:#111827;text-align:center";
+      const heading = document.createElement("h3");
+      heading.textContent = "Shop data changed on another device";
+      const detail = document.createElement("p");
+      detail.textContent = "Your last change was not saved. Reload to get the latest data, then make the change again.";
+      const reload = document.createElement("button");
+      reload.className = "btn pu";
+      reload.type = "button";
+      reload.textContent = "Reload";
+      reload.addEventListener("click", () => window.location.reload());
+      panel.append(heading, detail, reload);
+      overlay.append(panel);
+      root.append(overlay);
+    };
+
     let cloudSaveQueue: Promise<void> = Promise.resolve();
     const save = () => {
       try { localStorage.setItem(K, JSON.stringify(D)); } catch {}
-      const productSnapshot = JSON.parse(JSON.stringify(D.products || [])) as AnyData[];
-      const { products: _products, ...posData } = D;
-      const posSnapshot = JSON.parse(JSON.stringify(posData));
+      const snapshot = JSON.parse(JSON.stringify(D));
       cloudSaveQueue = cloudSaveQueue.then(async () => {
-        await setDoc(doc(db, "users", workspaceOwnerUid, "private", "pos"), {
-          data: posSnapshot,
-          updatedAt: new Date().toISOString(),
-        });
-        const nextProducts = new Map(productSnapshot.map((product) => [String(product.id), JSON.stringify(product)]));
-        const writes = productSnapshot.filter((product) => lastSyncedProducts.get(String(product.id)) !== JSON.stringify(product));
-        const deletes = [...lastSyncedProducts.keys()].filter((productId) => !nextProducts.has(productId));
-        const operations: Array<{ type: "set"; product: AnyData } | { type: "delete"; id: string }> = [
-          ...writes.map((product) => ({ type: "set" as const, product })),
-          ...deletes.map((id) => ({ type: "delete" as const, id })),
-        ];
-        for (let start = 0; start < operations.length; start += 450) {
-          const batch = writeBatch(db);
-          operations.slice(start, start + 450).forEach((operation) => {
-            if (operation.type === "set") batch.set(productDocument(operation.product.id), operation.product);
-            else batch.delete(productDocument(operation.id));
-          });
-          await batch.commit();
-        }
-        lastSyncedProducts = nextProducts;
+        if (saveConflict) return;
+        const saved = await hostingApi.saveShop(snapshot, revision);
+        revision = saved.revision;
       }).catch((error) => {
         console.error("Could not sync data to cloud", error);
+        const status = (error as { status?: number })?.status;
+        if (status === 409) {
+          if (!saveConflict) showSaveConflict();
+          saveConflict = true;
+          return;
+        }
+        if (status === 401) {
+          toast("Your login has expired. Please log in again.");
+          onLogout();
+          return;
+        }
         const detail = String((error as { message?: string })?.message || "");
         toast(/maximum size|1\s*MiB|too large|larger than/i.test(detail)
           ? "Cloud save failed: a record is too large. Reduce its size and try again."
-          : "Cloud save failed. Check your internet connection and Firebase access.");
+          : "Cloud save failed. Check your internet connection and try again.");
       });
-    };
-
-    const dataUrlForMigration = async (source: string) => {
-      if (!source || source.startsWith("/uploads/")) return source;
-      if (source.startsWith("data:image/")) return source;
-      const response = await fetch(source);
-      if (!response.ok) throw new Error("Could not download an existing image.");
-      const blob = await response.blob();
-      if (!blob.type.startsWith("image/")) throw new Error("An existing file is not an image.");
-      return await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read the image."));
-        reader.onerror = () => reject(new Error("Could not read the image."));
-        reader.readAsDataURL(blob);
-      });
-    };
-
-    const moveImageToHosting = async (source: string) => {
-      const image = await dataUrlForMigration(source);
-      if (!image || image.startsWith("/uploads/")) return image;
-      const uploaded = await hostingApi.uploadImage(image);
-      return uploaded.url;
-    };
-
-    const migrateToHosting = async (password: string) => {
-      const firebaseUser = auth.currentUser;
-      const name = String(firebaseUser?.displayName || D.user.name || "Shop owner").trim();
-      const email = String(firebaseUser?.email || D.user.email || "").trim().toLowerCase();
-      if (!email) throw new Error("Your Firebase account does not have an email address.");
-      try {
-        await hostingApi.register(name, email, password);
-      } catch (error) {
-        if ((error as { status?: number }).status !== 409) throw error;
-        await hostingApi.login(email, password);
-      }
-      const copy = JSON.parse(JSON.stringify(D)) as AnyData;
-      copy.user = { ...copy.user, name, email };
-      delete copy.user.authUid;
-      delete copy.user.workspaceOwnerUid;
-      if (copy.user.avatar) copy.user.avatar = await moveImageToHosting(copy.user.avatar);
-      copy.products = await Promise.all((copy.products || []).map(async (product: AnyData) => {
-        if (!product.image) return { ...product, imagePath: "" };
-        const image = await moveImageToHosting(product.image);
-        return { ...product, image, imagePath: "" };
-      }));
-      await hostingApi.saveShop(copy);
     };
 
     const uid = () => D.seq++;
@@ -1103,6 +1015,10 @@ function POSApp() {
         e.style.display = "none";
       }, 2200);
     };
+
+    if (!cloudData && isWorkspaceOwner) {
+      save();
+    }
 
     const C: AnyData = {
       products: [
@@ -1418,7 +1334,7 @@ function POSApp() {
     const del = (k: string, id: number) => {
       if (confirm("Delete this record?")) {
         const record = D[k].find((x: any) => x.id === id);
-        const productImagePath = k === "products" ? record?.imagePath : "";
+        const productImagePath = k === "products" ? (record?.imagePath || record?.image) : "";
         if (record?.items && !record.ret) {
           record.items.forEach((item: any) => {
             const product = prod(item.id);
@@ -1429,7 +1345,7 @@ function POSApp() {
         }
         D[k] = D[k].filter((x: any) => x.id !== id);
 
-        if (productImagePath) void removeProductImage(productImagePath).catch((error) => console.warn("Could not delete product image from Storage", error));
+        if (productImagePath) void removeProductImage(productImagePath).catch((error) => console.warn("Could not delete product image", error));
 
         save();
 
@@ -2325,7 +2241,7 @@ function POSApp() {
           } catch (error) {
             console.error("Could not upload product image", error);
             imagePath = "";
-            toast("Firebase Storage is not active yet; the compressed image will stay with this product record.");
+            toast("Image upload failed; the compressed image will stay with this product record.");
           }
         }
         const product: AnyData = {
@@ -2548,13 +2464,14 @@ function POSApp() {
           try {
             const optimizedImage = await optimizeProductImage(imageFile);
             const uploadedImage = await uploadProductImage(product.id, optimizedImage);
+            void removeProductImage(imagePath || image).catch((error) => console.warn("Could not delete replaced product image", error));
             image = uploadedImage.image;
             imagePath = uploadedImage.imagePath;
           } catch (error) {
             console.error("Could not upload replacement product image", error);
             image = await optimizeProductImage(imageFile).catch(() => product.image || "");
             imagePath = "";
-            toast("Firebase Storage is not active yet; the compressed image will stay with this product record.");
+            toast("Image upload failed; the compressed image will stay with this product record.");
           }
         }
         Object.assign(product, {
@@ -2624,10 +2541,10 @@ function POSApp() {
     };
 
     const generalSettingsPage = () => {
-      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner || D.user.authUid ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
+      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
       $("#generalSettingsForm").addEventListener("submit", (event: Event) => {
         event.preventDefault();
-        D.user = { ...D.user, roleId: !isWorkspaceOwner || D.user.authUid ? D.user.roleId : +$("#settingRole").value, shop: $("#settingShop").value.trim(), shopEmail: $("#settingEmail").value.trim(), phone: $("#settingPhone").value.trim(), address: $("#settingAddress").value.trim() };
+        D.user = { ...D.user, roleId: !isWorkspaceOwner ? D.user.roleId : +$("#settingRole").value, shop: $("#settingShop").value.trim(), shopEmail: $("#settingEmail").value.trim(), phone: $("#settingPhone").value.trim(), address: $("#settingAddress").value.trim() };
         D.settings.currencyId = +$("#settingCurrency").value;
         D.settings.taxRate = Math.max(0, +$("#settingTax").value || 0);
         D.settings.invoiceFooter = $("#settingFooter").value.trim();
@@ -2656,7 +2573,7 @@ function POSApp() {
       const dialog = $("#dlg") as HTMLDialogElement;
       dialog.classList.add("role-form");
       dialog.addEventListener("close", () => dialog.classList.remove("role-form"), { once: true });
-      dialog.innerHTML = `<div class="role-form-content"><h2 class="role-form-title">${role ? "Edit User Role" : "Add User Role"}</h2><p class="role-form-help">${role ? "Update this role’s access to workspace sections." : "Create a login account and choose the sections it can access."}</p>${role ? "" : `<div class="role-fields"><label class="role-field"><span>User Title</span><input id="memberName" autocomplete="name" placeholder="e.g. Sales Executive" required></label><label class="role-field"><span>Email Address</span><input id="memberEmail" type="email" autocomplete="email" placeholder="name@example.com" required></label><label class="role-field"><span>Password</span><input id="memberPassword" type="password" autocomplete="new-password" minlength="6" placeholder="At least 6 characters" required></label><label class="role-field"><span>Confirm Password</span><input id="memberConfirm" type="password" autocomplete="new-password" minlength="6" placeholder="Re-enter password" required></label></div>`}<label class="role-field" style="margin-bottom:20px"><span>Role Name</span><input id="roleName" value="${esc(role?.name || "")}" placeholder="e.g. Sales Team" required></label><div class="role-section-title"><span>Permissions</span><label class="role-select-all"><input id="roleSelectAll" type="checkbox"> Select all</label></div><div class="role-permissions">${ROLE_PERMISSIONS.map((permission) => `<label><input type="checkbox" value="${permission}" ${permissions.includes("All permissions") || permissions.includes(permission) ? "checked" : ""}>${permission}</label>`).join("")}</div><div id="roleFormStatus" class="role-form-status" role="status" aria-live="polite"></div><div class="role-actions"><button class="btn" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)" id="cancelRole" type="button">Cancel</button><button class="btn pu" id="saveRole" type="button">${role ? "Save Changes" : "Create Account"}</button></div></div>`;
+      dialog.innerHTML = `<div class="role-form-content"><h2 class="role-form-title">${role ? "Edit User Role" : "Add User Role"}</h2><p class="role-form-help">${role ? "Update this role’s access to workspace sections." : "Create a login account and choose the sections it can access."}</p>${role ? "" : `<div class="role-fields"><label class="role-field"><span>User Title</span><input id="memberName" autocomplete="name" placeholder="e.g. Sales Executive" required></label><label class="role-field"><span>Email Address</span><input id="memberEmail" type="email" autocomplete="email" placeholder="name@example.com" required></label><label class="role-field"><span>Password</span><input id="memberPassword" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required></label><label class="role-field"><span>Confirm Password</span><input id="memberConfirm" type="password" autocomplete="new-password" minlength="8" placeholder="Re-enter password" required></label></div>`}<label class="role-field" style="margin-bottom:20px"><span>Role Name</span><input id="roleName" value="${esc(role?.name || "")}" placeholder="e.g. Sales Team" required></label><div class="role-section-title"><span>Permissions</span><label class="role-select-all"><input id="roleSelectAll" type="checkbox"> Select all</label></div><div class="role-permissions">${ROLE_PERMISSIONS.map((permission) => `<label><input type="checkbox" value="${permission}" ${permissions.includes("All permissions") || permissions.includes(permission) ? "checked" : ""}>${permission}</label>`).join("")}</div><div id="roleFormStatus" class="role-form-status" role="status" aria-live="polite"></div><div class="role-actions"><button class="btn" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)" id="cancelRole" type="button">Cancel</button><button class="btn pu" id="saveRole" type="button">${role ? "Save Changes" : "Create Account"}</button></div></div>`;
       const allBox = $("#roleSelectAll") as HTMLInputElement;
       const permissionBoxes = [...dialog.querySelectorAll<HTMLInputElement>(".role-permissions input")];
       allBox.checked = permissionBoxes.length > 0 && permissionBoxes.every((box) => box.checked);
@@ -2690,51 +2607,17 @@ function POSApp() {
           const password = $("#memberPassword").value;
           const confirmPassword = $("#memberConfirm").value;
           if (!memberName || !memberEmail || !password || !confirmPassword) { showRoleError("Fill in the title, email, password, and password confirmation."); return; }
-          if (password.length < 6) { showRoleError("Password must contain at least 6 characters."); $("#memberPassword").focus(); return; }
+          if (password.length < 8) { showRoleError("Password must contain at least 8 characters."); $("#memberPassword").focus(); return; }
           if (password !== confirmPassword) { showRoleError("Passwords do not match."); $("#memberConfirm").focus(); return; }
 
           const roleId = uid();
           const newRole = { id: roleId, name, permissions: selected };
-          const secondaryApp = initializeApp(app.options, `role-account-${Date.now()}`);
-          try {
-            const memberAuth = getAuth(secondaryApp);
-            const memberDb = getFirestore(secondaryApp);
-            const credential = await createUserWithEmailAndPassword(memberAuth, memberEmail, password);
-            try {
-              await updateProfile(credential.user, { displayName: memberName });
-            const memberData = seed();
-            memberData.roles = [...D.roles, newRole];
-            memberData.products = [];
-              memberData.user = { ...memberData.user, name: memberName, email: memberEmail, roleId, authUid: credential.user.uid, workspaceOwnerUid: owner.uid };
-              await setDoc(doc(memberDb, "users", credential.user.uid, "private", "pos"), { data: memberData, updatedAt: new Date().toISOString() });
-              await setDoc(doc(db, "users", owner.uid, "members", credential.user.uid), {
-                roleId,
-                active: true,
-                name: memberName,
-                email: memberEmail,
-                createdAt: new Date().toISOString(),
-              });
-            } catch (error) {
-              await deleteUser(credential.user);
-              throw error;
-            }
-            D.roles.push(newRole);
-            save();
-          } finally {
-            await deleteApp(secondaryApp);
-          }
+          await hostingApi.createMember(memberName, memberEmail, password, roleId);
+          D.roles.push(newRole);
+          save();
           dialog.close(); rolesPage(); toast("Login account created with this role");
         } catch (error) {
-          const code = (error as { code?: string }).code;
-          const accountErrors: Record<string, string> = {
-            "auth/email-already-in-use": "An account already exists for this email",
-            "auth/invalid-email": "Enter a valid email address",
-            "auth/weak-password": "Choose a stronger password",
-            "auth/operation-not-allowed": "Email and password sign-in is disabled in Firebase",
-            "permission-denied": "Firebase rules prevented saving the account profile",
-            "firestore/permission-denied": "Firebase rules prevented saving the account profile",
-          };
-          showRoleError(accountErrors[code || ""] || `Could not create the login account (${code || "unknown error"}). Check Firebase settings and try again.`);
+          showRoleError(error instanceof Error ? error.message : "Could not create the login account. Try again.");
         } finally {
           saveButton.disabled = false;
         }
@@ -3499,11 +3382,9 @@ function POSApp() {
       },
       profile: () => {
         const u = D.user;
-        const firebaseUser = auth.currentUser;
         const remaining = u.open + sum(D.sales, (sale: any) => sale.paid) - sum(D.purchases, (purchase: any) => purchase.paid) - sum(D.expenses, (expense: any) => expense.amount);
-        const joined = firebaseUser?.metadata.creationTime
-          ? new Date(firebaseUser.metadata.creationTime).toLocaleDateString()
-          : "Not available";
+        const joinedDate = new Date(String(sessionUser.created_at || "").replace(" ", "T"));
+        const joined = Number.isNaN(joinedDate.getTime()) ? "Not available" : joinedDate.toLocaleDateString();
         const avatarMarkup = u.avatar?.startsWith("data:image/")
           ? `<img src="${esc(u.avatar)}" alt="Profile picture">`
           : esc((u.name?.[0] || "A").toUpperCase());
@@ -3524,22 +3405,21 @@ function POSApp() {
               <h2>User Profile</h2>
               <form class="profile-form" id="profileForm">
                 <label for="profileName">Name</label>
-                <input id="profileName" value="${esc(firebaseUser?.displayName || u.name)}" required>
+                <input id="profileName" value="${esc(sessionUser.display_name || u.name)}" required>
                 <label for="profileEmail">Email</label>
-                <input id="profileEmail" type="email" value="${esc(firebaseUser?.email || u.email)}" required>
-                <label for="profilePhoto">Profile Picture</label>
-                <input id="profilePhoto" type="file" accept="image/*">
+                <input id="profileEmail" type="email" value="${esc(sessionUser.email || u.email)}" required>
+                ${isWorkspaceOwner ? `<label for="profilePhoto">Profile Picture</label>
+                <input id="profilePhoto" type="file" accept="image/*">` : ""}
                 <label for="profileCurrentPassword">Current Password</label>
                 <input id="profileCurrentPassword" type="password" autocomplete="current-password" placeholder="Enter your current password">
                 <label for="profileNewPassword">New Password</label>
-                <input id="profileNewPassword" type="password" autocomplete="new-password" placeholder="Enter new password" minlength="6">
+                <input id="profileNewPassword" type="password" autocomplete="new-password" placeholder="Enter new password" minlength="8">
                 <label for="profileConfirmPassword">Confirm password</label>
                 <input id="profileConfirmPassword" type="password" autocomplete="new-password" placeholder="Enter confirm password">
-                <label for="profileOpeningBalance">Shop Opening Balance</label>
-                <input id="profileOpeningBalance" type="number" min="0" step="0.01" value="${+u.open || 0}">
+                ${isWorkspaceOwner ? `<label for="profileOpeningBalance">Shop Opening Balance</label>
+                <input id="profileOpeningBalance" type="number" min="0" step="0.01" value="${+u.open || 0}">` : ""}
                 <button class="btn pu profile-save" type="submit">Save Changes</button>
               </form>
-              ${isWorkspaceOwner ? `<div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--ln)"><h3 style="margin:0 0 8px">Move data to Namecheap</h3><p class="settings-help">Create a new Namecheap password once. Your shop data and product images will then be copied to this hosting account.</p><button class="btn gn" id="migrateHosting" type="button">Move my data to Namecheap</button></div>` : ""}
             </section>
           </div>`;
 
@@ -3554,7 +3434,7 @@ function POSApp() {
         $("#profileForm")?.addEventListener("submit", async (event: Event) => {
           event.preventDefault();
           const name = $("#profileName").value.trim();
-          const email = $("#profileEmail").value.trim();
+          const email = $("#profileEmail").value.trim().toLowerCase();
           const currentPassword = $("#profileCurrentPassword").value;
           const newPassword = $("#profileNewPassword").value;
           const confirmPassword = $("#profileConfirmPassword").value;
@@ -3562,12 +3442,12 @@ function POSApp() {
             toast("New password and confirmation do not match");
             return;
           }
-          if (newPassword && newPassword.length < 6) {
-            toast("Password must be at least 6 characters");
+          if (newPassword && newPassword.length < 8) {
+            toast("Password must be at least 8 characters");
             return;
           }
-          const needsReauth = Boolean(newPassword || email !== (firebaseUser?.email || u.email));
-          if (needsReauth && (!currentPassword || !firebaseUser?.email)) {
+          const needsPassword = Boolean(newPassword || email !== sessionUser.email.toLowerCase());
+          if (needsPassword && !currentPassword) {
             toast("Enter your current password to change email or password");
             return;
           }
@@ -3582,63 +3462,25 @@ function POSApp() {
             }
           }
           try {
-            if (needsReauth && firebaseUser?.email) {
-              const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
-              await reauthenticateWithCredential(firebaseUser, credential);
+            const updated = await hostingApi.updateProfile(name, email, currentPassword, newPassword);
+            sessionUser = updated.user;
+            // Staff share the owner's shop record, so only the owner edits it here.
+            if (isWorkspaceOwner) {
+              D.user = {
+                ...D.user,
+                name,
+                email,
+                avatar,
+                open: Math.max(0, +$("#profileOpeningBalance").value || 0),
+              };
+              save();
             }
-            if (firebaseUser && newPassword) await updatePassword(firebaseUser, newPassword);
-            if (firebaseUser && email !== (firebaseUser.email || "")) await updateEmail(firebaseUser, email);
-            if (firebaseUser) await updateProfile(firebaseUser, { displayName: name });
-            D.user = {
-              ...D.user,
-              name,
-              email,
-              avatar,
-              open: Math.max(0, +$("#profileOpeningBalance").value || 0),
-            };
-            save();
             hdr();
             render();
             toast("Profile updated");
           } catch (error) {
-            const code = (error as { code?: string }).code;
-            const message = code === "auth/wrong-password" || code === "auth/invalid-credential"
-              ? "Current password is incorrect"
-              : code === "auth/email-already-in-use"
-                ? "This email is already in use"
-                : "Profile could not be updated. Check your details and try again.";
-            toast(message);
+            toast(error instanceof Error ? error.message : "Profile could not be updated. Check your details and try again.");
           }
-        });
-
-        $("#migrateHosting")?.addEventListener("click", () => {
-          const dialog = $("#dlg") as HTMLDialogElement;
-          dialog.innerHTML = `<h3>Move data to Namecheap</h3><p>Your current shop data will be copied to Namecheap. Choose a new password for the Namecheap account. Firebase will remain unchanged for now.</p><label>New Password</label><input id="hostingPassword" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters"><label>Confirm Password</label><input id="hostingPasswordConfirm" type="password" autocomplete="new-password" minlength="8" placeholder="Enter the password again"><p id="hostingMigrationError" class="auth-feedback error" style="display:none"></p><div class="two" style="margin-top:16px"><button class="btn or" id="cancelHostingMigration" type="button">Cancel</button><button class="btn gn" id="confirmHostingMigration" type="button">Move data</button></div>`;
-          dialog.showModal();
-          $("#cancelHostingMigration").addEventListener("click", () => dialog.close());
-          $("#confirmHostingMigration").addEventListener("click", async () => {
-            const password = $("#hostingPassword").value;
-            const confirmPassword = $("#hostingPasswordConfirm").value;
-            const error = $("#hostingMigrationError");
-            const button = $("#confirmHostingMigration") as HTMLButtonElement;
-            error.style.display = "none";
-            if (password.length < 8) { error.textContent = "Password must contain at least 8 characters."; error.style.display = "block"; return; }
-            if (password !== confirmPassword) { error.textContent = "Passwords do not match."; error.style.display = "block"; return; }
-            button.disabled = true;
-            button.textContent = "Moving data...";
-            try {
-              await migrateToHosting(password);
-              dialog.close();
-              toast("Your data was copied to Namecheap successfully");
-            } catch (migrationError) {
-              const message = migrationError instanceof Error ? migrationError.message : "Could not move your data. Please try again.";
-              error.textContent = message;
-              error.style.display = "block";
-            } finally {
-              button.disabled = false;
-              button.textContent = "Move data";
-            }
-          });
         });
       },
     };
@@ -3789,8 +3631,7 @@ function POSApp() {
     const hdr = () => {
       const un = $("#un");
       const ua = $("#ua");
-      const signedInUser = auth.currentUser;
-      const visibleName = signedInUser?.displayName || D.user.name;
+      const visibleName = sessionUser.display_name || D.user.name;
 
       if (un) {
         un.textContent = visibleName;
@@ -3965,7 +3806,7 @@ function POSApp() {
       avatarButton.setAttribute("aria-expanded", String(open));
     });
     document.getElementById("logoutBtn")?.addEventListener("click", () => {
-      void signOut(auth);
+      void hostingApi.logout().catch((error) => console.error("Could not log out", error)).then(onLogout);
     });
     const closeUserMenu = (event: MouseEvent) => {
       if (userMenuWrap && !userMenuWrap.contains(event.target as Node)) {
@@ -4133,7 +3974,7 @@ function POSApp() {
       root.append(panel);
     });
     return () => { disposed = true; cleanup?.(); };
-  }, []);
+  }, [user, onLogout]);
 
   return (
     <div
@@ -4145,74 +3986,33 @@ function POSApp() {
   );
 }
 
-function AuthScreen() {
+function AuthScreen({ onSignedIn }: { onSignedIn: (user: HostingUser) => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
-    setMessage("");
     setBusy(true);
     try {
-      if (mode === "register") {
-        await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
-        const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        if (name.trim()) await updateProfile(credential.user, { displayName: name.trim() });
-      } else {
-        await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
-        await signInWithEmailAndPassword(auth, email.trim(), password);
-      }
+      const result = mode === "register"
+        ? await hostingApi.register(name.trim(), email.trim(), password)
+        : await hostingApi.login(email.trim(), password);
+      onSignedIn(result.user);
     } catch (err) {
-      const code = (err as { code?: string }).code;
-      const messages: Record<string, string> = {
-        "auth/invalid-credential": "Email বা password সঠিক নয়।",
-        "auth/user-not-found": "এই email দিয়ে কোনো account পাওয়া যায়নি।",
-        "auth/email-already-in-use": "এই email দিয়ে account আগে থেকেই আছে।",
-        "auth/weak-password": "Password কমপক্ষে ৬ অক্ষরের হতে হবে।",
-        "auth/invalid-email": "একটি সঠিক email address দিন।",
-        "auth/too-many-requests": "অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।",
+      const status = (err as { status?: number }).status;
+      const messages: Record<number, string> = {
+        400: "নাম, সঠিক email এবং কমপক্ষে ৮ অক্ষরের password দিন।",
+        401: "Email বা password সঠিক নয়।",
+        409: "এই email দিয়ে account আগে থেকেই আছে।",
+        429: "অনেকবার ভুল চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।",
       };
-      setError(messages[code || ""] || "অনুরোধটি সম্পন্ন হয়নি। আবার চেষ্টা করুন।");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const resetPassword = async () => {
-    setError("");
-    setMessage("");
-    const resetEmail = email.trim().toLowerCase();
-    if (!resetEmail) {
-      setError("Password reset link পেতে আগে email address লিখুন।");
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resetEmail)) {
-      setError("সঠিক email address লিখে আবার চেষ্টা করুন।");
-      return;
-    }
-    setBusy(true);
-    try {
-      await sendPasswordResetEmail(auth, resetEmail);
-      setMessage("Reset link পাঠানোর অনুরোধ সফল হয়েছে। Inbox ও Spam/Junk folder দেখুন। Emailটি account-এ নিবন্ধিত না হলে link আসবে না।");
-    } catch (err) {
-      const code = (err as { code?: string }).code;
-      const resetErrors: Record<string, string> = {
-        "auth/invalid-email": "Email addressটি সঠিক নয়। ঠিক করে আবার চেষ্টা করুন।",
-        "auth/user-not-found": "এই email দিয়ে কোনো account পাওয়া যায়নি। যে email দিয়ে account খুলেছেন সেটি দিন।",
-        "auth/operation-not-allowed": "Password reset চালু নেই। Firebase Console-এর Authentication-এ Email/Password sign-in enable করতে হবে।",
-        "auth/too-many-requests": "অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন।",
-        "auth/network-request-failed": "Internet সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।",
-        "auth/invalid-continue-uri": "Reset link configuration-এ সমস্যা আছে। Firebase Console-এর email template পরীক্ষা করতে হবে.",
-      };
-      setError(resetErrors[code || ""] || `Reset email পাঠানো যায়নি${code ? ` (${code})` : ""}। Email ও internet সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।`);
+      setError(messages[status || 0] || "অনুরোধটি সম্পন্ন হয়নি। আবার চেষ্টা করুন।");
     } finally {
       setBusy(false);
     }
@@ -4226,28 +4026,31 @@ function AuthScreen() {
         <form onSubmit={submit}>
           {mode === "register" && <label className="auth-field"><span className="auth-icon"><UserRound size={19} /></span><input autoComplete="name" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required /></label>}
           <label className="auth-field"><span className="auth-icon"><Mail size={19} /></span><input type="email" autoComplete="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-          <label className="auth-field"><span className="auth-icon"><LockKeyhole size={19} /></span><input type={showPassword ? "text" : "password"} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required /><button className="auth-eye" type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button></label>
-          {mode === "login" && <div className="auth-options"><label className="remember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember me</label><button type="button" className="text-button" onClick={resetPassword} disabled={busy}>Forgot Password?</button></div>}
+          <label className="auth-field"><span className="auth-icon"><LockKeyhole size={19} /></span><input type={showPassword ? "text" : "password"} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={mode === "register" ? 8 : undefined} required /><button className="auth-eye" type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button></label>
           {error && <p className="auth-feedback error" role="alert">{error}</p>}
-          {message && <p className="auth-feedback success" role="status">{message}</p>}
           <button className="auth-submit" type="submit" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Log In" : "Create Account"}</button>
         </form>
-        <div className="auth-switch"><button type="button" onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setMessage(""); }}>{mode === "login" ? "Create an account." : "Back to login."}</button></div>
+        <div className="auth-switch"><button type="button" onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>{mode === "login" ? "Create an account." : "Back to login."}</button></div>
       </section>
     </main>
   );
 }
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<HostingUser | null>(null);
   const [ready, setReady] = useState(false);
+  const logout = useCallback(() => setUser(null), []);
 
-  useEffect(() => onAuthStateChanged(auth, (nextUser) => {
-    setUser(nextUser);
-    setReady(true);
-  }), []);
+  useEffect(() => {
+    let active = true;
+    hostingApi.session()
+      .then((result) => { if (active) setUser(result.user); })
+      .catch((error) => console.error("Could not check the login session", error))
+      .finally(() => { if (active) setReady(true); });
+    return () => { active = false; };
+  }, []);
 
   if (!ready) return <div className="auth-loading" aria-label="Loading" />;
-  if (!user) return <AuthScreen />;
-  return <div className="signed-in-app"><POSApp /></div>;
+  if (!user) return <AuthScreen onSignedIn={setUser} />;
+  return <div className="signed-in-app"><POSApp user={user} onLogout={logout} /></div>;
 }

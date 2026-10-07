@@ -13,6 +13,20 @@ if (!$membership) {
 }
 
 $data = request_data();
+
+if (($_GET['action'] ?? '') === 'delete') {
+    // Only files this shop uploaded, named the way this script names them.
+    $pattern = '#^/uploads/([0-9a-f-]{36})/([0-9a-f-]{36}\.(?:jpg|png|webp))$#';
+    if (!preg_match($pattern, value($data, 'url'), $parts) || $parts[1] !== $membership['shop_id']) {
+        fail('This image cannot be deleted.', 403);
+    }
+    $file = dirname(__DIR__) . '/uploads/' . $parts[1] . '/' . $parts[2];
+    if (is_file($file)) {
+        @unlink($file);
+    }
+    respond(['ok' => true]);
+}
+
 $image = (string)($data['image'] ?? '');
 if (!preg_match('#^data:image/(png|jpe?g|webp);base64,([A-Za-z0-9+/=\r\n]+)$#i', $image, $matches)) {
     fail('Choose a PNG, JPEG, or WebP image.');
