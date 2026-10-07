@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 const POS_CONFIG_FILE = '/home/pranmzcs/pos-private-config.php';
-const POS_SCHEMA_VERSION = 2;
+const POS_SCHEMA_VERSION = 3;
 
 function respond(array $data, int $status = 200): never
 {
@@ -180,6 +180,34 @@ function membership_for(string $userId): ?array
         return null;
     }
     return ['shop_id' => $row['shop_id'], 'role_id' => $row['role_id'], 'owner' => false];
+}
+
+function app_url(): string
+{
+    $configured = config()['app_url'] ?? '';
+    if (is_string($configured) && $configured !== '') {
+        return rtrim($configured, '/');
+    }
+    $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    return ($secure ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+}
+
+function send_mail(string $to, string $subject, string $body): bool
+{
+    $settings = config();
+    // A development machine has no mail server, so it writes emails to a file instead.
+    if (!empty($settings['mail_log'])) {
+        return file_put_contents((string)$settings['mail_log'], "To: {$to}\nSubject: {$subject}\n\n{$body}\n---\n", FILE_APPEND | LOCK_EX) !== false;
+    }
+    $host = preg_replace('/:\d+$/', '', (string)parse_url(app_url(), PHP_URL_HOST));
+    $from = is_string($settings['mail_from'] ?? null) && $settings['mail_from'] !== '' ? $settings['mail_from'] : 'no-reply@' . $host;
+    $headers = [
+        'From: PRAN Sticker Zone POS <' . $from . '>',
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: 8bit',
+    ];
+    return @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $body, implode("\r\n", $headers));
 }
 
 require_same_origin();

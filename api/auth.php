@@ -103,6 +103,79 @@ if ($action === 'login' && $method === 'POST') {
     respond(['ok' => true, 'user' => current_user()]);
 }
 
+const RESET_LINK_MINUTES = 60;
+const RESET_REQUESTS_PER_HOUR = 3;
+
+if ($action === 'request-reset' && $method === 'POST') {
+    $data = request_data();
+    $email = strtolower(value($data, 'email'));
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        fail('Enter a valid email address.');
+    }
+    $pdo = db();
+    $query = $pdo->prepare('SELECT id, display_name FROM pos_users WHERE email = ? LIMIT 1');
+    $query->execute([$email]);
+    $account = $query->fetch();
+    if ($account) {
+        $recent = $pdo->prepare('SELECT COUNT(*) FROM pos_password_resets WHERE user_id = ? AND created_at > (NOW() - INTERVAL 1 HOUR)');
+        $recent->execute([$account['id']]);
+        if ((int)$recent->fetchColumn() < RESET_REQUESTS_PER_HOUR) {
+            // Only a hash is stored, so a copy of the database cannot be used to reset passwords.
+            $token = bin2hex(random_bytes(32));
+            $minutes = RESET_LINK_MINUTES;
+            $store = $pdo->prepare("INSERT INTO pos_password_resets (token_hash, user_id, expires_at) VALUES (?, ?, NOW() + INTERVAL {$minutes} MINUTE)");
+            $store->execute([hash('sha256', $token), $account['id']]);
+            $link = app_url() . '/?reset=' . $token;
+            send_mail(
+                $email,
+                'Password reset - PRAN Sticker Zone POS',
+                "Hello {$account['display_name']},\n\n"
+                . "Open this link to choose a new password. It works once and expires in {$minutes} minutes.\n\n{$link}\n\n"
+                . "নতুন password বেছে নিতে উপরের link টি খুলুন। এটি একবারই কাজ করবে এবং {$minutes} মিনিট পর বাতিল হয়ে যাবে।\n\n"
+                . "If you did not ask for this, ignore this email; your password stays the same.\n"
+            );
+        }
+    }
+    // The same answer whether or not the account exists, so this cannot be used to find out who has one.
+    respond(['ok' => true]);
+}
+
+if ($action === 'reset' && $method === 'POST') {
+    $data = request_data();
+    $token = value($data, 'token');
+    $password = (string)($data['password'] ?? '');
+    if (strlen($password) < 8) {
+        fail('The new password must have at least 8 characters.');
+    }
+    $pdo = db();
+    try {
+        $pdo->beginTransaction();
+        $query = $pdo->prepare(
+            'SELECT r.user_id, u.email FROM pos_password_resets r JOIN pos_users u ON u.id = r.user_id
+             WHERE r.token_hash = ? AND r.used_at IS NULL AND r.expires_at > NOW() FOR UPDATE'
+        );
+        $query->execute([hash('sha256', $token)]);
+        $reset = $query->fetch();
+        if (!$reset) {
+            $pdo->rollBack();
+            fail('This reset link is not valid any more. Ask for a new one.', 410);
+        }
+        $update = $pdo->prepare('UPDATE pos_users SET password_hash = ? WHERE id = ?');
+        $update->execute([password_hash($password, PASSWORD_DEFAULT), $reset['user_id']]);
+        // Every outstanding link for the account stops working, not just this one.
+        $used = $pdo->prepare('UPDATE pos_password_resets SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL');
+        $used->execute([$reset['user_id']]);
+        $pdo->commit();
+    } catch (PDOException) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        fail('Could not reset the password. Try again.', 500);
+    }
+    clear_failed_logins((string)$reset['email']);
+    respond(['ok' => true]);
+}
+
 if ($action === 'logout' && $method === 'POST') {
     start_session();
     $_SESSION = [];

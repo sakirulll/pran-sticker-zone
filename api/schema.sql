@@ -75,3 +75,14 @@ CREATE TABLE IF NOT EXISTS pos_meta (
   value VARCHAR(255) NOT NULL,
   PRIMARY KEY (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pos_password_resets (
+  token_hash CHAR(64) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  PRIMARY KEY (token_hash),
+  KEY pos_resets_user (user_id, created_at),
+  CONSTRAINT pos_resets_user_fk FOREIGN KEY (user_id) REFERENCES pos_users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

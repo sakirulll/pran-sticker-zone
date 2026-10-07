@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "node --test tests/sync.test.ts"
+    "test": "node --test tests/sync.test.ts tests/auth.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

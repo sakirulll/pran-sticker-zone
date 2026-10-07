@@ -47,6 +47,18 @@ export const hostingApi = {
       body: JSON.stringify({ email, password }),
     }),
 
+  requestPasswordReset: (email: string) =>
+    request<{ ok: true }>("auth.php?action=request-reset", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (token: string, password: string) =>
+    request<{ ok: true }>("auth.php?action=reset", {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+    }),
+
   logout: () => request<{ ok: true }>("auth.php?action=logout", { method: "POST" }),
 
   loadShop: () => request<{
