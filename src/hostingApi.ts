@@ -11,8 +11,10 @@ export type ShopBackup = { name: string; size: number; createdAt: string };
 
 export type Subscription = {
   /** "lifetime" is the platform admin's own shop; "active" is paid. */
-  state: "lifetime" | "active" | "trial" | "expired" | "suspended";
+  state: "lifetime" | "active" | "trial" | "expired" | "suspended" | "unverified";
   secondsLeft: number;
+  /** False while the shop owner still has to confirm the email address. */
+  emailVerified: boolean;
 };
 
 export type BillingSettings = {
@@ -22,6 +24,7 @@ export type BillingSettings = {
   bkashNumber: string;
   nagadNumber: string;
   supportPhone: string;
+  verifyGraceDays: number;
 };
 
 export type Payment = {
@@ -101,6 +104,15 @@ export const hostingApi = {
       body: JSON.stringify({ token, password }),
     }),
 
+  verifyEmail: (token: string) =>
+    request<{ ok: true }>("auth.php?action=verify", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+
+  resendVerification: () =>
+    request<{ ok: true; alreadyVerified?: boolean }>("auth.php?action=resend-verification", { method: "POST" }),
+
   logout: () => request<{ ok: true }>("auth.php?action=logout", { method: "POST" }),
 
   loadShop: () => request<{
@@ -141,7 +153,7 @@ export const hostingApi = {
     settings: BillingSettings;
   }>("billing.php?action=admin-overview"),
 
-  adminAction: (action: "review" | "extend" | "suspend" | "settings", body: Record<string, unknown>) =>
+  adminAction: (action: "review" | "extend" | "suspend" | "settings" | "verify", body: Record<string, unknown>) =>
     request<{ ok: true }>(`billing.php?action=admin-${action}`, {
       method: "POST",
       body: JSON.stringify(body),

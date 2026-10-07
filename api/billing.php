@@ -21,6 +21,7 @@ function public_settings(array $settings): array
         'bkashNumber' => $settings['bkash_number'],
         'nagadNumber' => $settings['nagad_number'],
         'supportPhone' => $settings['support_phone'],
+        'verifyGraceDays' => (int)$settings['verify_grace_days'],
     ];
 }
 
@@ -175,7 +176,20 @@ try {
         respond(['ok' => true]);
     }
 
+    if ($action === 'admin-verify') {
+        // For an owner whose confirmation email never arrived.
+        $confirm = $pdo->prepare(
+            'UPDATE pos_email_verifications v JOIN pos_shops s ON s.owner_user_id = v.user_id SET v.verified_at = NOW()
+             WHERE s.id = ? AND v.verified_at IS NULL'
+        );
+        $confirm->execute([value($data, 'shopId')]);
+        respond(['ok' => true]);
+    }
+
     if ($action === 'admin-settings') {
+        if (isset($data['verify_grace_days']) && (!is_numeric($data['verify_grace_days']) || (int)$data['verify_grace_days'] < 0 || (int)$data['verify_grace_days'] > 365)) {
+            fail('Enter the days allowed before email confirmation as a number between 0 and 365.');
+        }
         foreach (['price_monthly', 'price_yearly'] as $key) {
             if (!is_numeric($data[$key] ?? null) || (float)$data[$key] < 0) {
                 fail('Enter the prices as numbers.');

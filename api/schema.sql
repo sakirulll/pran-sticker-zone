@@ -121,3 +121,14 @@ CREATE TABLE IF NOT EXISTS pos_admins (
   PRIMARY KEY (user_id),
   CONSTRAINT pos_admins_user_fk FOREIGN KEY (user_id) REFERENCES pos_users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pos_email_verifications (
+  user_id CHAR(36) NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL,
+  last_sent_at DATETIME NOT NULL,
+  verified_at DATETIME NULL,
+  PRIMARY KEY (user_id),
+  KEY pos_verifications_token (token_hash),
+  CONSTRAINT pos_verifications_user_fk FOREIGN KEY (user_id) REFERENCES pos_users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

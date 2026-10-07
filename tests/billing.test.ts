@@ -53,7 +53,7 @@ const canSave = async (session: Session) =>
 after(async () => {
   if (!BASE) return;
   const admin = await adminSession();
-  await admin.call("billing.php?action=admin-settings", { price_monthly: 100, price_yearly: 999, trial_days: 14, bkash_number: "", nagad_number: "", support_phone: "" });
+  await admin.call("billing.php?action=admin-settings", { price_monthly: 100, price_yearly: 999, trial_days: 14, verify_grace_days: 3, bkash_number: "", nagad_number: "", support_phone: "" });
 });
 
 test("a new shop starts on a free trial and the admin's own shop never expires", { skip: !BASE }, async () => {
@@ -155,4 +155,28 @@ test("when the trial is over the shop stops saving, and extra days bring it back
   assert.equal(extended.state, "active");
   assert.ok(extended.secondsLeft > 29 * DAY && extended.secondsLeft <= 30 * DAY);
   assert.equal(await canSave(session), 200);
+  // Put the platform settings back so later tests start from the defaults.
+  await admin.call("billing.php?action=admin-settings", { ...settings, price_monthly: 100, price_yearly: 999, trial_days: 14, bkash_number: "" });
+});
+
+test("an owner who never confirms the email is stopped after the allowed days, until the admin confirms it", { skip: !BASE }, async () => {
+  const admin = await adminSession();
+  const { session, email } = await newOwner("unverified");
+  assert.equal(await canSave(session), 200);
+  const settings = { price_monthly: 100, price_yearly: 999, trial_days: 14, bkash_number: "", nagad_number: "", support_phone: "" };
+  try {
+    assert.equal((await admin.call("billing.php?action=admin-settings", { ...settings, verify_grace_days: 0 })).status, 200);
+    const status = (await session.call("billing.php?action=status")).body.subscription;
+    assert.deepEqual([status.state, status.emailVerified], ["unverified", false]);
+    assert.equal(await canSave(session), 402);
+
+    const shop = await shopOf(admin, email);
+    assert.equal((await session.call("billing.php?action=admin-verify", { shopId: shop.id })).status, 403);
+    assert.equal((await admin.call("billing.php?action=admin-verify", { shopId: shop.id })).status, 200);
+    const after = (await session.call("billing.php?action=status")).body.subscription;
+    assert.deepEqual([after.state, after.emailVerified], ["trial", true]);
+    assert.equal(await canSave(session), 200);
+  } finally {
+    await admin.call("billing.php?action=admin-settings", { ...settings, verify_grace_days: 3 });
+  }
 });

@@ -76,3 +76,50 @@ test("a signed-in session ends at logout", { skip: !BASE }, async () => {
   await call("auth.php?action=logout", {}, cookie);
   assert.equal((await call("auth.php?action=session", undefined, cookie)).body.user, null);
 });
+
+/** The confirmation links emailed to an address, oldest first. */
+function verifyTokens(email: string): string[] {
+  if (!MAIL_LOG || !existsSync(MAIL_LOG)) return [];
+  return readFileSync(MAIL_LOG, "utf8").split("\n---\n")
+    .filter((mail) => mail.includes(`To: ${email}\n`))
+    .map((mail) => /\?verify=([0-9a-f]{64})/.exec(mail)?.[1])
+    .filter((token): token is string => Boolean(token));
+}
+
+test("a new owner is emailed a confirmation link, and opening it confirms the email", { skip: !BASE || !MAIL_LOG }, async () => {
+  const email = `verify-${RUN}@test.local`;
+  const { cookie } = await register(email);
+  const shop = async () => (await call("shop.php", undefined, cookie)).body.subscription;
+  assert.equal((await shop()).emailVerified, false);
+  assert.equal((await shop()).state, "trial", "the shop works during the allowed days");
+
+  const [token] = verifyTokens(email);
+  assert.ok(token, "the confirmation email carries a link");
+  assert.equal((await call("auth.php?action=verify", { token: "f".repeat(64) })).status, 410);
+  assert.equal((await call("auth.php?action=verify", { token })).status, 200);
+  assert.equal((await call("auth.php?action=verify", { token })).status, 200, "opening the link twice is harmless");
+  assert.equal((await shop()).emailVerified, true);
+  assert.equal((await call("auth.php?action=resend-verification", {}, cookie)).body.alreadyVerified, true);
+});
+
+test("the link can be sent again, but not twice in a minute, and the old link stops working", { skip: !BASE || !MAIL_LOG }, async () => {
+  const email = `resend-${RUN}@test.local`;
+  const { cookie } = await register(email);
+  assert.equal((await call("auth.php?action=resend-verification", {}, cookie)).status, 429);
+  assert.equal(verifyTokens(email).length, 1);
+  assert.equal((await call("auth.php?action=resend-verification", {})).status, 401);
+});
+
+test("changing the email address means confirming the new one", { skip: !BASE || !MAIL_LOG }, async () => {
+  const email = `change-${RUN}@test.local`;
+  const next = `changed-${RUN}@test.local`;
+  const { cookie } = await register(email);
+  await call("auth.php?action=verify", { token: verifyTokens(email)[0] });
+  const changed = await call("auth.php?action=profile", { name: "Reset Tester", email: next, currentPassword: "password123", newPassword: "" }, cookie);
+  assert.equal(changed.status, 200, JSON.stringify(changed.body));
+  assert.equal((await call("shop.php", undefined, cookie)).body.subscription.emailVerified, false);
+  const [token] = verifyTokens(next);
+  assert.ok(token, "the link goes to the new address");
+  await call("auth.php?action=verify", { token });
+  assert.equal((await call("shop.php", undefined, cookie)).body.subscription.emailVerified, true);
+});

@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
+require __DIR__ . '/subscription.php';
 
 $action = (string)($_GET['action'] ?? '');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -78,6 +79,11 @@ if ($action === 'register' && $method === 'POST') {
             fail('An account already exists for this email.', 409);
         }
         fail('Could not create the account.', 500);
+    }
+    try {
+        start_email_verification($pdo, $userId, $email, $name, true);
+    } catch (PDOException) {
+        // The account exists; the owner can ask for the link again from inside the app.
     }
     start_session();
     session_regenerate_id(true);
@@ -180,6 +186,38 @@ if ($action === 'reset' && $method === 'POST') {
     respond(['ok' => true]);
 }
 
+if ($action === 'verify' && $method === 'POST') {
+    $hash = hash('sha256', value(request_data(), 'token'));
+    $pdo = db();
+    $confirm = $pdo->prepare('UPDATE pos_email_verifications SET verified_at = NOW() WHERE token_hash = ? AND verified_at IS NULL');
+    $confirm->execute([$hash]);
+    if ($confirm->rowCount() === 0) {
+        // Opening the same link twice is fine; an unknown or replaced link is not.
+        $known = $pdo->prepare('SELECT 1 FROM pos_email_verifications WHERE token_hash = ?');
+        $known->execute([$hash]);
+        if (!$known->fetchColumn()) {
+            fail('This link is not valid any more. Ask for a new one from inside the app.', 410);
+        }
+    }
+    respond(['ok' => true]);
+}
+
+if ($action === 'resend-verification' && $method === 'POST') {
+    $user = require_user();
+    $pdo = db();
+    $query = $pdo->prepare('SELECT verified_at, TIMESTAMPDIFF(SECOND, last_sent_at, NOW()) AS waited FROM pos_email_verifications WHERE user_id = ?');
+    $query->execute([$user['id']]);
+    $row = $query->fetch();
+    if (!$row || $row['verified_at'] !== null) {
+        respond(['ok' => true, 'alreadyVerified' => true]);
+    }
+    if ((int)$row['waited'] < 60) {
+        fail('A link was sent a moment ago. Wait a minute before asking again.', 429);
+    }
+    start_email_verification($pdo, $user['id'], $user['email'], $user['display_name'], false);
+    respond(['ok' => true]);
+}
+
 if ($action === 'logout' && $method === 'POST') {
     start_session();
     $_SESSION = [];
@@ -261,6 +299,16 @@ if ($action === 'profile' && $method === 'POST') {
             fail('This email is already used by another account.', 409);
         }
         fail('Could not update the profile.', 500);
+    }
+    if ($email !== strtolower((string)$account['email'])) {
+        // A new address has to be confirmed like the first one was. Staff accounts,
+        // which never had to confirm, are left alone.
+        $pdo = db();
+        $had = $pdo->prepare('SELECT 1 FROM pos_email_verifications WHERE user_id = ?');
+        $had->execute([$user['id']]);
+        if ($had->fetchColumn()) {
+            start_email_verification($pdo, $user['id'], $email, $name, true);
+        }
     }
     respond(['ok' => true, 'user' => current_user()]);
 }

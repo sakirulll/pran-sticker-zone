@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 const POS_CONFIG_FILE = '/home/pranmzcs/pos-private-config.php';
-const POS_SCHEMA_VERSION = 4;
+const POS_SCHEMA_VERSION = 5;
 const APP_NAME = 'HishabPOS';
 
 function respond(array $data, int $status = 200): never

@@ -721,7 +721,18 @@ const subscriptionBadge = (subscription: Subscription) => ({
   trial: `Trial · ${daysLeft(subscription)} days left`,
   expired: "Expired",
   suspended: "Suspended",
+  unverified: "Email not confirmed",
 }[subscription.state]);
+
+// Asks the server to email the confirmation link again and reports the outcome in `target`.
+async function resendVerification(target: HTMLElement) {
+  try {
+    const result = await hostingApi.resendVerification();
+    target.textContent = result.alreadyVerified ? "Your email is already confirmed. Reload the page." : "A new link has been sent. Check your inbox and spam folder.";
+  } catch (error) {
+    target.textContent = error instanceof Error ? error.message : "The link could not be sent. Try again.";
+  }
+}
 const money = (amount: number) => `${String.fromCharCode(2547)}${Number(amount).toLocaleString("en-BD")}`;
 
 // The subscription status, prices, how to pay and the payment form. It is used
@@ -744,6 +755,7 @@ async function mountSubscriptionPanel(container: HTMLElement, message?: { text: 
     trial: `You are on the free trial. ${daysLeft(subscription)} days left.`,
     expired: "The free trial or paid period has ended. Pay for a plan to continue using the shop.",
     suspended: "This shop has been suspended. Please contact support.",
+    unverified: "The shop owner needs to confirm the email address before the shop can be used.",
   }[subscription.state];
   const numbers = [
     settings.bkashNumber && `bKash: <b>${escapeHtml(settings.bkashNumber)}</b>`,
@@ -757,7 +769,7 @@ async function mountSubscriptionPanel(container: HTMLElement, message?: { text: 
   const included = ["আনলিমিটেড প্রডাক্ট লিস্ট", "আনলিমিটেড সেলস ও কাস্টমার", "ডিউ কালেকশন ও প্রফিট-লস রিপোর্ট", "স্টাফ একাউন্ট ও পারমিশন", "প্রতিদিন অটো ব্যাকআপ", "ইনভয়েস প্রিন্ট", "মোবাইল ও কম্পিউটার সব ডিভাইসে"];
   const paidPlan = payments.find((payment) => payment.status === "approved")?.plan;
   const current = subscription.state === "trial" ? "trial" : subscription.state === "active" ? paidPlan : undefined;
-  const canBuy = owner && subscription.state !== "lifetime" && subscription.state !== "suspended";
+  const canBuy = owner && !["lifetime", "suspended", "unverified"].includes(subscription.state);
   const yearOfMonths = settings.priceMonthly * 12;
   const price = (amount: number) => `${Number(amount).toLocaleString("en-BD", { minimumFractionDigits: 2 })}${String.fromCharCode(2547)}`;
   const card = (plan: { key: string; title: string; days: number; amount: number; was?: number; features: [boolean, string][] }) => {
@@ -843,7 +855,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
     let loadedRevision = 0;
     let loadedRecords: RecordRow[] = [];
     let registeredShopName = "";
-    let subscription: Subscription = { state: "trial", secondsLeft: 0 };
+    let subscription: Subscription = { state: "trial", secondsLeft: 0, emailVerified: true };
     let isAdmin = false;
     try {
       const shop = await hostingApi.loadShop();
@@ -877,7 +889,17 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
     // No trial or paid period left: show how to pay instead of the shop.
     if (!canUseShop(subscription)) {
       root.innerHTML = `<main class="blocked-page"><div class="blocked-card"><h1>${escapeHtml(registeredShopName || "Your shop")}</h1><p>HishabPOS subscription</p><div id="subscriptionPanel"></div><button class="blocked-logout" id="blockedLogout" type="button">Log Out</button></div></main>`;
-      void mountSubscriptionPanel(root.querySelector<HTMLElement>("#subscriptionPanel")!);
+      const panel = root.querySelector<HTMLElement>("#subscriptionPanel")!;
+      if (subscription.state === "unverified") {
+        // The owner is told where the link went and can ask for it again; staff can only wait.
+        panel.className = "plan-panel";
+        panel.innerHTML = isWorkspaceOwner
+          ? `<p class="plan-status bad">Confirm your email address to keep using the shop.</p><p>We sent a link to <b>${escapeHtml(user.email)}</b>. Open it, then reload this page. Check the spam folder too.</p><p><button class="plan-buy" id="resendVerify" type="button" style="max-width:260px">Send the link again</button></p><p id="resendResult" role="status"></p>`
+          : `<p class="plan-status bad">The shop owner needs to confirm the email address before the shop can be used.</p>`;
+        panel.querySelector("#resendVerify")?.addEventListener("click", () => void resendVerification(panel.querySelector<HTMLElement>("#resendResult")!));
+      } else {
+        void mountSubscriptionPanel(panel);
+      }
       root.querySelector("#blockedLogout")!.addEventListener("click", () => {
         void hostingApi.logout().catch((error) => console.error("Could not log out", error)).then(onLogout);
       });
@@ -2093,10 +2115,19 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
 
       const pid = $("#pp").value;
 
+      // The number shown on the form may have been used since it opened, by this
+      // device or another one, so move on to the next one that is free.
+      const usedNumbers = new Set(D[s ? "sales" : "purchases"].map((entry: any) => entry.inv));
+      let invoiceNumber = $("#pn").value;
+      while (usedNumbers.has(invoiceNumber)) {
+        D.seq++;
+        invoiceNumber = `${s ? "S-" : "P-"}${String(D.seq).padStart(5, "0")}`;
+      }
+
       D[s ? "sales" : "purchases"].unshift({
         id: uid(),
 
-        inv: $("#pn").value,
+        inv: invoiceNumber,
 
         date: $("#pd").value,
 
@@ -2837,7 +2868,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       }
       const body = $("#adminBody");
       if (!body) return;
-      const run = async (action: "review" | "extend" | "suspend" | "settings", payload: AnyData, done: string) => {
+      const run = async (action: "review" | "extend" | "suspend" | "settings" | "verify", payload: AnyData, done: string) => {
         try {
           await hostingApi.adminAction(action, payload);
           toast(done);
@@ -2848,11 +2879,14 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       };
 
       if (view === "shops") {
-        const rows = overview.shops.map((shop, index) => `<tr><td>${index + 1}</td><td>${esc(shop.name)}</td><td>${esc(shop.ownerName)}<br><small>${esc(shop.ownerEmail)}</small></td><td>${esc(shop.createdAt.slice(0, 10))}</td><td>${shop.staff}</td><td>${shop.records}</td><td>${esc(subscriptionBadge(shop.subscription))}</td><td>${shop.subscription.state === "lifetime" ? "" : `<button class="mini admin-extend" data-id="${esc(shop.id)}" data-days="30">+30 days</button><button class="mini admin-extend" data-id="${esc(shop.id)}" data-days="365">+1 year</button><button class="mini admin-suspend" data-id="${esc(shop.id)}" data-on="${shop.subscription.state === "suspended" ? "0" : "1"}">${shop.subscription.state === "suspended" ? "Restore" : "Suspend"}</button>`}</td></tr>`).join("");
+        const rows = overview.shops.map((shop, index) => `<tr><td>${index + 1}</td><td>${esc(shop.name)}</td><td>${esc(shop.ownerName)}<br><small>${esc(shop.ownerEmail)}</small></td><td>${esc(shop.createdAt.slice(0, 10))}</td><td>${shop.staff}</td><td>${shop.records}</td><td>${esc(subscriptionBadge(shop.subscription))}${shop.subscription.emailVerified || shop.subscription.state === "unverified" ? "" : "<br><small>Email not confirmed</small>"}</td><td>${shop.subscription.emailVerified ? "" : `<button class="mini admin-verify" data-id="${esc(shop.id)}">Confirm email</button>`}${shop.subscription.state === "lifetime" ? "" : `<button class="mini admin-extend" data-id="${esc(shop.id)}" data-days="30">+30 days</button><button class="mini admin-extend" data-id="${esc(shop.id)}" data-days="365">+1 year</button><button class="mini admin-suspend" data-id="${esc(shop.id)}" data-on="${shop.subscription.state === "suspended" ? "0" : "1"}">${shop.subscription.state === "suspended" ? "Restore" : "Suspend"}</button>`}</td></tr>`).join("");
         body.innerHTML = `<table><thead><tr><th>SL.</th><th>Shop</th><th>Owner</th><th>Joined</th><th>Staff</th><th>Records</th><th>Subscription</th><th>Action</th></tr></thead><tbody>${rows || empty(8)}</tbody></table>`;
         body.querySelectorAll(".admin-extend").forEach((button: Element) => button.addEventListener("click", () => {
           const { id, days } = (button as HTMLElement).dataset;
           if (confirm(`Add ${days} days to this shop?`)) void run("extend", { shopId: id, days: +days! }, "Days added");
+        }));
+        body.querySelectorAll(".admin-verify").forEach((button: Element) => button.addEventListener("click", () => {
+          if (confirm("Mark this owner's email as confirmed without the link?")) void run("verify", { shopId: (button as HTMLElement).dataset.id }, "Email confirmed");
         }));
         body.querySelectorAll(".admin-suspend").forEach((button: Element) => button.addEventListener("click", () => {
           const { id, on } = (button as HTMLElement).dataset;
@@ -2870,11 +2904,11 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
         }));
       } else {
         const s = overview.settings;
-        body.innerHTML = `<form id="adminSettingsForm" style="padding:0 18px 18px"><div class="settings-form-grid"><label>Monthly price (Taka)<input id="adminMonthly" type="number" min="0" step="1" value="${s.priceMonthly}" required></label><label>Yearly price (Taka)<input id="adminYearly" type="number" min="0" step="1" value="${s.priceYearly}" required></label><label>Free trial (days)<input id="adminTrial" type="number" min="0" max="365" step="1" value="${s.trialDays}" required></label><label>Support phone<input id="adminSupport" type="tel" value="${esc(s.supportPhone)}"></label><label>bKash number (customers send money here)<input id="adminBkash" type="tel" value="${esc(s.bkashNumber)}" placeholder="01XXXXXXXXX"></label><label>Nagad number<input id="adminNagad" type="tel" value="${esc(s.nagadNumber)}" placeholder="01XXXXXXXXX"></label></div><button class="btn pu" type="submit">Save Changes</button></form>`;
+        body.innerHTML = `<form id="adminSettingsForm" style="padding:0 18px 18px"><div class="settings-form-grid"><label>Monthly price (Taka)<input id="adminMonthly" type="number" min="0" step="1" value="${s.priceMonthly}" required></label><label>Yearly price (Taka)<input id="adminYearly" type="number" min="0" step="1" value="${s.priceYearly}" required></label><label>Free trial (days)<input id="adminTrial" type="number" min="0" max="365" step="1" value="${s.trialDays}" required></label><label>Days allowed before email must be confirmed<input id="adminGrace" type="number" min="0" max="365" step="1" value="${s.verifyGraceDays}" required></label><label>Support phone<input id="adminSupport" type="tel" value="${esc(s.supportPhone)}"></label><label>bKash number (customers send money here)<input id="adminBkash" type="tel" value="${esc(s.bkashNumber)}" placeholder="01XXXXXXXXX"></label><label>Nagad number<input id="adminNagad" type="tel" value="${esc(s.nagadNumber)}" placeholder="01XXXXXXXXX"></label></div><button class="btn pu" type="submit">Save Changes</button></form>`;
         $("#adminSettingsForm").addEventListener("submit", (event: Event) => {
           event.preventDefault();
           void run("settings", {
-            price_monthly: +$("#adminMonthly").value, price_yearly: +$("#adminYearly").value, trial_days: +$("#adminTrial").value,
+            price_monthly: +$("#adminMonthly").value, price_yearly: +$("#adminYearly").value, trial_days: +$("#adminTrial").value, verify_grace_days: +$("#adminGrace").value,
             support_phone: $("#adminSupport").value, bkash_number: $("#adminBkash").value, nagad_number: $("#adminNagad").value,
           }, "Settings saved");
         });
@@ -4237,6 +4271,21 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
 
     render();
 
+    // Reminds the owner to confirm the email address while the shop still works.
+    if (isWorkspaceOwner && !subscription.emailVerified) {
+      const bar = document.createElement("div");
+      bar.style.cssText = "padding:8px 16px;background:#eff6ff;color:#1e40af;font-size:13px;font-weight:600;text-align:center";
+      const text = document.createElement("span");
+      text.textContent = `Please confirm your email: we sent a link to ${user.email}. `;
+      const resend = document.createElement("button");
+      resend.type = "button";
+      resend.textContent = "Send again";
+      resend.style.cssText = "border:0;background:none;color:inherit;font:inherit;text-decoration:underline;cursor:pointer;padding:0";
+      resend.addEventListener("click", () => void resendVerification(text).then(() => resend.remove()));
+      bar.append(text, resend);
+      document.querySelector(".main")?.prepend(bar);
+    }
+
     // Tells the owner how long is left while there is still time to pay.
     if (isWorkspaceOwner && (subscription.state === "trial" || (subscription.state === "active" && daysLeft(subscription) <= 7))) {
       const bar = document.createElement("a");
@@ -4291,7 +4340,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
 
 type AuthMode = "login" | "register" | "forgot" | "reset";
 
-function AuthScreen({ onSignedIn }: { onSignedIn: (user: HostingUser) => void }) {
+function AuthScreen({ onSignedIn, initialNotice = "" }: { onSignedIn: (user: HostingUser) => void; initialNotice?: string }) {
   // A password reset email links back here with the one-time token in the address.
   const [resetToken] = useState(() => new URLSearchParams(window.location.search).get("reset") || "");
   const [mode, setMode] = useState<AuthMode>(resetToken ? "reset" : "login");
@@ -4303,7 +4352,7 @@ function AuthScreen({ onSignedIn }: { onSignedIn: (user: HostingUser) => void })
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(initialNotice);
 
   const switchTo = (next: AuthMode) => {
     setMode(next);
@@ -4415,9 +4464,23 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const logout = useCallback(() => setUser(null), []);
 
+  const [verifyNotice, setVerifyNotice] = useState("");
+
   useEffect(() => {
     let active = true;
-    hostingApi.session()
+    // An email confirmation link brings its one-time token in the address.
+    const verifyToken = new URLSearchParams(window.location.search).get("verify");
+    const confirmed = verifyToken
+      ? hostingApi.verifyEmail(verifyToken)
+          .then(() => "Email confirmed. Thank you!")
+          .catch((error) => (error instanceof Error ? error.message : "The email could not be confirmed."))
+          .then((text) => {
+            window.history.replaceState(null, "", window.location.pathname);
+            if (active) setVerifyNotice(text);
+          })
+      : Promise.resolve();
+    confirmed
+      .then(() => hostingApi.session())
       .then((result) => { if (active) setUser(result.user); })
       .catch((error) => console.error("Could not check the login session", error))
       .finally(() => { if (active) setReady(true); });
@@ -4425,6 +4488,6 @@ export default function App() {
   }, []);
 
   if (!ready) return <div className="auth-loading" aria-label="Loading" />;
-  if (!user) return <AuthScreen onSignedIn={setUser} />;
+  if (!user) return <AuthScreen onSignedIn={setUser} initialNotice={verifyNotice} />;
   return <div className="signed-in-app"><POSApp user={user} onLogout={logout} /></div>;
 }
