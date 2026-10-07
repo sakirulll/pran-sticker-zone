@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 const POS_CONFIG_FILE = '/home/pranmzcs/pos-private-config.php';
+const POS_SCHEMA_VERSION = 2;
 
 function respond(array $data, int $status = 200): never
 {
@@ -19,10 +20,13 @@ function fail(string $message, int $status = 400): never
 
 function config(): array
 {
-    if (!is_file(POS_CONFIG_FILE)) {
+    // A development machine points this at its own file; the live server uses the default.
+    $override = getenv('POS_CONFIG_FILE');
+    $file = is_string($override) && $override !== '' ? $override : POS_CONFIG_FILE;
+    if (!is_file($file)) {
         fail('The server database configuration is not ready yet.', 503);
     }
-    $config = require POS_CONFIG_FILE;
+    $config = require $file;
     if (!is_array($config) || !isset($config['db_host'], $config['db_name'], $config['db_user'], $config['db_password'])) {
         fail('The server database configuration is invalid.', 503);
     }
@@ -50,7 +54,34 @@ function db(): PDO
     } catch (PDOException) {
         fail('The server could not connect to its database.', 503);
     }
+    ensure_schema($pdo);
     return $pdo;
+}
+
+// Creates any missing tables from schema.sql, so a new version only needs deploying.
+// Every statement there is "CREATE TABLE IF NOT EXISTS", which makes re-running safe.
+function ensure_schema(PDO $pdo): void
+{
+    try {
+        $version = (int)$pdo->query("SELECT value FROM pos_meta WHERE name = 'schema_version'")->fetchColumn();
+    } catch (PDOException) {
+        $version = 0;
+    }
+    if ($version >= POS_SCHEMA_VERSION) {
+        return;
+    }
+    $sql = (string)file_get_contents(__DIR__ . '/schema.sql');
+    try {
+        foreach (explode(';', $sql) as $statement) {
+            if (trim($statement) !== '') {
+                $pdo->exec($statement);
+            }
+        }
+        $save = $pdo->prepare("REPLACE INTO pos_meta (name, value) VALUES ('schema_version', ?)");
+        $save->execute([(string)POS_SCHEMA_VERSION]);
+    } catch (PDOException) {
+        fail('The database needs an update. Import api/schema.sql in phpMyAdmin, then reload.', 503);
+    }
 }
 
 function request_data(): array

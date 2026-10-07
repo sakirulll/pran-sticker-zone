@@ -18,17 +18,6 @@ const LOGIN_ATTEMPT_WINDOW_MINUTES = 15;
 function too_many_login_attempts(string $email, string $ip): bool
 {
     try {
-        db()->exec(
-            'CREATE TABLE IF NOT EXISTS pos_login_attempts (
-              id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-              email VARCHAR(254) NOT NULL,
-              ip VARCHAR(45) NOT NULL,
-              attempted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-              PRIMARY KEY (id),
-              KEY pos_login_attempts_email (email, attempted_at),
-              KEY pos_login_attempts_ip (ip, attempted_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
-        );
         $minutes = LOGIN_ATTEMPT_WINDOW_MINUTES;
         db()->exec('DELETE FROM pos_login_attempts WHERE attempted_at < (NOW() - INTERVAL 1 DAY)');
         $query = db()->prepare(

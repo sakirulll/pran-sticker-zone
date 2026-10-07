@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { CircleAlert, Eye, EyeOff, LockKeyhole, Mail, Package, ShieldCheck, ShoppingCart, UserRound } from "lucide-react";
 import { hostingApi, type HostingUser } from "./hostingApi";
+import { buildShopData, chunkChanges, ShopSync, type RecordRow } from "./shopSync";
 
 const ORIGINAL_APP = String.raw`
 <style>
@@ -715,11 +716,13 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
     let cloudData: AnyData | null = null;
     let membership: AnyData | null = null;
     let isWorkspaceOwner = false;
-    let revision: string | null = null;
+    let loadedRevision = 0;
+    let loadedRecords: RecordRow[] = [];
     try {
       const shop = await hostingApi.loadShop();
-      cloudData = shop.data as AnyData | null;
-      revision = shop.revision;
+      loadedRevision = shop.rev;
+      loadedRecords = shop.records;
+      cloudData = buildShopData(shop.records);
       membership = { roleId: shop.membership.roleId };
       isWorkspaceOwner = shop.membership.owner;
     } catch (error) {
@@ -732,7 +735,6 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
       root.replaceChildren(notice);
       return;
     }
-    const K = `pran_pos_v2_${user.id}`;
     const uploadProductImage = async (_productId: any, imageData: string) => {
       const uploaded = await hostingApi.uploadImage(imageData);
       return { image: uploaded.url, imagePath: uploaded.url };
@@ -943,58 +945,80 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
 
     CURRENCY_SYMBOL = D.currencies?.find((currency: any) => currency.id == D.settings.currencyId)?.symbol || String.fromCharCode(2547);
 
-    // Shown when another device saved first. Saving again would erase that
-    // device's work, so the only way forward is to reload the latest data.
-    let saveConflict = false;
-    const showSaveConflict = () => {
-      const overlay = document.createElement("div");
-      overlay.setAttribute("role", "alertdialog");
-      overlay.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,23,42,.6)";
-      const panel = document.createElement("div");
-      panel.style.cssText = "max-width:420px;padding:24px;border-radius:12px;background:#fff;color:#111827;text-align:center";
-      const heading = document.createElement("h3");
-      heading.textContent = "Shop data changed on another device";
-      const detail = document.createElement("p");
-      detail.textContent = "Your last change was not saved. Reload to get the latest data, then make the change again.";
-      const reload = document.createElement("button");
-      reload.className = "btn pu";
-      reload.type = "button";
-      reload.textContent = "Reload";
-      reload.addEventListener("click", () => window.location.reload());
-      panel.append(heading, detail, reload);
-      overlay.append(panel);
-      root.append(overlay);
-    };
-
-    let cloudSaveQueue: Promise<void> = Promise.resolve();
-    const save = () => {
-      try { localStorage.setItem(K, JSON.stringify(D)); } catch {}
-      const snapshot = JSON.parse(JSON.stringify(D));
-      cloudSaveQueue = cloudSaveQueue.then(async () => {
-        if (saveConflict) return;
-        const saved = await hostingApi.saveShop(snapshot, revision);
-        revision = saved.revision;
-      }).catch((error) => {
-        console.error("Could not sync data to cloud", error);
+    // Saving sends only the records that changed, and each exchange also brings
+    // in what other devices saved, so several people can work at the same time.
+    const shopSync = new ShopSync(() => D, loadedRevision, loadedRecords);
+    let syncing = false;
+    let syncAgain = false;
+    let unsaved = false;
+    let retryTimer: number | undefined;
+    let lastSaveWarning = 0;
+    const runSync = async () => {
+      if (syncing) { syncAgain = true; return; }
+      syncing = true;
+      window.clearTimeout(retryTimer);
+      try {
+        do {
+          syncAgain = false;
+          for (const batch of chunkChanges(shopSync.collectChanges())) {
+            const result = await hostingApi.syncShop(shopSync.rev, batch);
+            shopSync.commit(batch, result.rev, result.remote);
+          }
+        } while (syncAgain);
+        unsaved = false;
+      } catch (error) {
+        console.error("Could not sync shop data", error);
         const status = (error as { status?: number })?.status;
-        if (status === 409) {
-          if (!saveConflict) showSaveConflict();
-          saveConflict = true;
-          return;
-        }
         if (status === 401) {
           toast("Your login has expired. Please log in again.");
           onLogout();
           return;
         }
-        const detail = String((error as { message?: string })?.message || "");
-        toast(/maximum size|1\s*MiB|too large|larger than/i.test(detail)
-          ? "Cloud save failed: a record is too large. Reduce its size and try again."
-          : "Cloud save failed. Check your internet connection and try again.");
-      });
+        if (status === 409) {
+          window.location.reload();
+          return;
+        }
+        if (!unsaved) return;
+        // Nothing is lost: the change stays on this device and is sent again shortly.
+        retryTimer = window.setTimeout(() => void runSync(), 5000);
+        if (Date.now() - lastSaveWarning > 30000) {
+          lastSaveWarning = Date.now();
+          toast(status === 413 || status === 403 || status === 400
+            ? (error as Error).message
+            : "Not saved yet. Check your internet connection; it will retry automatically.");
+        }
+      } finally {
+        syncing = false;
+      }
+    };
+    const save = () => {
+      unsaved = true;
+      void runSync();
     };
 
-    const uid = () => D.seq++;
+    // Picks up other devices' changes while this one is idle.
+    const pollTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void runSync();
+    }, 30000);
+    const onVisible = () => { if (document.visibilityState === "visible") void runSync(); };
+    const warnUnsaved = (event: BeforeUnloadEvent) => { if (unsaved) event.preventDefault(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("beforeunload", warnUnsaved);
+    const stopSync = () => {
+      window.clearInterval(pollTimer);
+      window.clearTimeout(retryTimer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("beforeunload", warnUnsaved);
+    };
+
+    // Ids must not clash between devices working at the same time, so they come
+    // from the clock. The shop counter still advances because invoice numbers use it.
+    let lastId = 0;
+    const uid = () => {
+      D.seq++;
+      lastId = Math.max(lastId + 1, Date.now() * 1000 + Math.floor(Math.random() * 1000));
+      return lastId;
+    };
 
     const nm = (k: string, id: any) =>
       (D[k]?.find((x: any) => x.id == id) || {}).name || "-";
@@ -3972,6 +3996,7 @@ function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => void })
     render();
 
     cleanup = () => {
+      stopSync();
       window.removeEventListener(
         "hashchange",
         onHash,

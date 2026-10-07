@@ -48,3 +48,30 @@ CREATE TABLE IF NOT EXISTS pos_login_attempts (
   KEY pos_login_attempts_email (email, attempted_at),
   KEY pos_login_attempts_ip (ip, attempted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pos_shop_sync (
+  shop_id CHAR(36) NOT NULL,
+  rev BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (shop_id),
+  CONSTRAINT pos_sync_shop_fk FOREIGN KEY (shop_id) REFERENCES pos_shops (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pos_records (
+  shop_id CHAR(36) NOT NULL,
+  collection VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  record_id VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  pos DOUBLE NOT NULL DEFAULT 0,
+  payload MEDIUMTEXT NOT NULL,
+  deleted TINYINT(1) NOT NULL DEFAULT 0,
+  rev BIGINT UNSIGNED NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (shop_id, collection, record_id),
+  KEY pos_records_rev (shop_id, rev),
+  CONSTRAINT pos_records_shop_fk FOREIGN KEY (shop_id) REFERENCES pos_shops (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pos_meta (
+  name VARCHAR(60) NOT NULL,
+  value VARCHAR(255) NOT NULL,
+  PRIMARY KEY (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

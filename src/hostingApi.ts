@@ -5,6 +5,8 @@ export type HostingUser = {
   created_at: string;
 };
 
+import type { Change, RecordRow } from "./shopSync";
+
 export type ShopMembership = {
   owner: boolean;
   roleId: number | null;
@@ -49,16 +51,16 @@ export const hostingApi = {
 
   loadShop: () => request<{
     ok: true;
-    data: Record<string, unknown> | null;
+    rev: number;
     membership: ShopMembership;
-    updatedAt: string | null;
-    revision: string | null;
+    records: RecordRow[];
   }>("shop.php"),
 
-  saveShop: (data: Record<string, unknown>, baseRevision: string | null) =>
-    request<{ ok: true; revision: string }>("shop.php", {
-      method: "PUT",
-      body: JSON.stringify({ data, baseRevision }),
+  // Sends this device's changes and receives what other devices changed since `since`.
+  syncShop: (since: number, changes: Change[]) =>
+    request<{ ok: true; rev: number; remote: RecordRow[] }>("shop.php?action=sync", {
+      method: "POST",
+      body: JSON.stringify({ since, changes }),
     }),
 
   createMember: (name: string, email: string, password: string, roleId: number) =>
