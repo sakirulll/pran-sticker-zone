@@ -284,6 +284,7 @@ const patterns: [RegExp, (match: RegExpMatchArray) => string][] = [
   [/^(\d+) products are left out because their code is empty or has letters a barcode cannot hold\. Give them a code using English letters and digits\.$/, (m) => `${m[1]}টি পণ্য বাদ পড়েছে, কারণ তাদের কোড খালি অথবা এমন অক্ষর আছে যা বারকোডে রাখা যায় না। ইংরেজি অক্ষর ও সংখ্যা দিয়ে কোড দিন।`],
   [/^Use this only if the printer cannot be connected above\. The printer's own settings in Windows must then have the label size, ([\d.]+) × ([\d.]+) mm\.$/, (m) => `উপরে প্রিন্টার সংযোগ করা না গেলেই শুধু এটি ব্যবহার করুন। তখন Windows-এ প্রিন্টারের নিজের সেটিংসে লেবেলের মাপ ${m[1]} × ${m[2]} মিমি বসানো থাকতে হবে।`],
   [/^Scanned: (.+)$/, (m) => `স্ক্যান হয়েছে: ${m[1]}`],
+  [/^Added: (.+)$/, (m) => `যোগ হয়েছে: ${m[1]}`],
   [/^Connected: (.+)$/, (m) => `সংযুক্ত: ${m[1]}`],
   [/^Printing (\d+) of (\d+)…$/, (m) => `ছাপা হচ্ছে ${m[2]}টির মধ্যে ${m[1]}…`],
   [/^Print Selected \((\d+)\)$/, (m) => `বাছাই করা প্রিন্ট করুন (${m[1]})`],

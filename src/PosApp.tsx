@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ORIGINAL_APP } from "./appShell";
 import { canEncode, code128Svg, fitModule } from "./barcode";
-import { canScanWithCamera, openScanner } from "./cameraScanner";
+import { canScanWithCamera, startScanner } from "./cameraScanner";
 import { canUseBluetooth, canUseSerial, connectBluetooth, connectSerial, drawLabel, tsplJob, type LabelSpec, type PrinterLink } from "./labelPrinter";
 import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
 import { currentLanguage, switchLanguage, translate } from "./i18n";
@@ -408,6 +408,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         : (low.length ? `<h4>Low Stock (${low.length})</h4>${low.slice(0, shown).map((product: any) => `<a href="#stocks"><span>${esc(product.name)}</span><small>${(+product.stock || 0) <= 0 ? "Out of stock" : `Stock ${+product.stock}`} · Alert Qty ${alertQty(product)}</small></a>`).join("")}` : "")
           + (dues.length ? `<h4>Customer Due (${dues.length})</h4>${dues.slice(0, shown).map((sale: any) => `<a href="#dues"><span>${esc(sale.party || "Customer")}</span><small>${esc(sale.inv)} · ${tk(sale.due)}</small></a>`).join("")}` : "");
     };
+
+    // Whether the Sale screen's camera scanner was left switched on, on this device.
+    const CAMERA_SCAN_SAVED = "hishabpos_camera_scan";
 
     const toast = (t: string) => {
       const e = $("#toast");
@@ -920,7 +923,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
               </div>
             ` : ""}
 
-            ${s ? `<div class="serial-scan"><label for="serialScan">Scan a barcode, or enter a product code or serial number, then press Enter</label><div style="display:flex;gap:8px"><input id="serialScan" autocomplete="off" placeholder="Barcode, product code or serial number" style="flex:1;min-width:0">${canScanWithCamera() ? `<button class="btn pu" id="scanCamera" type="button" aria-label="Scan with the camera" title="Scan with the camera" style="flex:0 0 auto;padding:0 14px"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg></button>` : ""}</div></div>` : ""}
+            ${s ? `<div class="serial-scan"><label for="serialScan">Scan a barcode, or enter a product code or serial number, then press Enter</label><div style="display:flex;gap:8px"><input id="serialScan" autocomplete="off" placeholder="Barcode, product code or serial number" style="flex:1;min-width:0">${canScanWithCamera() ? `<button class="btn pu" id="scanCamera" type="button" aria-label="Scan with the camera" title="Scan with the camera" style="flex:0 0 auto;padding:0 14px"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg></button>` : ""}</div><div id="scanPanel"></div></div>` : ""}
 
             <div class="wrap">
               <table style="min-width:560px">
@@ -1096,16 +1099,32 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         };
         partySelect?.addEventListener("change", syncWalkinFields);
         syncWalkinFields();
-        // The camera stays open over the page, so several products can be scanned in a row.
-        $("#scanCamera")?.addEventListener("click", () => void openScanner(root, (code) => {
-          const message = $("#toast");
-          if (message) message.style.display = "none";
-          addSerialFromScan(code);
-          // The scan box takes the focus after a scan, which would bring up the phone's keyboard under the camera.
-          (document.activeElement as HTMLElement | null)?.blur();
-          // A message such as "not found" appears behind the camera, so it is shown on the camera screen instead.
-          return message && message.style.display === "block" ? message.textContent || "" : "";
-        }));
+        // The camera sits on the page and stays on, so products are added one after
+        // another just by holding it over their barcodes. Once switched on it comes
+        // on by itself each time this screen opens, until it is closed.
+        const scanPanel = $("#scanPanel");
+        const remembered = () => { try { return localStorage.getItem(CAMERA_SCAN_SAVED) === "on"; } catch { return false; } };
+        const remember = (on: boolean) => { try { localStorage.setItem(CAMERA_SCAN_SAVED, on ? "on" : "off"); } catch { /* it then has to be switched on each visit */ } };
+        let stopCamera: (() => void) | null = null;
+        const startCamera = () => {
+          stopCamera = startScanner(scanPanel, (code) => {
+            const message = $("#toast");
+            if (message) message.style.display = "none";
+            const count = () => CART.reduce((sum, item) => sum + item.qty, 0);
+            const before = count();
+            const added = addSerialFromScan(code);
+            // The scan box takes the focus after a scan, which would bring up the phone's keyboard.
+            (document.activeElement as HTMLElement | null)?.blur();
+            if (added && count() > before) return `Added: ${added.name} × ${CART.find((item) => item.id === added.id)?.qty || 1}`;
+            return message && message.style.display === "block" ? message.textContent || "" : "";
+          }, () => { stopCamera = null; remember(false); });
+        };
+        $("#scanCamera")?.addEventListener("click", () => {
+          if (stopCamera) { stopCamera(); stopCamera = null; remember(false); return; }
+          remember(true);
+          startCamera();
+        });
+        if (scanPanel && $("#scanCamera") && remembered()) startCamera();
         const serialScan = $("#serialScan");
         serialScan?.addEventListener("keydown", (event: KeyboardEvent) => {
           if (event.key !== "Enter") return;
@@ -1199,7 +1218,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       draw();
     };
 
-    const addSerialFromScan = (serial: string) => {
+    // Returns the product it tried to add, or nothing when the code matched none.
+    const addSerialFromScan = (serial: string): any => {
       const matchedProduct = D.products.find((p: any) =>
         p.hasSerial && +p.stock > 0 &&
         (p.serials || []).some((value: string) => value.toLowerCase() === serial.toLowerCase()),
@@ -1212,7 +1232,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         );
         if (!codeMatch) {
           toast("Serial not found. For regular products, enter the product code.");
-          return;
+          return undefined;
         }
         addc(codeMatch.id);
       }
@@ -1221,6 +1241,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         input.value = "";
         input.focus();
       }
+      return matchedProduct || D.products.find((p: any) => !p.hasSerial && +p.stock > 0 && String(p.code || "").trim().toLowerCase() === serial.toLowerCase());
     };
 
     const setCartPrice = (index: number, value: string) => {

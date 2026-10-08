@@ -1,7 +1,7 @@
 // Scanning barcodes with the device's camera.
 //
-// Opens the back camera over the page and reports each barcode it sees, staying
-// open so several products can be scanned one after another. Where the browser
+// Shows the back camera in a panel on the page and reports each barcode it sees,
+// staying on so several products can be scanned one after another. Where the browser
 // can read barcodes itself (Chrome on Android) that is used; elsewhere, an
 // iPhone included, frames are read by barcodeReader.ts.
 
@@ -42,93 +42,116 @@ async function makeFinder(): Promise<Finder> {
   };
 }
 
+// A short beep, as a shop's scanner gives, so a scan is noticed without looking.
+let sound: AudioContext | undefined;
+function beep() {
+  try {
+    sound ??= new (window.AudioContext || (window as any).webkitAudioContext)();
+    const tone = sound.createOscillator();
+    const volume = sound.createGain();
+    tone.frequency.value = 1500;
+    volume.gain.value = 0.15;
+    tone.connect(volume).connect(sound.destination);
+    tone.start();
+    tone.stop(sound.currentTime + 0.09);
+  } catch {
+    // No sound on this device; the message and the buzz still tell.
+  }
+}
+
 /**
- * Shows the camera over the page and calls `onCode` for each barcode scanned.
+ * Shows the camera inside `holder` and calls `onCode` for each barcode scanned.
  * What `onCode` returns is shown under the camera in place of "Scanned: ...",
- * for saying that a code was not recognised. Resolves when the camera is
- * showing; the person closes it with Done.
+ * for naming the product or saying that a code was not recognised. Returns a
+ * function that switches the camera off; `onClosed` is called when the person
+ * closes it themselves. The camera also goes off when `holder` leaves the page.
  */
-export async function openScanner(parent: HTMLElement, onCode: (code: string) => string | void): Promise<void> {
-  const overlay = document.createElement("div");
-  overlay.setAttribute("role", "dialog");
-  overlay.setAttribute("aria-label", "Scan a barcode");
-  overlay.style.cssText = "position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;background:#000;color:#fff;font:15px/1.4 system-ui,sans-serif";
-  overlay.innerHTML = `
-    <div style="position:relative;flex:1;min-height:0;overflow:hidden">
-      <video playsinline muted autoplay style="width:100%;height:100%;object-fit:cover"></video>
+export function startScanner(holder: HTMLElement, onCode: (code: string) => string | void, onClosed?: () => void): () => void {
+  const panel = document.createElement("div");
+  panel.setAttribute("role", "group");
+  panel.setAttribute("aria-label", "Scan a barcode");
+  panel.style.cssText = "margin-top:8px;border-radius:10px;overflow:hidden;background:#000;color:#fff;font:14px/1.4 system-ui,sans-serif";
+  panel.innerHTML = `
+    <div style="position:relative;height:190px">
+      <video playsinline muted autoplay style="display:block;width:100%;height:100%;object-fit:cover"></video>
       <div style="position:absolute;left:8%;right:8%;top:50%;height:2px;background:#ef4444;box-shadow:0 0 8px #ef4444"></div>
     </div>
-    <div style="padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:#111;text-align:center">
-      <p data-scan-status style="margin:0 0 10px;min-height:1.4em">Starting the camera…</p>
-      <div style="display:flex;gap:10px;justify-content:center">
-        <button type="button" data-scan-light hidden style="padding:11px 20px;border:1px solid #555;border-radius:8px;background:#222;color:#fff;font:inherit">Light</button>
-        <button type="button" data-scan-done style="padding:11px 34px;border:0;border-radius:8px;background:#dc3f17;color:#fff;font:inherit;font-weight:700">Done</button>
-      </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#111">
+      <p data-scan-status aria-live="polite" style="flex:1;min-width:0;margin:0">Starting the camera…</p>
+      <button type="button" data-scan-light hidden style="flex:0 0 auto;padding:7px 12px;border:1px solid #555;border-radius:8px;background:#222;color:#fff;font:inherit">Light</button>
+      <button type="button" data-scan-done style="flex:0 0 auto;padding:7px 14px;border:0;border-radius:8px;background:#dc3f17;color:#fff;font:inherit;font-weight:700">Close</button>
     </div>`;
-  parent.append(overlay);
-  const video = overlay.querySelector("video")!;
-  const status = overlay.querySelector<HTMLElement>("[data-scan-status]")!;
-  const light = overlay.querySelector<HTMLButtonElement>("[data-scan-light]")!;
+  holder.replaceChildren(panel);
+  const video = panel.querySelector("video")!;
+  const status = panel.querySelector<HTMLElement>("[data-scan-status]")!;
+  const light = panel.querySelector<HTMLButtonElement>("[data-scan-light]")!;
 
   let stream: MediaStream | undefined;
   let open = true;
   const close = () => {
     open = false;
     stream?.getTracks().forEach((track) => track.stop());
-    overlay.remove();
+    panel.remove();
   };
-  overlay.querySelector("[data-scan-done]")!.addEventListener("click", close);
+  panel.querySelector("[data-scan-done]")!.addEventListener("click", () => { close(); onClosed?.(); });
 
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
-  } catch (error) {
-    const name = (error as Error)?.name;
-    status.textContent = name === "NotAllowedError" || name === "SecurityError"
-      ? "The camera is blocked. Allow the camera for this site in the browser's settings, then try again."
-      : "No camera could be opened on this device.";
-    return;
-  }
-  // Done may have been pressed while the browser was still asking for permission.
-  if (!open) { stream.getTracks().forEach((track) => track.stop()); return; }
-  video.srcObject = stream;
-  await video.play().catch(() => undefined);
-
-  // A lamp, on phones whose camera has one that the browser may switch.
-  const track = stream.getVideoTracks()[0];
-  if ((track.getCapabilities?.() as any)?.torch) {
-    let lit = false;
-    light.hidden = false;
-    light.addEventListener("click", () => {
-      lit = !lit;
-      void track.applyConstraints({ advanced: [{ torch: lit } as any] }).catch(() => undefined);
-    });
-  }
-
-  let find: Finder;
-  try {
-    find = await makeFinder();
-  } catch {
-    status.textContent = "The barcode reader could not be loaded. Check the internet connection and try again.";
-    return;
-  }
-  status.textContent = "Hold the red line across the barcode.";
-  let lastCode = "";
-  let lastSeen = 0;
-  const look = async () => {
-    if (!open) return;
-    if (video.readyState >= 2 && video.videoWidth) {
-      const code = (await find(video).catch(() => "")).trim();
-      if (code && open) {
-        const now = Date.now();
-        if (code !== lastCode || now - lastSeen > REPEAT_AFTER) {
-          navigator.vibrate?.(60);
-          status.textContent = onCode(code) || `Scanned: ${code}`;
-        }
-        lastCode = code;
-        lastSeen = now;
-      }
+  const run = async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+    } catch (error) {
+      const name = (error as Error)?.name;
+      status.textContent = name === "NotAllowedError" || name === "SecurityError"
+        ? "The camera is blocked. Allow the camera for this site in the browser's settings, then try again."
+        : "No camera could be opened on this device.";
+      return;
     }
-    setTimeout(() => void look(), 140);
+    // It may have been closed, or the screen left, while the browser was still asking for permission.
+    if (!open || !panel.isConnected) { close(); return; }
+    video.srcObject = stream;
+    await video.play().catch(() => undefined);
+
+    // A lamp, on phones whose camera has one that the browser may switch.
+    const track = stream.getVideoTracks()[0];
+    if ((track.getCapabilities?.() as any)?.torch) {
+      let lit = false;
+      light.hidden = false;
+      light.addEventListener("click", () => {
+        lit = !lit;
+        void track.applyConstraints({ advanced: [{ torch: lit } as any] }).catch(() => undefined);
+      });
+    }
+
+    let find: Finder;
+    try {
+      find = await makeFinder();
+    } catch {
+      status.textContent = "The barcode reader could not be loaded. Check the internet connection and try again.";
+      return;
+    }
+    status.textContent = "Hold the red line across the barcode.";
+    let lastCode = "";
+    let lastSeen = 0;
+    const look = async () => {
+      if (!open) return;
+      // The screen it was on has been replaced by another.
+      if (!panel.isConnected) { close(); return; }
+      if (video.readyState >= 2 && video.videoWidth) {
+        const code = (await find(video).catch(() => "")).trim();
+        if (code && open) {
+          const now = Date.now();
+          if (code !== lastCode || now - lastSeen > REPEAT_AFTER) {
+            navigator.vibrate?.(60);
+            beep();
+            status.textContent = onCode(code) || `Scanned: ${code}`;
+          }
+          lastCode = code;
+          lastSeen = now;
+        }
+      }
+      setTimeout(() => void look(), 140);
+    };
+    void look();
   };
-  void look();
+  void run();
+  return close;
 }
