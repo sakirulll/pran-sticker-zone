@@ -165,9 +165,33 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function connectBluetooth(): Promise<PrinterLink> {
   const device = await (navigator as any).bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: BLUETOOTH_SERVICES });
   const server = await device.gatt.connect();
+  // Browsers differ in how much of Web Bluetooth they have. Chrome can list every
+  // service at once; the Bluetooth browsers for iPhone (Bluefy and the like) can
+  // only be asked for one service by name, so fall back to trying each in turn.
+  let services: any[] = [];
+  try {
+    services = await server.getPrimaryServices();
+  } catch {
+    services = [];
+  }
+  if (!services.length) {
+    for (const uuid of BLUETOOTH_SERVICES) {
+      try {
+        services.push(await server.getPrimaryService(uuid));
+      } catch {
+        // The printer does not have this one; try the next.
+      }
+    }
+  }
   let writer: any = null;
-  for (const service of await server.getPrimaryServices()) {
-    for (const characteristic of await service.getCharacteristics()) {
+  for (const service of services) {
+    let characteristics: any[] = [];
+    try {
+      characteristics = await service.getCharacteristics();
+    } catch {
+      characteristics = [];
+    }
+    for (const characteristic of characteristics) {
       if (!writer && (characteristic.properties.writeWithoutResponse || characteristic.properties.write)) writer = characteristic;
     }
   }
@@ -176,19 +200,19 @@ export async function connectBluetooth(): Promise<PrinterLink> {
     throw new Error("This device does not accept print data over Bluetooth. Choose the label printer.");
   }
   const acknowledged = !writer.properties.writeWithoutResponse;
+  // The older single "writeValue" is all some browsers offer.
+  const put = async (part: Uint8Array) => {
+    if (acknowledged && writer.writeValueWithResponse) return writer.writeValueWithResponse(part);
+    if (!acknowledged && writer.writeValueWithoutResponse) await writer.writeValueWithoutResponse(part);
+    else await writer.writeValue(part);
+    await pause(12);
+  };
   return {
     name: device.name || "Bluetooth printer",
     // Bluetooth carries little at a time, and a printer that is sent data faster than it can take drops it.
     send: async (bytes) => {
       const size = 120;
-      for (let start = 0; start < bytes.length; start += size) {
-        const part = bytes.slice(start, start + size);
-        if (acknowledged) await writer.writeValueWithResponse(part);
-        else {
-          await writer.writeValueWithoutResponse(part);
-          await pause(12);
-        }
-      }
+      for (let start = 0; start < bytes.length; start += size) await put(bytes.slice(start, start + size));
     },
     close: async () => { device.gatt.disconnect(); },
   };

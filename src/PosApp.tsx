@@ -1883,7 +1883,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           <button class="btn" id="rcWindow" type="button" ${quiet}>Open print window</button>
           <button class="btn" id="rcClose" type="button" ${quiet}>Close</button>
         </div>
-        ${canUseBluetooth() ? "" : `<p class="settings-help" style="margin:10px 0 0">This browser cannot reach a Bluetooth printer (an iPhone does not allow it). Press "Share or save picture" and choose your printer's app to print the receipt.</p>`}
+        ${canUseBluetooth() ? "" : `<p class="settings-help" style="margin:10px 0 0">This browser cannot reach a Bluetooth printer. On an iPhone, Safari and Chrome are not allowed to: open this site in the Bluefy browser app to print straight to the printer. Or press "Share or save picture" and print the picture from your printer's app.</p>`}
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px">
           <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0">Printer ${pick("rcKind", [["escpos", "Receipt printer"], ["tspl", "Label printer"]], RECEIPT_OPTIONS.kind)}</label>
           <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0">Paper ${pick("rcPaper", [[58, "58 mm"], [80, "80 mm"]], RECEIPT_OPTIONS.paper)}</label>
