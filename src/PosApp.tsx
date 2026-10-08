@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ORIGINAL_APP } from "./appShell";
 import { canEncode, code128Svg, fitModule } from "./barcode";
+import { canUseBluetooth, canUseSerial, connectBluetooth, connectSerial, drawLabel, tsplJob, type LabelSpec, type PrinterLink } from "./labelPrinter";
 import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
 import { currentLanguage, switchLanguage } from "./i18n";
 import { clearOfflineShop, readOfflineShop, writeOfflineShop } from "./offlineStore";
@@ -2086,6 +2087,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // A label carries the product's code, which the Sale screen accepts from a scanner.
     // `on` is the tick on the row: only ticked products are printed by the button at the top.
     let BARCODE_ITEMS: { id: any; qty: number; on: boolean }[] = [];
+    // The printer connected for printing straight to it, kept while moving between screens.
+    let BARCODE_LINK: PrinterLink | null = null;
     // Sizes are in millimetres, as printed. They are remembered on this device,
     // because they belong to the label paper and printer in use here.
     const BARCODE_SAVED = "hishabpos_barcode_v2";
@@ -2100,6 +2103,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       // Whether the page size is sent to a label printer. Off by default: a printer that
       // cannot take so small a custom size prints a blank page, while its own paper setting always works.
       sendSize: false,
+      // For printing straight to the printer: whether the roll is one long strip rather than separate labels.
+      continuous: false,
       across: 1, width: 50, height: 25, bars: 9, font: 7, gap: 2, dpi: 203, offsetX: 0, offsetY: 0,
     };
     try {
@@ -2211,7 +2216,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           ${size("offsetY", "Move down (mm)")}
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px">${check("shop", "Shop Name")}${check("name", "Product Name")}${check("code", "Code")}${check("price", "Sale Price")}</div>
         </div>
-        ${roll ? `<div style="padding:0 18px 4px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="bcSendSize" type="checkbox" style="width:auto" ${options.sendSize ? "checked" : ""}> Send the label size to the printer</label><p class="settings-help" style="margin:4px 0 0">Leave this off if a print comes out blank. The printer then uses its own paper size, which should be ${paperSize} mm.</p></div><p class="settings-help" style="padding:0 18px">In the print window choose your label printer, set Margins to None and Scale to 100.</p><div style="margin:8px 18px 12px;padding:12px 14px;border:1px solid var(--ln);border-radius:8px"><b>Lining up the printer</b><p class="settings-help" style="margin:6px 0 10px">Print the test label first. It has a line all round its edge. If the whole line is on the label, everything is right. If part is missing, move the print with "Move right" and "Move down" (a minus number moves it left or up) and print it again.</p><button class="btn" id="bcTest" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Print test label</button></div>` : rowWidth > A4_WIDTH ? warn(`These labels need ${rowWidth} mm across, but an A4 sheet has ${A4_WIDTH} mm. Use fewer labels per row or a smaller width.`) : ""}
+        ${roll ? `<div style="padding:0 18px 4px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="bcSendSize" type="checkbox" style="width:auto" ${options.sendSize ? "checked" : ""}> Send the label size to the printer</label><p class="settings-help" style="margin:4px 0 0">Leave this off if a print comes out blank. The printer then uses its own paper size, which should be ${paperSize} mm.</p></div><p class="settings-help" style="padding:0 18px">In the print window choose your label printer, set Margins to None and Scale to 100.</p><div style="margin:8px 18px 12px;padding:12px 14px;border:1px solid var(--ln);border-radius:8px"><b>Lining up the printer</b><p class="settings-help" style="margin:6px 0 10px">Print the test label first. It has a line all round its edge. If the whole line is on the label, everything is right. If part is missing, move the print with "Move right" and "Move down" (a minus number moves it left or up) and print it again.</p><button class="btn" id="bcTest" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Print test label</button></div><div style="margin:8px 18px 12px;padding:12px 14px;border:2px solid var(--pu);border-radius:8px"><b>Print straight to the printer</b><p class="settings-help" style="margin:6px 0 10px">This sends the label to the printer itself, the way a phone label app does, without the Windows printer settings. Use it if printing above comes out blank or in the wrong place. Switch the printer on, then connect.</p><p style="margin:0 0 10px;font-weight:600" id="bcLinkState">${BARCODE_LINK ? `Connected: ${esc(BARCODE_LINK.name)}` : "Not connected"}</p><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${BARCODE_LINK ? `<button class="btn pu" id="bcDirect" type="button" ${labels.length ? "" : "disabled"}>Print Selected (${labels.length})</button><button class="btn" id="bcDirectTest" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Print test label</button><button class="btn" id="bcDisconnect" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Disconnect</button>` : `${canUseBluetooth() ? `<button class="btn pu" id="bcBluetooth" type="button">Connect by Bluetooth</button>` : ""}${canUseSerial() ? `<button class="btn" id="bcSerial" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Connect by cable (COM port)</button>` : ""}${canUseBluetooth() || canUseSerial() ? "" : `<span style="color:var(--rd)">This browser cannot connect to a printer directly. Use Chrome or Edge on a computer.</span>`}`}<label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0"><input id="bcContinuous" type="checkbox" style="width:auto" ${options.continuous ? "checked" : ""}> Paper has no gaps between labels</label></div></div>` : rowWidth > A4_WIDTH ? warn(`These labels need ${rowWidth} mm across, but an A4 sheet has ${A4_WIDTH} mm. Use fewer labels per row or a smaller width.`) : ""}
         ${needed > options.height ? warn(`The text and barcode need about ${Math.ceil(needed)} mm but the label is ${options.height} mm high, so part of it will be cut off. Make the barcode or text smaller, or hide a line.`) : ""}
         ${labels.length ? `<div style="padding:6px 18px 18px"><h3 style="margin:0 0 4px">3. Preview</h3><p class="settings-help" style="margin:0 0 10px">Shown at the size it will print. The dashed line is the edge of the label and is not printed.</p><div style="overflow-x:auto;padding:2px" data-no-translate>${barcodeSheet(labels.slice(0, 60))}</div>${labels.length > 60 ? `<p class="settings-help">Showing the first 60 of ${labels.length} labels. All of them are printed.</p>` : ""}</div>` : ""}
       </section>`;
@@ -2329,6 +2334,79 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       };
       $("#bcPrint").addEventListener("click", () => printLabels());
       $("#bcTest")?.addEventListener("click", () => printLabels(undefined, true));
+
+      // ---- Printing straight to the printer, without the system's printer driver.
+      $("#bcContinuous")?.addEventListener("change", () => { options.continuous = $("#bcContinuous").checked; barcodePage(); });
+      const connect = async (open: () => Promise<PrinterLink>) => {
+        try {
+          BARCODE_LINK = await open();
+          toast("Printer connected");
+        } catch (error) {
+          // Closing the browser's device chooser without choosing is not a failure worth a message.
+          if ((error as Error)?.name !== "NotFoundError") toast(error instanceof Error ? error.message : "The printer could not be connected.");
+        }
+        barcodePage();
+      };
+      $("#bcBluetooth")?.addEventListener("click", () => void connect(connectBluetooth));
+      $("#bcSerial")?.addEventListener("click", () => void connect(connectSerial));
+      $("#bcDisconnect")?.addEventListener("click", () => {
+        void BARCODE_LINK?.close().catch(() => undefined);
+        BARCODE_LINK = null;
+        barcodePage();
+      });
+      const sendDirect = async (jobs: { spec: LabelSpec; copies: number; moduleDots: number; border?: boolean }[]) => {
+        if (!BARCODE_LINK) { toast("Connect the printer first"); return; }
+        const state = $("#bcLinkState");
+        const sideways = options.turn === 90 || options.turn === 270;
+        try {
+          let sent = 0;
+          for (const job of jobs) {
+            if (state) state.textContent = `Printing ${++sent} of ${jobs.length}…`;
+            const picture = drawLabel(job.spec, {
+              widthMm: options.width, heightMm: options.height, barsMm: options.bars, moduleDots: job.moduleDots,
+              dotsPerMm: Math.round(options.dpi / 25.4), turn: options.turn, offsetXMm: options.offsetX, offsetYMm: options.offsetY, border: job.border,
+            });
+            await BARCODE_LINK.send(tsplJob(picture, {
+              widthMm: sideways ? options.height : options.width, heightMm: sideways ? options.width : options.height,
+              gapMm: options.continuous ? 0 : 2, copies: job.copies,
+            }));
+          }
+          toast("Sent to the printer");
+        } catch (error) {
+          console.error("Could not print directly", error);
+          BARCODE_LINK = null;
+          toast("The printer stopped answering. Connect it again.");
+        }
+        barcodePage();
+      };
+      $("#bcDirect")?.addEventListener("click", () => {
+        const points = options.font;
+        void sendDirect(BARCODE_ITEMS.filter((item) => item.on && prod(item.id)).map((item) => {
+          const product = prod(item.id);
+          const price = +product.sell || 0;
+          return {
+            copies: item.qty,
+            moduleDots: Math.max(1, barcodeFit(product).dots),
+            spec: {
+              above: [
+                ...(options.shop ? [{ text: String(D.user.shop || ""), points: points + 3 }] : []),
+                ...(options.name ? [{ text: String(product.name || ""), points }] : []),
+                ...(options.price ? [{ text: `Price: ${Number.isInteger(price) ? price : price.toFixed(2)}`, points: points + 2 }] : []),
+              ],
+              code: barcodeOf(product),
+              below: options.code ? [{ text: barcodeOf(product), points }] : [],
+            },
+          };
+        }));
+      });
+      $("#bcDirectTest")?.addEventListener("click", () => {
+        void sendDirect([{
+          copies: 1,
+          border: true,
+          moduleDots: Math.max(1, fitModule("TEST1234", options.width - BARCODE_SIDE * 2, options.dpi).dots),
+          spec: { above: [{ text: `${options.width} × ${options.height} mm`, points: options.font + 1, bold: true }], code: "TEST1234", below: [{ text: "TEST1234", points: options.font }] },
+        }]);
+      });
       document.querySelectorAll(".bc-print-one").forEach((button) => button.addEventListener("click", () => printLabels((button as HTMLElement).dataset.id)));
     };
 
