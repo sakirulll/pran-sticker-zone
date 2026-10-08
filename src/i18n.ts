@@ -93,6 +93,7 @@ const words: Record<string, string> = {
   "Print this product": "এই পণ্যটি ছাপুন",
   "Print straight to the printer": "সরাসরি প্রিন্টারে ছাপুন", "Not connected": "সংযুক্ত নয়", "Connect by Bluetooth": "Bluetooth দিয়ে সংযোগ করুন",
   "Connect by cable (COM port)": "তার দিয়ে সংযোগ করুন (COM port)", "Disconnect": "সংযোগ বিচ্ছিন্ন করুন", "Paper has no gaps between labels": "কাগজে লেবেলের মাঝে ফাঁক নেই",
+  "203 dpi (usual)": "২০৩ dpi (সাধারণত)", "If the print comes out much too big or too small, change the printer type here.": "ছাপা অনেক বড় বা অনেক ছোট এলে এখানে প্রিন্টারের ধরন বদলান।",
   "Printer connected": "প্রিন্টার সংযুক্ত হয়েছে", "Connect the printer first": "আগে প্রিন্টার সংযোগ করুন", "Sent to the printer": "প্রিন্টারে পাঠানো হয়েছে",
   "The printer stopped answering. Connect it again.": "প্রিন্টার সাড়া দিচ্ছে না। আবার সংযোগ করুন।", "The printer could not be connected.": "প্রিন্টার সংযোগ করা যায়নি।",
   "This device does not accept print data over Bluetooth. Choose the label printer.": "এই ডিভাইসটি Bluetooth দিয়ে ছাপার তথ্য নেয় না। লেবেল প্রিন্টারটি বাছুন।",
