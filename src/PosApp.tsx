@@ -2094,6 +2094,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       paper: "roll" as "roll" | "a4",
       // Which way up the printed page is. On a roll, landscape is the label as designed.
       orient: "landscape" as "landscape" | "portrait",
+      // Whether the page size is sent to a label printer. Off by default: a printer that
+      // cannot take so small a custom size prints a blank page, while its own paper setting always works.
+      sendSize: false,
       across: 1, width: 50, height: 25, bars: 9, font: 7, gap: 2, dpi: 203, offsetX: 0, offsetY: 0,
     };
     try {
@@ -2189,7 +2192,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           ${size("offsetY", "Move down (mm)")}
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px">${check("shop", "Shop Name")}${check("name", "Product Name")}${check("code", "Code")}${check("price", "Sale Price")}</div>
         </div>
-        ${roll ? `<p class="settings-help" style="padding:0 18px">In the printer's own settings, set the paper size to ${paperSize} mm and the margins to none, and print at 100% scale.</p>` : rowWidth > A4_WIDTH ? warn(`These labels need ${rowWidth} mm across, but an A4 sheet has ${A4_WIDTH} mm. Use fewer labels per row or a smaller width.`) : ""}
+        ${roll ? `<div style="padding:0 18px 4px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="bcSendSize" type="checkbox" style="width:auto" ${options.sendSize ? "checked" : ""}> Send the label size to the printer</label><p class="settings-help" style="margin:4px 0 0">Leave this off if a print comes out blank. The printer then uses its own paper size, which should be ${paperSize} mm.</p></div><p class="settings-help" style="padding:0 18px">In the print window choose your label printer, set Margins to None and Scale to 100.</p>` : rowWidth > A4_WIDTH ? warn(`These labels need ${rowWidth} mm across, but an A4 sheet has ${A4_WIDTH} mm. Use fewer labels per row or a smaller width.`) : ""}
         ${needed > options.height ? warn(`The text and barcode need about ${Math.ceil(needed)} mm but the label is ${options.height} mm high, so part of it will be cut off. Make the barcode or text smaller, or hide a line.`) : ""}
         ${labels.length ? `<div style="padding:6px 18px 18px"><h3 style="margin:0 0 4px">3. Preview</h3><p class="settings-help" style="margin:0 0 10px">Shown at the size it will print. The dashed line is the edge of the label and is not printed.</p><div style="overflow-x:auto;padding:2px" data-no-translate>${barcodeSheet(labels.slice(0, 60))}</div>${labels.length > 60 ? `<p class="settings-help">Showing the first 60 of ${labels.length} labels. All of them are printed.</p>` : ""}</div>` : ""}
       </section>`;
@@ -2247,6 +2250,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         options[(box as HTMLElement).dataset.key as "shop" | "name" | "code" | "price"] = (box as HTMLInputElement).checked;
         barcodePage();
       }));
+      $("#bcSendSize")?.addEventListener("change", () => { options.sendSize = $("#bcSendSize").checked; barcodePage(); });
       document.querySelectorAll(".bc-qty").forEach((input) => input.addEventListener("change", () => {
         const listed = itemFor((input as HTMLElement).dataset.id);
         if (listed) listed.qty = clampQty(+(input as HTMLInputElement).value);
@@ -2269,7 +2273,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         // and the last one must not ask for a page after it or a blank label comes out.
         const each = turned ? ".bc-turn" : ".bc-row";
         const page = roll
-          ? `@page{size:${turned ? `${options.height}mm ${rowWidth}mm` : `${rowWidth}mm ${options.height}mm`};margin:0}@media print{${each}{margin:0;break-after:page;page-break-after:always}${each}:last-child{break-after:auto;page-break-after:auto}}`
+          ? `@page{${options.sendSize ? `size:${turned ? `${options.height}mm ${rowWidth}mm` : `${rowWidth}mm ${options.height}mm`};` : ""}margin:0}@media print{${each}{margin:0;break-after:page;page-break-after:always}${each}:last-child{break-after:auto;page-break-after:auto}}`
           : `@page{size:A4 ${options.orient};margin:8mm}`;
         sheet.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Barcode labels</title><style>
           *{box-sizing:border-box}html,body{margin:0;padding:0}body{background:#f3f4f6;font-family:Arial,sans-serif}
