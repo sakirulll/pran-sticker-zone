@@ -226,6 +226,8 @@ body.nav .main{
 .profile-form input{min-width:0}
 .profile-form .profile-save{grid-column:2;justify-self:start;margin-top:18px}
 .profile-form .photo-control{display:flex;align-items:center;gap:10px}
+.guide-step{margin-top:18px;padding-top:16px;border-top:1px solid var(--ln);text-align:left}.guide-step h3{margin:0 0 6px}.guide-step ul{margin:0 0 12px;padding-left:20px;line-height:1.6}.guide-step li{margin-bottom:5px}.guide-step .btn{display:inline-block;text-decoration:none}
+.start-card{margin-bottom:16px;border-left:4px solid var(--pu)}.start-card h3{margin:0 0 8px}.start-card ol{margin:0 0 10px;padding:0;list-style:none}.start-card li{display:flex;gap:8px;padding:4px 0}.start-card li.done{color:var(--mut);text-decoration:line-through}.start-card li.done span{color:#16a34a;text-decoration:none}.start-card p{margin:0;font-size:13px}.start-card button{padding:0;border:0;background:none;color:var(--mut);font:inherit;text-decoration:underline;cursor:pointer}
 .settings-card{max-width:900px}
 .settings-card h2{margin-bottom:8px}
 .settings-help{margin:0 0 18px;color:var(--mut)}

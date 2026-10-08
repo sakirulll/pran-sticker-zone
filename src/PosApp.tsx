@@ -2840,7 +2840,69 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       });
     };
 
+    // The guide a new shop follows: heading, lines, and the screen its button opens.
+    const GUIDE_STEPS: [string, string[], [string, string] | null][] = [
+      ["1. Enter your shop's details", [
+        "Write your shop's name, phone number and address, and add your logo. These are printed at the top of every receipt.",
+        "On the same screen you can choose whether a sale needs the customer's phone number.",
+      ], ["Open General Settings", "settings-general"]],
+      ["2. Add your products", [
+        "For each product enter its name, buying price, selling price and how many you have in stock.",
+        "Product code: if the product already has a barcode on its packet, click in the code box and scan it. If not, type any number of your own; you can print a barcode for it in the next step.",
+        "Set a low stock alert quantity, and the bell at the top will warn you when the product is running out.",
+      ], ["Add a product", "product-add"]],
+      ["3. Print barcode labels", [
+        "Choose the products and how many labels of each, connect your label printer by Bluetooth, and print.",
+        "Set the label's width and height once to match your label roll; they are remembered.",
+        "Printing straight to a Bluetooth printer works in Chrome on a computer or an Android phone.",
+      ], ["Open Barcodes", "barcodes"]],
+      ["4. Make a sale", [
+        "Add products to the bill in any of these ways: scan the barcode with a scanner, type part of the name or code and press Enter, or tap the product's picture.",
+        "On a phone, press the camera button beside the box and hold the camera over the barcode. The camera then comes on by itself each time.",
+        "Write the amount the customer paid in Receive Amount. If it is less than the total, the rest is kept as due.",
+        "Press Save. The receipt window opens; print it, or share it as a picture.",
+      ], ["Open Sale New", "sale-new"]],
+      ["5. Work faster with the keyboard", [
+        "F2 opens a new sale from any screen and puts the cursor in the product box.",
+        "Arrow keys choose from the list and Enter adds. With the box empty, + and − change the quantity of the last product and Delete removes it.",
+        "F4 goes to Receive Amount; type the amount and press Enter to save. F9 saves from anywhere.",
+      ], null],
+      ["6. When new stock arrives", [
+        "Enter it as a purchase: choose the supplier, add the products and quantities, and save. The stock goes up by itself.",
+      ], ["Open Purchase New", "purchase-new"]],
+      ["7. Collect dues", [
+        "The Due List shows every invoice that still has money owing.",
+        "When the customer pays, open Sale List, choose Edit on that invoice and raise the Paid Amount.",
+      ], ["Open Due List", "dues"]],
+      ["8. Give your staff their own login", [
+        "Add a role, tick only the screens that person should see, and give them an email and password. Do not share your own password.",
+      ], ["Open User Role", "settings-roles"]],
+      ["9. Good to know", [
+        "No internet? Keep selling. Your work is kept on the device and sent by itself when the internet returns.",
+        "The same shop can be open on a computer and several phones at once; they all show the same data.",
+        "A backup of your shop is taken every day. The owner can download or restore one under Settings, Backup.",
+        "On a phone, open the browser's menu and choose Add to Home screen to use HishabPOS like an app.",
+      ], null],
+    ];
+
+    const helpPage = () => {
+      $("#app").innerHTML = `<section class="card settings-card"><h2>How to use HishabPOS</h2><p class="settings-help">Follow these steps in order when you start. Each one has a button that takes you to the right screen.</p>${GUIDE_STEPS.map(([heading, lines, button]) => `<div class="guide-step"><h3>${heading}</h3><ul>${lines.map((line) => `<li>${line}</li>`).join("")}</ul>${button ? `<a class="btn pu" href="#${button[1]}">${button[0]}</a>` : ""}</div>`).join("")}</section>`;
+    };
+
+    // Shown on the dashboard to the owner of a shop that is still being set up.
+    const startCard = () => {
+      if (!isWorkspaceOwner || D.settings.guideHidden) return "";
+      const items: [string, string, boolean][] = [
+        ["Enter your shop's phone number and address", "settings-general", Boolean(D.user.phone && D.user.address)],
+        ["Add your first product", "product-add", D.products.length > 0],
+        ["Make your first sale", "sale-new", D.sales.length > 0],
+      ];
+      if (items.every((item) => item[2])) return "";
+      return `<section class="card start-card"><h3>Get your shop ready</h3><ol>${items.map(([text, route, done]) => `<li class="${done ? "done" : ""}"><span aria-hidden="true">${done ? "✔" : "○"}</span>${done ? text : `<a href="#${route}">${text}</a>`}</li>`).join("")}</ol><p><a href="#help">Read the full guide</a> · <button type="button" onclick="hideStartCard()">Hide this</button></p></section>`;
+    };
+
     const P: AnyData = {
+      help: helpPage,
       products: productList,
       "settings-currencies": currencyPage,
       "settings-notifications": notificationsPage,
@@ -3006,7 +3068,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         const low = lowStockProducts();
 
         $("#app").innerHTML = `
-
+          ${startCard()}
           <div class="stats">
 
             ${cs
@@ -3840,6 +3902,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           ["Pricing", "admin-settings"],
         ],
       ],
+
+      [
+        "Help",
+        "❓",
+        "help",
+      ],
     ];
 
     const hdr = () => {
@@ -3880,6 +3948,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
             if (item[0] === "Subscription") return isWorkspaceOwner ? item : null;
+            // The guide is for everyone.
+            if (item[0] === "Help") return item;
             if (Array.isArray(item[2])) {
               const children = item[2].filter((child: any[]) =>
                 (isWorkspaceOwner || !["settings-roles", "settings-backup", "settings-subscription"].includes(child[1])) &&
@@ -4183,6 +4253,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     (window as any).setCartPrice = setCartPrice;
     (window as any).setCartQty = setCartQty;
     (window as any).removeCartItem = removeCartItem;
+    (window as any).hideStartCard = () => { D.settings.guideHidden = true; save(); render(); };
 
     (
       window as any
