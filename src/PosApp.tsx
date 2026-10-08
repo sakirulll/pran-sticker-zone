@@ -113,7 +113,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     const $ = (q: string): any => document.querySelector(q);
 
-    const today = () => new Date().toISOString().slice(0, 10);
+    // The date on this device's own clock; the plain ISO date is London's, which
+    // stays on yesterday until six in the morning in Bangladesh.
+    const today = () => {
+      const now = new Date();
+      return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    };
 
     const esc = (s: any) =>
       String(s ?? "").replace(
