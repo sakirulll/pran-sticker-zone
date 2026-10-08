@@ -95,6 +95,7 @@ const words: Record<string, string> = {
   "Print the test label first. It has a line all round its edge. If the whole line is on the label, everything is right. If part is missing, move the print with \"Move right\" and \"Move down\" (a minus number moves it left or up) and print it again.": "আগে পরীক্ষার লেবেলটি ছাপুন। এর চারপাশে একটি দাগ আছে। পুরো দাগটি লেবেলের ভেতরে এলে সব ঠিক আছে। কোনো অংশ বাদ পড়লে \"ডানে সরান\" ও \"নিচে সরান\" দিয়ে ছাপা সরান (মাইনাস সংখ্যা দিলে বাঁয়ে বা উপরে সরে), তারপর আবার ছাপুন।",
   "Send the label size to the printer": "লেবেলের মাপ প্রিন্টারে পাঠান",
   "In the print window choose your label printer, set Margins to None and Scale to 100.": "প্রিন্টের জানালায় আপনার লেবেল প্রিন্টার বাছুন, Margins-এ None আর Scale-এ 100 দিন।",
+  "Turn the print": "ছাপা ঘোরান", "0° (as it is)": "০° (যেমন আছে)", "90° (on its side)": "৯০° (কাত করে)", "180° (upside down)": "১৮০° (উল্টো করে)", "270° (on its other side)": "২৭০° (অন্য দিকে কাত)",
   "Page direction": "পাতার দিক", "Portrait (tall)": "Portrait (লম্বালম্বি)", "Landscape (wide)": "Landscape (আড়াআড়ি)",
   "Portrait (label turned sideways)": "Portrait (লেবেল ঘুরিয়ে)", "Landscape (label as it is)": "Landscape (লেবেল যেমন আছে)",
   "Printer sharpness": "প্রিন্টারের সূক্ষ্মতা", "203 dpi (most label printers)": "২০৩ dpi (বেশিরভাগ লেবেল প্রিন্টার)", "600 dpi (laser or inkjet)": "৬০০ dpi (লেজার বা ইংকজেট)",

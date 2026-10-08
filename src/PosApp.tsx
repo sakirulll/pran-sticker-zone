@@ -2094,14 +2094,22 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       shop: true, name: true, code: true, price: true,
       paper: "roll" as "roll" | "a4",
       // Which way up the printed page is. On a roll, landscape is the label as designed.
-      orient: "landscape" as "landscape" | "portrait",
+      orient: "portrait" as "landscape" | "portrait",
+      // How far the print is turned on a roll, in degrees clockwise.
+      turn: 0 as 0 | 90 | 180 | 270,
       // Whether the page size is sent to a label printer. Off by default: a printer that
       // cannot take so small a custom size prints a blank page, while its own paper setting always works.
       sendSize: false,
       across: 1, width: 50, height: 25, bars: 9, font: 7, gap: 2, dpi: 203, offsetX: 0, offsetY: 0,
     };
     try {
-      Object.assign(BARCODE_OPTIONS, JSON.parse(localStorage.getItem(BARCODE_SAVED) || "{}"));
+      const saved = JSON.parse(localStorage.getItem(BARCODE_SAVED) || "{}");
+      // Settings saved before the print could be turned four ways: "portrait" on a roll meant a quarter turn.
+      if (saved.turn === undefined && saved.paper !== "a4") {
+        if (saved.orient === "portrait") saved.turn = 90;
+        delete saved.orient;
+      }
+      Object.assign(BARCODE_OPTIONS, saved);
     } catch {
       // Nothing usable was saved; the defaults above apply.
     }
@@ -2127,14 +2135,18 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const barcodeSheetWidth = () => (BARCODE_OPTIONS.orient === "landscape" ? 281 : 194);
     const barcodeSheet = (labels: string[]) => {
       if (BARCODE_OPTIONS.paper === "a4") return `<div class="bc-grid" style="${barcodeVars()}">${labels.join("")}</div>`;
-      // Portrait on a roll: the page is the label turned on its side, for printers
-      // that feed the label short edge first. The row is drawn as usual, then turned.
-      const turned = BARCODE_OPTIONS.orient === "portrait";
+      // On a roll the print can be turned in quarter turns, for a printer that feeds
+      // the label another way up. The row is drawn as usual inside a box the size it
+      // will take up once turned, then turned to fill that box.
+      const { turn, height } = BARCODE_OPTIONS;
+      const wide = barcodeRowWidth();
+      const sideways = turn === 90 || turn === 270;
+      const move = { 0: "", 90: `translateX(${height}mm) rotate(90deg)`, 180: `translate(${wide}mm,${height}mm) rotate(180deg)`, 270: `translateY(${wide}mm) rotate(-90deg)` }[turn];
       let rows = "";
       for (let index = 0; index < labels.length; index += BARCODE_OPTIONS.across) {
         const row = labels.slice(index, index + BARCODE_OPTIONS.across).join("");
-        rows += turned
-          ? `<div class="bc-turn" style="width:${BARCODE_OPTIONS.height}mm;height:${barcodeRowWidth()}mm"><div class="bc-row" style="${barcodeVars()};margin:0;transform-origin:top left;transform:translateX(${BARCODE_OPTIONS.height}mm) rotate(90deg)">${row}</div></div>`
+        rows += move
+          ? `<div class="bc-turn" style="width:${sideways ? height : wide}mm;height:${sideways ? wide : height}mm"><div class="bc-row" style="${barcodeVars()};margin:0;transform-origin:top left;transform:${move}">${row}</div></div>`
           : `<div class="bc-row" style="${barcodeVars()}">${row}</div>`;
       }
       return rows;
@@ -2148,7 +2160,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const labels = barcodeLabels();
       const roll = options.paper === "roll";
       const rowWidth = barcodeRowWidth();
-      const turned = roll && options.orient === "portrait";
+      const turned = roll && (options.turn === 90 || options.turn === 270);
       // The paper as the printer sees it.
       const paperSize = turned ? `${options.height} × ${rowWidth}` : `${rowWidth} × ${options.height}`;
       const A4_WIDTH = barcodeSheetWidth();
@@ -2184,7 +2196,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <h3 style="margin:18px 18px 4px">2. Label and printer</h3>
         <div class="settings-form-grid" style="padding:0 18px 12px">
           <label>Printer<select id="bcPaper"><option value="roll" ${roll ? "selected" : ""}>Label printer (roll)</option><option value="a4" ${roll ? "" : "selected"}>A4 sheet (normal printer)</option></select></label>
-          <label>Page direction<select id="bcOrient"><option value="portrait" ${options.orient === "portrait" ? "selected" : ""}>${roll ? "Portrait (label turned sideways)" : "Portrait (tall)"}</option><option value="landscape" ${options.orient === "landscape" ? "selected" : ""}>${roll ? "Landscape (label as it is)" : "Landscape (wide)"}</option></select></label>
+          ${roll
+            ? `<label>Turn the print<select id="bcTurn">${[[0, "0° (as it is)"], [90, "90° (on its side)"], [180, "180° (upside down)"], [270, "270° (on its other side)"]].map(([degrees, text]) => `<option value="${degrees}" ${options.turn === degrees ? "selected" : ""}>${text}</option>`).join("")}</select></label>`
+            : `<label>Page direction<select id="bcOrient"><option value="portrait" ${options.orient === "portrait" ? "selected" : ""}>Portrait (tall)</option><option value="landscape" ${options.orient === "landscape" ? "selected" : ""}>Landscape (wide)</option></select></label>`}
           <label>Printer sharpness<select id="bcDpi">${[[203, "203 dpi (most label printers)"], [300, "300 dpi"], [600, "600 dpi (laser or inkjet)"]].map(([dpi, text]) => `<option value="${dpi}" ${options.dpi === dpi ? "selected" : ""}>${text}</option>`).join("")}</select></label>
           <label>Label size<select id="bcPreset">${BARCODE_PRESETS.map(([width, height]) => `<option value="${width}x${height}" ${preset && preset[0] === width && preset[1] === height ? "selected" : ""}>${width} × ${height} mm</option>`).join("")}<option value="" ${preset ? "" : "selected"}>Custom size</option></select></label>
           ${size("width", "Label width (mm)")}
@@ -2243,10 +2257,15 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#bcPaper").addEventListener("change", () => {
         options.paper = $("#bcPaper").value === "a4" ? "a4" : "roll";
         // Each kind of printer starts from what suits it; every value can still be changed.
-        Object.assign(options, options.paper === "a4" ? { across: 3, dpi: 600, orient: "portrait" } : { across: 1, dpi: 203, orient: "landscape" });
+        Object.assign(options, options.paper === "a4" ? { across: 3, dpi: 600 } : { across: 1, dpi: 203 });
         barcodePage();
       });
-      $("#bcOrient").addEventListener("change", () => { options.orient = $("#bcOrient").value === "portrait" ? "portrait" : "landscape"; barcodePage(); });
+      $("#bcOrient")?.addEventListener("change", () => { options.orient = $("#bcOrient").value === "portrait" ? "portrait" : "landscape"; barcodePage(); });
+      $("#bcTurn")?.addEventListener("change", () => {
+        const degrees = +$("#bcTurn").value;
+        options.turn = degrees === 90 || degrees === 180 || degrees === 270 ? degrees : 0;
+        barcodePage();
+      });
       $("#bcDpi").addEventListener("change", () => { options.dpi = +$("#bcDpi").value; barcodePage(); });
       $("#bcPreset").addEventListener("change", () => {
         const [width, height] = $("#bcPreset").value.split("x").map(Number);
@@ -2293,7 +2312,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         if (!sheet) { toast("Allow pop-ups to print the labels"); return; }
         // On a roll every row of labels is its own page, exactly the size of the row,
         // and the last one must not ask for a page after it or a blank label comes out.
-        const each = turned ? ".bc-turn" : ".bc-row";
+        const each = options.turn ? ".bc-turn" : ".bc-row";
         const page = roll
           ? `@page{${options.sendSize ? `size:${turned ? `${options.height}mm ${rowWidth}mm` : `${rowWidth}mm ${options.height}mm`};` : ""}margin:0}@media print{${each}{margin:0;break-after:page;page-break-after:always}${each}:last-child{break-after:auto;page-break-after:auto}}`
           : `@page{size:A4 ${options.orient};margin:8mm}`;
