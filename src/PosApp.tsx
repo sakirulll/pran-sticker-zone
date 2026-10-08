@@ -2089,7 +2089,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // Sizes are in millimetres, as printed. They are remembered on this device,
     // because they belong to the label paper and printer in use here.
     const BARCODE_SAVED = "hishabpos_barcode_v2";
-    const BARCODE_PRESETS: [number, number][] = [[50, 30], [50, 25], [40, 30], [40, 25], [38, 25], [30, 20], [60, 40], [58, 40], [80, 50], [100, 50]];
+    const BARCODE_PRESETS: [number, number][] = [[50, 25], [50, 30], [40, 30], [40, 25], [38, 25], [30, 20], [60, 40], [58, 40], [80, 50], [100, 50]];
     const BARCODE_OPTIONS = {
       shop: true, name: true, code: true, price: true,
       paper: "roll" as "roll" | "a4",
