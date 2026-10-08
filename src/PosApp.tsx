@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { ORIGINAL_APP } from "./appShell";
-import { canEncode, code128Svg } from "./barcode";
+import { canEncode, code128Svg, fitModule } from "./barcode";
 import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
 import { currentLanguage, switchLanguage } from "./i18n";
 import { clearOfflineShop, readOfflineShop, writeOfflineShop } from "./offlineStore";
@@ -2087,64 +2087,105 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     let BARCODE_ITEMS: { id: any; qty: number }[] = [];
     // Sizes are in millimetres, as printed. They are remembered on this device,
     // because they belong to the label paper and printer in use here.
-    const BARCODE_SAVED = "hishabpos_barcode";
-    const BARCODE_OPTIONS = { shop: true, name: true, price: true, columns: 3, width: 50, height: 30, bars: 12, paper: "a4" as "a4" | "roll" };
+    const BARCODE_SAVED = "hishabpos_barcode_v2";
+    const BARCODE_PRESETS: [number, number][] = [[50, 25], [40, 30], [38, 25], [30, 20], [60, 40], [100, 50]];
+    const BARCODE_OPTIONS = {
+      shop: true, name: true, code: true, price: true,
+      paper: "roll" as "roll" | "a4",
+      across: 1, width: 50, height: 25, bars: 9, font: 7, gap: 2, dpi: 203, offsetX: 0, offsetY: 0,
+    };
     try {
       Object.assign(BARCODE_OPTIONS, JSON.parse(localStorage.getItem(BARCODE_SAVED) || "{}"));
     } catch {
       // Nothing usable was saved; the defaults above apply.
     }
-    const BARCODE_LIMITS = { columns: [1, 10], width: [20, 150], height: [10, 150], bars: [4, 60] } as const;
-    const BARCODE_STYLE = `.bc-sheet{display:grid;grid-template-columns:repeat(var(--bc-columns,3),var(--bc-width,50mm));gap:2mm;justify-content:start}.bc-label{display:flex;flex-direction:column;justify-content:center;width:var(--bc-width,50mm);height:var(--bc-height,30mm);padding:1mm 2mm;border:1px dashed #cbd5e1;border-radius:1mm;background:#fff;color:#000;text-align:center;font:8pt/1.1 Arial,sans-serif;break-inside:avoid;overflow:hidden}.bc-label svg{display:block;flex:0 0 auto;width:100%;height:var(--bc-bars,12mm);margin:.8mm 0 .4mm}.bc-shop{font-weight:700}.bc-name,.bc-shop{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-code{letter-spacing:.3mm}.bc-price{font-weight:700;font-size:9pt}`;
-    const barcodeSizes = () => `--bc-columns:${BARCODE_OPTIONS.paper === "roll" ? 1 : BARCODE_OPTIONS.columns};--bc-width:${BARCODE_OPTIONS.width}mm;--bc-height:${BARCODE_OPTIONS.height}mm;--bc-bars:${BARCODE_OPTIONS.bars}mm`;
+    const BARCODE_LIMITS = { across: [1, 10], width: [15, 200], height: [10, 200], bars: [3, 80], font: [5, 16], gap: [0, 20], offsetX: [-10, 10], offsetY: [-10, 10] } as const;
+    const BARCODE_SIDE = 1.5; // blank strip kept at each side of a label, in mm
+    const A4_WIDTH = 194; // what is left of an A4 sheet between the print margins, in mm
+    const BARCODE_STYLE = `.bc-grid{display:grid;grid-template-columns:repeat(var(--bc-across),var(--bc-width));gap:var(--bc-gap);justify-content:start}.bc-row{display:flex;gap:var(--bc-gap);width:max-content;margin-bottom:3mm}.bc-label{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 auto;width:var(--bc-width);height:var(--bc-height);padding:0 ${BARCODE_SIDE}mm;outline:1px dashed #94a3b8;outline-offset:-1px;background:#fff;color:#000;text-align:center;font:var(--bc-font)/1.15 Arial,Helvetica,sans-serif;overflow:hidden;break-inside:avoid}.bc-label > div{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-label svg{display:block;flex:0 0 auto;margin:.5mm 0 .3mm}.bc-shop,.bc-price{font-weight:700}.bc-code{letter-spacing:.2mm}`;
     const barcodeOf = (product: any) => String(product?.code || "").trim();
+    const barcodeFit = (product: any) => fitModule(barcodeOf(product), BARCODE_OPTIONS.width - BARCODE_SIDE * 2, BARCODE_OPTIONS.dpi);
+    const barcodeVars = () => `--bc-across:${BARCODE_OPTIONS.across};--bc-width:${BARCODE_OPTIONS.width}mm;--bc-height:${BARCODE_OPTIONS.height}mm;--bc-gap:${BARCODE_OPTIONS.gap}mm;--bc-font:${BARCODE_OPTIONS.font}pt`;
     // The labels for the whole list, or for one listed product when `only` is its id.
     const barcodeLabels = (only?: any) => BARCODE_ITEMS.filter((item) => only === undefined || item.id == only).flatMap(({ id, qty }) => {
       const product = prod(id);
-      const bars = code128Svg(barcodeOf(product));
-      if (!product || !bars) return [];
-      const label = `<div class="bc-label">${BARCODE_OPTIONS.shop ? `<div class="bc-shop">${esc(D.user.shop || "")}</div>` : ""}${BARCODE_OPTIONS.name ? `<div class="bc-name">${esc(product.name)}</div>` : ""}${bars}<div class="bc-code">${esc(barcodeOf(product))}</div>${BARCODE_OPTIONS.price ? `<div class="bc-price">${tk(product.sell)}</div>` : ""}</div>`;
+      const fit = product ? barcodeFit(product) : null;
+      if (!product || !fit || !fit.moduleMm) return [];
+      const label = `<div class="bc-label">${BARCODE_OPTIONS.shop ? `<div class="bc-shop">${esc(D.user.shop || "")}</div>` : ""}${BARCODE_OPTIONS.name ? `<div class="bc-name">${esc(product.name)}</div>` : ""}${code128Svg(barcodeOf(product), BARCODE_OPTIONS.bars, fit.moduleMm)}${BARCODE_OPTIONS.code ? `<div class="bc-code">${esc(barcodeOf(product))}</div>` : ""}${BARCODE_OPTIONS.price ? `<div class="bc-price">${tk(product.sell)}</div>` : ""}</div>`;
       return new Array(qty).fill(label);
     });
+    // On a roll, each row of labels across the roll is one page; on A4 the labels flow down the sheet.
+    const barcodeSheet = (labels: string[]) => {
+      if (BARCODE_OPTIONS.paper === "a4") return `<div class="bc-grid" style="${barcodeVars()}">${labels.join("")}</div>`;
+      let rows = "";
+      for (let index = 0; index < labels.length; index += BARCODE_OPTIONS.across) {
+        rows += `<div class="bc-row" style="${barcodeVars()}">${labels.slice(index, index + BARCODE_OPTIONS.across).join("")}</div>`;
+      }
+      return rows;
+    };
     const barcodePage = () => {
       BARCODE_ITEMS = BARCODE_ITEMS.filter((item) => prod(item.id));
       try { localStorage.setItem(BARCODE_SAVED, JSON.stringify(BARCODE_OPTIONS)); } catch { /* sizes then last only for this visit */ }
+      const options = BARCODE_OPTIONS;
       const usable = D.products.filter((product: any) => canEncode(barcodeOf(product)));
       const unusable = D.products.length - usable.length;
       const labels = barcodeLabels();
-      const roll = BARCODE_OPTIONS.paper === "roll";
-      // What the chosen labels need across an A4 sheet, so a too-wide choice is caught before printing.
-      const sheetWidth = BARCODE_OPTIONS.columns * BARCODE_OPTIONS.width + (BARCODE_OPTIONS.columns - 1) * 2;
+      const roll = options.paper === "roll";
+      const rowWidth = options.across * options.width + (options.across - 1) * options.gap;
+      // Roughly what the chosen lines and bars need from top to bottom, to warn before paper is wasted.
+      const lineMm = options.font * 0.3528 * 1.15;
+      const needed = (+options.shop + +options.name + +options.code + +options.price) * lineMm + options.bars + 1.2;
+      const qualityText = { good: "Good", thin: "Thin, may not scan", none: "Does not fit" };
       const rows = BARCODE_ITEMS.map((item, index) => {
         const product = prod(item.id);
-        return `<tr><td>${index + 1}</td><td>${esc(product.name)}</td><td>${esc(barcodeOf(product))}</td><td><span style="display:inline-flex;align-items:center;gap:6px"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="-1" aria-label="One label fewer">−</button><input class="bc-qty" data-id="${esc(item.id)}" type="number" min="1" max="500" step="1" value="${item.qty}" style="width:80px;text-align:center"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="1" aria-label="One label more">+</button></span></td><td><button class="mini bc-print-one" data-id="${esc(item.id)}">Print</button><button class="mini bc-remove" data-id="${esc(item.id)}">Delete</button></td></tr>`;
+        const fit = barcodeFit(product);
+        return `<tr><td>${index + 1}</td><td>${esc(product.name)}</td><td>${esc(barcodeOf(product))}</td><td style="color:${fit.quality === "good" ? "var(--gr)" : "var(--rd)"}">${qualityText[fit.quality]}</td><td><span style="display:inline-flex;align-items:center;gap:6px"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="-1" aria-label="One label fewer">−</button><input class="bc-qty" data-id="${esc(item.id)}" type="number" min="1" max="500" step="1" value="${item.qty}" style="width:80px;text-align:center"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="1" aria-label="One label more">+</button></span></td><td><button class="mini bc-print-one" data-id="${esc(item.id)}" ${fit.moduleMm ? "" : "disabled"}>Print</button><button class="mini bc-remove" data-id="${esc(item.id)}">Delete</button></td></tr>`;
       }).join("");
-      const check = (key: "shop" | "name" | "price", text: string) => `<label style="display:flex;align-items:center;gap:6px;font-weight:400"><input class="bc-option" data-key="${key}" type="checkbox" style="width:auto" ${BARCODE_OPTIONS[key] ? "checked" : ""}> ${text}</label>`;
-      const size = (key: keyof typeof BARCODE_LIMITS, text: string) => `<label>${text}<input class="bc-size" data-key="${key}" type="number" min="${BARCODE_LIMITS[key][0]}" max="${BARCODE_LIMITS[key][1]}" step="1" value="${BARCODE_OPTIONS[key]}"></label>`;
+      const problems = BARCODE_ITEMS.map((item) => barcodeFit(prod(item.id)).quality).filter((quality) => quality !== "good");
+      const preset = BARCODE_PRESETS.find(([width, height]) => width === options.width && height === options.height);
+      const check = (key: "shop" | "name" | "code" | "price", text: string) => `<label style="display:flex;align-items:center;gap:6px;font-weight:400"><input class="bc-option" data-key="${key}" type="checkbox" style="width:auto" ${options[key] ? "checked" : ""}> ${text}</label>`;
+      const size = (key: keyof typeof BARCODE_LIMITS, text: string) => `<label>${text}<input class="bc-size" data-key="${key}" type="number" min="${BARCODE_LIMITS[key][0]}" max="${BARCODE_LIMITS[key][1]}" step="${key === "offsetX" || key === "offsetY" || key === "gap" ? "0.5" : "1"}" value="${options[key]}"></label>`;
+      const productOptions = (search: string) => `<option value="">Select one</option>${usable.filter((product: any) => `${product.name} ${barcodeOf(product)}`.toLowerCase().includes(search.toLowerCase())).map((product: any) => `<option value="${esc(product.id)}">${esc(product.name)} (${esc(barcodeOf(product))})</option>`).join("")}`;
+      const warn = (text: string) => `<p class="settings-help" style="padding:0 18px;color:var(--rd)">${text}</p>`;
       $("#app").innerHTML = `<style>${BARCODE_STYLE}</style><section class="card"><div class="hd"><h2>Print Barcode</h2><button class="btn pu" id="bcPrint" ${labels.length ? "" : "disabled"}>Print All</button></div>
         <p class="settings-help" style="padding:0 18px">Each label carries the product's code as a barcode. On the Sale screen, scan a label to add that product to the bill.</p>
-        <p class="settings-help" style="padding:0 18px">Print All prints every product in the list. To print one product, use the Print button on its row.</p>
-        ${unusable ? `<p class="settings-help" style="padding:0 18px;color:var(--rd)">${unusable} products are left out because their code is empty or has letters a barcode cannot hold. Give them a code using English letters and digits.</p>` : ""}
+        ${unusable ? warn(`${unusable} products are left out because their code is empty or has letters a barcode cannot hold. Give them a code using English letters and digits.`) : ""}
+        <h3 style="margin:14px 18px 4px">1. Choose products</h3>
         <div class="settings-form-grid" style="padding:0 18px 12px">
-          <label>Product<select id="bcProduct"><option value="">Select one</option>${usable.map((product: any) => `<option value="${esc(product.id)}">${esc(product.name)} (${esc(barcodeOf(product))})</option>`).join("")}</select></label>
+          <label>Search<input id="bcSearch" placeholder="Search product..." autocomplete="off"></label>
+          <label>Product<select id="bcProduct">${productOptions("")}</select></label>
           <label>Number of labels<input id="bcQty" type="number" min="1" max="500" step="1" value="1"></label>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;padding:0 18px 14px"><button class="btn pu" id="bcAdd" type="button">Add to list</button><button class="btn" id="bcAddAll" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Add all products (one label per item in stock)</button>${BARCODE_ITEMS.length ? `<button class="btn" id="bcClear" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Clear list</button>` : ""}</div>
-        <div class="wrap"><table><thead><tr><th>SL.</th><th>Product</th><th>Code</th><th>Number of labels</th><th>Action</th></tr></thead><tbody>${rows || empty(5)}</tbody></table></div>
-        <h3 style="margin:18px 18px 4px">Label size</h3>
+        <div class="wrap"><table><thead><tr><th>SL.</th><th>Product</th><th>Code</th><th>Barcode quality</th><th>Number of labels</th><th>Action</th></tr></thead><tbody>${rows || empty(6)}</tbody></table></div>
+        ${problems.includes("none") ? warn("A code marked \"Does not fit\" is too long for this label. Use a wider label or a shorter code.") : problems.length ? warn("A barcode marked \"Thin\" has very narrow bars. A wider label or a shorter code makes it scan more reliably.") : ""}
+        <h3 style="margin:18px 18px 4px">2. Label and printer</h3>
         <div class="settings-form-grid" style="padding:0 18px 12px">
-          <label>Paper<select id="bcPaper"><option value="a4" ${roll ? "" : "selected"}>A4 sheet</option><option value="roll" ${roll ? "selected" : ""}>Label printer (one label per page)</option></select></label>
-          ${roll ? "" : size("columns", "Labels per row")}
+          <label>Printer<select id="bcPaper"><option value="roll" ${roll ? "selected" : ""}>Label printer (roll)</option><option value="a4" ${roll ? "" : "selected"}>A4 sheet (normal printer)</option></select></label>
+          <label>Printer sharpness<select id="bcDpi">${[[203, "203 dpi (most label printers)"], [300, "300 dpi"], [600, "600 dpi (laser or inkjet)"]].map(([dpi, text]) => `<option value="${dpi}" ${options.dpi === dpi ? "selected" : ""}>${text}</option>`).join("")}</select></label>
+          <label>Label size<select id="bcPreset">${BARCODE_PRESETS.map(([width, height]) => `<option value="${width}x${height}" ${preset && preset[0] === width && preset[1] === height ? "selected" : ""}>${width} × ${height} mm</option>`).join("")}<option value="" ${preset ? "" : "selected"}>Custom size</option></select></label>
           ${size("width", "Label width (mm)")}
           ${size("height", "Label height (mm)")}
+          ${size("across", roll ? "Labels across the roll" : "Labels per row")}
+          ${size("gap", "Gap between labels (mm)")}
           ${size("bars", "Barcode height (mm)")}
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px">${check("shop", "Shop Name")}${check("name", "Product Name")}${check("price", "Sale Price")}</div>
+          ${size("font", "Text size (pt)")}
+          ${size("offsetX", "Move right (mm)")}
+          ${size("offsetY", "Move down (mm)")}
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px">${check("shop", "Shop Name")}${check("name", "Product Name")}${check("code", "Code")}${check("price", "Sale Price")}</div>
         </div>
-        ${!roll && sheetWidth > 194 ? `<p class="settings-help" style="padding:0 18px;color:var(--rd)">These labels need ${sheetWidth} mm across, but an A4 sheet has 194 mm. Use fewer labels per row or a smaller width.</p>` : ""}
-        ${labels.length ? `<div style="padding:6px 18px 18px"><h3 style="margin:0 0 4px">Preview</h3><p class="settings-help" style="margin:0 0 10px">Shown at the size it will print.</p><div style="overflow-x:auto"><div class="bc-sheet" data-no-translate style="${barcodeSizes()}">${labels.slice(0, 60).join("")}</div></div>${labels.length > 60 ? `<p class="settings-help">Showing the first 60 of ${labels.length} labels. All of them are printed.</p>` : ""}</div>` : ""}
+        ${roll ? `<p class="settings-help" style="padding:0 18px">In the printer's own settings, set the paper size to ${rowWidth} × ${options.height} mm and the margins to none, and print at 100% scale.</p>` : rowWidth > A4_WIDTH ? warn(`These labels need ${rowWidth} mm across, but an A4 sheet has ${A4_WIDTH} mm. Use fewer labels per row or a smaller width.`) : ""}
+        ${needed > options.height ? warn(`The text and barcode need about ${Math.ceil(needed)} mm but the label is ${options.height} mm high, so part of it will be cut off. Make the barcode or text smaller, or hide a line.`) : ""}
+        ${labels.length ? `<div style="padding:6px 18px 18px"><h3 style="margin:0 0 4px">3. Preview</h3><p class="settings-help" style="margin:0 0 10px">Shown at the size it will print. The dashed line is the edge of the label and is not printed.</p><div style="overflow-x:auto;padding:2px" data-no-translate>${barcodeSheet(labels.slice(0, 60))}</div>${labels.length > 60 ? `<p class="settings-help">Showing the first 60 of ${labels.length} labels. All of them are printed.</p>` : ""}</div>` : ""}
       </section>`;
       const clampQty = (qty: number) => Math.min(500, Math.max(1, Math.floor(qty) || 1));
       const itemFor = (id: any) => BARCODE_ITEMS.find((item) => item.id == id);
+      $("#bcSearch").addEventListener("input", () => {
+        const select = $("#bcProduct");
+        select.innerHTML = productOptions($("#bcSearch").value.trim());
+        // One match left: choose it, so typing or scanning a code and pressing Add is enough.
+        if (select.options.length === 2) select.selectedIndex = 1;
+      });
       $("#bcAdd").addEventListener("click", () => {
         const product = prod($("#bcProduct").value);
         if (!product) { toast("Choose a product first"); return; }
@@ -2166,15 +2207,28 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         barcodePage();
       });
       $("#bcClear")?.addEventListener("click", () => { BARCODE_ITEMS = []; barcodePage(); });
-      $("#bcPaper").addEventListener("change", () => { BARCODE_OPTIONS.paper = $("#bcPaper").value === "roll" ? "roll" : "a4"; barcodePage(); });
+      $("#bcPaper").addEventListener("change", () => {
+        options.paper = $("#bcPaper").value === "a4" ? "a4" : "roll";
+        // Each kind of printer starts from what suits it; every value can still be changed.
+        Object.assign(options, options.paper === "a4" ? { across: 3, dpi: 600 } : { across: 1, dpi: 203 });
+        barcodePage();
+      });
+      $("#bcDpi").addEventListener("change", () => { options.dpi = +$("#bcDpi").value; barcodePage(); });
+      $("#bcPreset").addEventListener("change", () => {
+        const [width, height] = $("#bcPreset").value.split("x").map(Number);
+        if (width && height) Object.assign(options, { width, height });
+        barcodePage();
+      });
       document.querySelectorAll(".bc-size").forEach((input) => input.addEventListener("change", () => {
         const key = (input as HTMLElement).dataset.key as keyof typeof BARCODE_LIMITS;
         const [least, most] = BARCODE_LIMITS[key];
-        BARCODE_OPTIONS[key] = Math.min(most, Math.max(least, Math.round(+(input as HTMLInputElement).value) || least));
+        const typed = +(input as HTMLInputElement).value;
+        const value = key === "offsetX" || key === "offsetY" || key === "gap" ? Math.round(typed * 2) / 2 : Math.round(typed);
+        options[key] = Math.min(most, Math.max(least, Number.isFinite(value) ? value : least));
         barcodePage();
       }));
       document.querySelectorAll(".bc-option").forEach((box) => box.addEventListener("change", () => {
-        BARCODE_OPTIONS[(box as HTMLElement).dataset.key as "shop" | "name" | "price"] = (box as HTMLInputElement).checked;
+        options[(box as HTMLElement).dataset.key as "shop" | "name" | "code" | "price"] = (box as HTMLInputElement).checked;
         barcodePage();
       }));
       document.querySelectorAll(".bc-qty").forEach((input) => input.addEventListener("change", () => {
@@ -2195,17 +2249,20 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const printLabels = (only?: any) => {
         const sheet = window.open("", "_blank", "width=900,height=900");
         if (!sheet) { toast("Allow pop-ups to print the labels"); return; }
-        // A label printer gets one label per page, the page being exactly the label.
+        // On a roll every row of labels is its own page, exactly the size of the row,
+        // and the last one must not ask for a page after it or a blank label comes out.
         const page = roll
-          ? `@page{size:${BARCODE_OPTIONS.width}mm ${BARCODE_OPTIONS.height}mm;margin:0}@media print{.bc-sheet{display:block}.bc-label{border:0;border-radius:0;break-after:page}}`
-          : `@page{size:A4;margin:8mm}@media print{.bc-label{border-color:transparent}}`;
+          ? `@page{size:${rowWidth}mm ${options.height}mm;margin:0}@media print{.bc-row{margin:0;break-after:page;page-break-after:always}.bc-row:last-child{break-after:auto;page-break-after:auto}}`
+          : `@page{size:A4;margin:8mm}`;
         sheet.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Barcode labels</title><style>
-          *{box-sizing:border-box}body{margin:0;padding:12px;background:#f3f4f6;font-family:Arial,sans-serif}
-          .toolbar{display:flex;justify-content:center;padding:6px 0 14px}.toolbar button{border:0;border-radius:4px;padding:9px 22px;background:#07851b;color:#fff;font-weight:700;cursor:pointer}
+          *{box-sizing:border-box}html,body{margin:0;padding:0}body{background:#f3f4f6;font-family:Arial,sans-serif}
+          .toolbar{display:flex;justify-content:center;gap:12px;align-items:center;padding:14px;font-size:13px;color:#374151}.toolbar button{border:0;border-radius:4px;padding:9px 22px;background:#07851b;color:#fff;font-weight:700;cursor:pointer}
+          .sheet{padding:0 14px 14px}
           ${BARCODE_STYLE}
-          @media print{body{padding:0;background:#fff}.toolbar{display:none}}
+          .bc-label > *{transform:translate(${options.offsetX}mm,${options.offsetY}mm)}
+          @media print{body{background:#fff}.toolbar{display:none}.sheet{padding:0}.bc-label{outline:0}}
           ${page}
-        </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button></div><div class="bc-sheet" style="${barcodeSizes()}">${barcodeLabels(only).join("")}</div></body></html>`);
+        </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button><span>${roll ? `Paper: ${rowWidth} × ${options.height} mm, no margins, 100% scale` : "Paper: A4, 100% scale"}</span></div><div class="sheet">${barcodeSheet(barcodeLabels(only))}</div></body></html>`);
         sheet.document.close();
       };
       $("#bcPrint").addEventListener("click", () => printLabels());

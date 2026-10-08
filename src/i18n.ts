@@ -86,6 +86,15 @@ const words: Record<string, string> = {
   "Each label carries the product's code as a barcode. On the Sale screen, scan a label to add that product to the bill.": "প্রতিটি লেবেলে পণ্যের কোড বারকোড আকারে থাকে। বিক্রির পাতায় লেবেল স্ক্যান করলে পণ্যটি বিলে যোগ হয়।",
   "Print All": "সব প্রিন্ট করুন",
   "Print All prints every product in the list. To print one product, use the Print button on its row.": "\"সব প্রিন্ট করুন\" তালিকার সব পণ্য ছাপে। শুধু একটি পণ্য ছাপতে তার সারির প্রিন্ট বাটন চাপুন।",
+  "1. Choose products": "১. পণ্য বাছুন", "2. Label and printer": "২. লেবেল ও প্রিন্টার", "3. Preview": "৩. নমুনা", "Search": "খুঁজুন",
+  "Barcode quality": "বারকোডের মান", "Good": "ভালো", "Thin, may not scan": "চিকন, স্ক্যান নাও হতে পারে", "Does not fit": "জায়গা হয় না",
+  "Printer": "প্রিন্টার", "Label printer (roll)": "লেবেল প্রিন্টার (রোল)", "A4 sheet (normal printer)": "A4 কাগজ (সাধারণ প্রিন্টার)",
+  "Printer sharpness": "প্রিন্টারের সূক্ষ্মতা", "203 dpi (most label printers)": "২০৩ dpi (বেশিরভাগ লেবেল প্রিন্টার)", "600 dpi (laser or inkjet)": "৬০০ dpi (লেজার বা ইংকজেট)",
+  "Custom size": "নিজের মাপ", "Labels across the roll": "রোলের এক সারিতে লেবেল", "Gap between labels (mm)": "লেবেলের মাঝের ফাঁক (মিমি)",
+  "Text size (pt)": "লেখার আকার (pt)", "Move right (mm)": "ডানে সরান (মিমি)", "Move down (mm)": "নিচে সরান (মিমি)",
+  "Shown at the size it will print. The dashed line is the edge of the label and is not printed.": "যে মাপে ছাপা হবে সেই মাপেই দেখানো হচ্ছে। দাগ-কাটা রেখাটি লেবেলের কিনারা, এটি ছাপা হয় না।",
+  "A code marked \"Does not fit\" is too long for this label. Use a wider label or a shorter code.": "\"জায়গা হয় না\" লেখা কোডটি এই লেবেলের জন্য বেশি লম্বা। চওড়া লেবেল বা ছোট কোড ব্যবহার করুন।",
+  "A barcode marked \"Thin\" has very narrow bars. A wider label or a shorter code makes it scan more reliably.": "\"চিকন\" লেখা বারকোডের দাগ খুব সরু। চওড়া লেবেল বা ছোট কোড দিলে স্ক্যান ভালো হবে।",
   "Label size": "লেবেলের মাপ", "Paper": "কাগজ", "A4 sheet": "A4 কাগজ", "Label printer (one label per page)": "লেবেল প্রিন্টার (প্রতি পাতায় একটি লেবেল)",
   "Label width (mm)": "লেবেলের চওড়া (মিমি)", "Label height (mm)": "লেবেলের উচ্চতা (মিমি)", "Barcode height (mm)": "বারকোডের উচ্চতা (মিমি)",
   "Shown at the size it will print.": "যে মাপে ছাপা হবে সেই মাপেই দেখানো হচ্ছে।", "One label fewer": "একটি লেবেল কম", "One label more": "একটি লেবেল বেশি",
@@ -217,7 +226,7 @@ const words: Record<string, string> = {
 };
 
 // Words that may be translated even inside a table cell, where most text is the shop's own data.
-const cellWords = new Set(["No data yet", "No data found", "No products found", "No product found", "Active", "Inactive", "Paid", "Due", "Returned", "Yes", "No", "No image", "Cash", "Card", "Daily backup", "Saved before a restore",
+const cellWords = new Set(["Good", "Thin, may not scan", "Does not fit","No data yet", "No data found", "No products found", "No product found", "Active", "Inactive", "Paid", "Due", "Returned", "Yes", "No", "No image", "Cash", "Card", "Daily backup", "Saved before a restore",
   "approved", "rejected", "pending", "monthly", "yearly", "Waiting for approval", "Lifetime", "Expired", "Suspended", "Email not confirmed", "Walk-in Customer"]);
 
 const digits = (value: string | number) => String(value).replace(/\d/g, (digit) => "০১২৩৪৫৬৭৮৯"[+digit]);
@@ -241,7 +250,9 @@ const patterns: [RegExp, (match: RegExpMatchArray) => string][] = [
   [/^(Out of stock|Stock (-?[\d.]+)) · Alert Qty ([\d.]+)$/, (m) => `${m[2] === undefined ? "স্টক শেষ" : `স্টক ${m[2]}`} · সতর্কতার পরিমাণ ${m[3]}`],
   [/^Low stock: (.+)$/, (m) => `কম স্টক: ${m[1]}`],
   [/^(\d+) products are left out because their code is empty or has letters a barcode cannot hold\. Give them a code using English letters and digits\.$/, (m) => `${m[1]}টি পণ্য বাদ পড়েছে, কারণ তাদের কোড খালি অথবা এমন অক্ষর আছে যা বারকোডে রাখা যায় না। ইংরেজি অক্ষর ও সংখ্যা দিয়ে কোড দিন।`],
-  [/^These labels need (\d+) mm across, but an A4 sheet has 194 mm\. Use fewer labels per row or a smaller width\.$/, (m) => `এই লেবেলগুলোর জন্য ${m[1]} মিমি চওড়া লাগবে, কিন্তু A4 কাগজে আছে ১৯৪ মিমি। প্রতি সারিতে লেবেল কমান অথবা চওড়া ছোট করুন।`],
+  [/^In the printer's own settings, set the paper size to ([\d.]+) × ([\d.]+) mm and the margins to none, and print at 100% scale\.$/, (m) => `প্রিন্টারের নিজের সেটিংসে কাগজের মাপ ${m[1]} × ${m[2]} মিমি দিন, মার্জিন শূন্য রাখুন, আর ১০০% স্কেলে ছাপুন।`],
+  [/^The text and barcode need about (\d+) mm but the label is ([\d.]+) mm high, so part of it will be cut off\. Make the barcode or text smaller, or hide a line\.$/, (m) => `লেখা ও বারকোডের জন্য প্রায় ${m[1]} মিমি লাগে, কিন্তু লেবেলের উচ্চতা ${m[2]} মিমি, তাই কিছু অংশ কেটে যাবে। বারকোড বা লেখা ছোট করুন, অথবা একটি লাইন বাদ দিন।`],
+  [/^These labels need ([\d.]+) mm across, but an A4 sheet has (\d+) mm\. Use fewer labels per row or a smaller width\.$/, (m) => `এই লেবেলগুলোর জন্য ${m[1]} মিমি চওড়া লাগবে, কিন্তু A4 কাগজে আছে ${m[2]} মিমি। প্রতি সারিতে লেবেল কমান অথবা চওড়া ছোট করুন।`],
   [/^Showing the first 60 of (\d+) labels\. All of them are printed\.$/, (m) => `${m[1]}টি লেবেলের প্রথম ৬০টি দেখানো হচ্ছে। প্রিন্টে সবগুলোই আসবে।`],
   [/^Total stock value: (.+)$/, (m) => `স্টকের মোট মূল্য: ${m[1]}`],
   [/^Overall Reports (\d{4})$/, (m) => `সার্বিক রিপোর্ট ${m[1]}`],

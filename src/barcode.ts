@@ -46,15 +46,44 @@ export function code128Modules(text: string): string | null {
   return modules;
 }
 
-/** An SVG picture of the barcode that stretches to the width it is given, or "" if `text` cannot be encoded. */
-export function code128Svg(text: string, height = 46): string {
+/** How many modules wide the barcode for `text` is, with the blank margin a scanner needs on each side; 0 if it cannot be encoded. */
+export function code128Width(text: string): number {
+  const modules = code128Modules(text);
+  return modules ? modules.length + QUIET_ZONE * 2 : 0;
+}
+
+/**
+ * How wide to print one module so the barcode fits in `availableMm`.
+ *
+ * A printer can only print whole dots. A bar whose width is not a whole number
+ * of dots comes out a dot too wide or too narrow, unevenly, which is what makes
+ * a printed barcode fail to scan. So the width is a whole number of the
+ * printer's dots, at most about half a millimetre.
+ *
+ * quality: "good" scans reliably, "thin" may not scan on a cheap scanner, and
+ * "none" means the code is too long to print on this width at all.
+ */
+export function fitModule(text: string, availableMm: number, dpi: number): { moduleMm: number; dots: number; quality: "good" | "thin" | "none" } {
+  const total = code128Width(text);
+  const dot = 25.4 / dpi;
+  if (!total || availableMm <= 0) return { moduleMm: 0, dots: 0, quality: "none" };
+  const fitting = Math.floor(availableMm / total / dot + 1e-9);
+  if (fitting < 1) return { moduleMm: availableMm / total, dots: 0, quality: "none" };
+  const dots = Math.min(fitting, Math.max(1, Math.round(0.5 / dot)));
+  const moduleMm = dots * dot;
+  return { moduleMm, dots, quality: moduleMm >= 0.19 ? "good" : "thin" };
+}
+
+/** An SVG picture of the barcode at an exact printed size, or "" if `text` cannot be encoded. */
+export function code128Svg(text: string, heightMm: number, moduleMm: number): string {
   const modules = code128Modules(text);
   if (!modules) return "";
   let bars = "";
   // One rectangle per run of bar modules keeps the picture small and the edges crisp.
   for (const run of modules.matchAll(/1+/g)) {
-    bars += `<rect x="${QUIET_ZONE + run.index}" y="0" width="${run[0].length}" height="${height}"/>`;
+    bars += `<rect x="${QUIET_ZONE + run.index}" y="0" width="${run[0].length}" height="1"/>`;
   }
   const width = modules.length + QUIET_ZONE * 2;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Barcode ${text.replace(/[<>&"]/g, "")}">${bars}</svg>`;
+  const round = (value: number) => +value.toFixed(4);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${round(width * moduleMm)}mm" height="${round(heightMm)}mm" viewBox="0 0 ${width} 1" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Barcode ${text.replace(/[<>&"]/g, "")}">${bars}</svg>`;
 }

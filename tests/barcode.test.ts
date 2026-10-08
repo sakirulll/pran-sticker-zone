@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canEncode, code128Modules, code128Svg } from "../src/barcode.ts";
+import { canEncode, code128Modules, code128Svg, code128Width, fitModule } from "../src/barcode.ts";
 
 test("every symbol is 11 modules wide, the stop 13, and no two are the same", () => {
   const seen = new Set<string>();
@@ -44,13 +44,41 @@ test("only text a scanner can read is accepted", () => {
   assert.equal(canEncode("স্টিকার"), false);
   assert.equal(canEncode("x".repeat(41)), false);
   assert.equal(code128Modules("স্টিকার"), null);
-  assert.equal(code128Svg("স্টিকার"), "");
+  assert.equal(code128Svg("স্টিকার", 10, 0.25), "");
+  assert.equal(code128Width("স্টিকার"), 0);
 });
 
-test("the picture has one bar per run and a quiet zone on both sides", () => {
-  const svg = code128Svg("BS-001", 40);
+test("the picture has one bar per run, a quiet zone on both sides, and an exact printed size", () => {
+  const svg = code128Svg("BS-001", 9, 0.25);
   const modules = code128Modules("BS-001")!;
+  assert.equal(code128Width("BS-001"), modules.length + 20);
   assert.equal((svg.match(/<rect /g) || []).length, (modules.match(/1+/g) || []).length);
-  assert.match(svg, new RegExp(`viewBox="0 0 ${modules.length + 20} 40"`));
+  assert.match(svg, new RegExp(`viewBox="0 0 ${modules.length + 20} 1"`));
   assert.match(svg, /<rect x="10" /);
+  // 121 modules at a quarter of a millimetre each.
+  assert.match(svg, /width="30.25mm" height="9mm"/);
+});
+
+test("bars are a whole number of printer dots, and the fit is judged honestly", () => {
+  const dot = 25.4 / 203;
+  // A 12-digit code (121 modules with margins) on a 50 mm label, 47 mm usable, at 203 dpi.
+  const roomy = fitModule("123456789004", 47, 203);
+  assert.deepEqual([roomy.dots, roomy.quality], [3, "good"]);
+  assert.ok(Math.abs(roomy.moduleMm - 3 * dot) < 1e-9);
+  assert.ok(code128Width("123456789004") * roomy.moduleMm <= 47, "the barcode fits in the room it was given");
+
+  // The same code on a 30 mm label only has room for one dot a bar, which is flagged as thin.
+  assert.deepEqual([fitModule("123456789004", 27, 203).dots, fitModule("123456789004", 27, 203).quality], [1, "thin"]);
+  assert.deepEqual([fitModule("BS-001", 47, 203).dots, fitModule("BS-001", 47, 203).quality], [3, "good"]);
+
+  // A long code on a small label only fits at one dot, which a scanner may not read...
+  const thin = fitModule("PRAN-STICKER-ZONE-0001", 47, 203);
+  assert.deepEqual([thin.dots, thin.quality], [1, "thin"]);
+  // ...and on a smaller one it does not fit at all.
+  assert.equal(fitModule("PRAN-STICKER-ZONE-0001", 27, 203).quality, "none");
+
+  // However much room there is, bars stop growing at about half a millimetre.
+  assert.ok(fitModule("12", 190, 203).moduleMm <= 0.51);
+  assert.equal(fitModule("12", 190, 600).dots, 12);
+  assert.equal(fitModule("স্টিকার", 47, 203).quality, "none");
 });
