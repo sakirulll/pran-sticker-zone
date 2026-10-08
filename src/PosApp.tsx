@@ -2084,7 +2084,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     // ---- Barcode labels: choose products and how many labels of each, then print.
     // A label carries the product's code, which the Sale screen accepts from a scanner.
-    let BARCODE_ITEMS: { id: any; qty: number }[] = [];
+    // `on` is the tick on the row: only ticked products are printed by the button at the top.
+    let BARCODE_ITEMS: { id: any; qty: number; on: boolean }[] = [];
     // Sizes are in millimetres, as printed. They are remembered on this device,
     // because they belong to the label paper and printer in use here.
     const BARCODE_SAVED = "hishabpos_barcode_v2";
@@ -2111,7 +2112,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const barcodeFit = (product: any) => fitModule(barcodeOf(product), BARCODE_OPTIONS.width - BARCODE_SIDE * 2, BARCODE_OPTIONS.dpi);
     const barcodeVars = () => `--bc-across:${BARCODE_OPTIONS.across};--bc-width:${BARCODE_OPTIONS.width}mm;--bc-height:${BARCODE_OPTIONS.height}mm;--bc-gap:${BARCODE_OPTIONS.gap}mm;--bc-font:${BARCODE_OPTIONS.font}pt`;
     // The labels for the whole list, or for one listed product when `only` is its id.
-    const barcodeLabels = (only?: any) => BARCODE_ITEMS.filter((item) => only === undefined || item.id == only).flatMap(({ id, qty }) => {
+    const barcodeLabels = (only?: any) => BARCODE_ITEMS.filter((item) => (only === undefined ? item.on : item.id == only)).flatMap(({ id, qty }) => {
       const product = prod(id);
       const fit = product ? barcodeFit(product) : null;
       if (!product || !fit || !fit.moduleMm) return [];
@@ -2156,7 +2157,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const rows = BARCODE_ITEMS.map((item, index) => {
         const product = prod(item.id);
         const fit = barcodeFit(product);
-        return `<tr><td>${index + 1}</td><td>${esc(product.name)}</td><td>${esc(barcodeOf(product))}</td><td style="color:${fit.quality === "good" ? "var(--gr)" : "var(--rd)"}">${qualityText[fit.quality]}</td><td><span style="display:inline-flex;align-items:center;gap:6px"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="-1" aria-label="One label fewer">−</button><input class="bc-qty" data-id="${esc(item.id)}" type="number" min="1" max="500" step="1" value="${item.qty}" style="width:80px;text-align:center"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="1" aria-label="One label more">+</button></span></td><td><button class="mini bc-print-one" data-id="${esc(item.id)}" ${fit.moduleMm ? "" : "disabled"}>Print</button><button class="mini bc-remove" data-id="${esc(item.id)}">Delete</button></td></tr>`;
+        return `<tr><td><input class="bc-pick" data-id="${esc(item.id)}" type="checkbox" style="width:18px;height:18px" aria-label="Print this product" ${item.on ? "checked" : ""}></td><td>${index + 1}</td><td>${esc(product.name)}</td><td>${esc(barcodeOf(product))}</td><td style="color:${fit.quality === "good" ? "var(--gr)" : "var(--rd)"}">${qualityText[fit.quality]}</td><td><span style="display:inline-flex;align-items:center;gap:6px"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="-1" aria-label="One label fewer">−</button><input class="bc-qty" data-id="${esc(item.id)}" type="number" min="1" max="500" step="1" value="${item.qty}" style="width:80px;text-align:center"><button class="mini bc-step" data-id="${esc(item.id)}" data-step="1" aria-label="One label more">+</button></span></td><td><button class="mini bc-print-one" data-id="${esc(item.id)}" ${fit.moduleMm ? "" : "disabled"}>Print</button><button class="mini bc-remove" data-id="${esc(item.id)}">Delete</button></td></tr>`;
       }).join("");
       const problems = BARCODE_ITEMS.map((item) => barcodeFit(prod(item.id)).quality).filter((quality) => quality !== "good");
       const preset = BARCODE_PRESETS.find(([width, height]) => width === options.width && height === options.height);
@@ -2164,7 +2165,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const size = (key: keyof typeof BARCODE_LIMITS, text: string) => `<label>${text}<input class="bc-size" data-key="${key}" type="number" min="${BARCODE_LIMITS[key][0]}" max="${BARCODE_LIMITS[key][1]}" step="${key === "offsetX" || key === "offsetY" || key === "gap" ? "0.5" : "1"}" value="${options[key]}"></label>`;
       const productOptions = (search: string) => `<option value="">Select one</option>${usable.filter((product: any) => `${product.name} ${barcodeOf(product)}`.toLowerCase().includes(search.toLowerCase())).map((product: any) => `<option value="${esc(product.id)}">${esc(product.name)} (${esc(barcodeOf(product))})</option>`).join("")}`;
       const warn = (text: string) => `<p class="settings-help" style="padding:0 18px;color:var(--rd)">${text}</p>`;
-      $("#app").innerHTML = `<style>${BARCODE_STYLE}</style><section class="card"><div class="hd"><h2>Print Barcode</h2><button class="btn pu" id="bcPrint" ${labels.length ? "" : "disabled"}>Print All</button></div>
+      $("#app").innerHTML = `<style>${BARCODE_STYLE}</style><section class="card"><div class="hd"><h2>Print Barcode</h2><button class="btn pu" id="bcPrint" ${labels.length ? "" : "disabled"}>Print Selected (${labels.length})</button></div>
         <p class="settings-help" style="padding:0 18px">Each label carries the product's code as a barcode. On the Sale screen, scan a label to add that product to the bill.</p>
         ${unusable ? warn(`${unusable} products are left out because their code is empty or has letters a barcode cannot hold. Give them a code using English letters and digits.`) : ""}
         <h3 style="margin:14px 18px 4px">1. Choose products</h3>
@@ -2174,7 +2175,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           <label>Number of labels<input id="bcQty" type="number" min="1" max="500" step="1" value="1"></label>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;padding:0 18px 14px"><button class="btn pu" id="bcAdd" type="button">Add to list</button><button class="btn" id="bcAddAll" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Add all products (one label per item in stock)</button>${BARCODE_ITEMS.length ? `<button class="btn" id="bcClear" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Clear list</button>` : ""}</div>
-        <div class="wrap"><table><thead><tr><th>SL.</th><th>Product</th><th>Code</th><th>Barcode quality</th><th>Number of labels</th><th>Action</th></tr></thead><tbody>${rows || empty(6)}</tbody></table></div>
+        ${BARCODE_ITEMS.length > 1 ? `<p class="settings-help" style="padding:0 18px">Tick the products you want to print, then press Print Selected. The Print button on a row prints that product alone.</p>` : ""}
+        <div class="wrap"><table><thead><tr><th><input id="bcPickAll" type="checkbox" style="width:18px;height:18px" aria-label="Select all" ${BARCODE_ITEMS.length && BARCODE_ITEMS.every((item) => item.on) ? "checked" : ""} ${BARCODE_ITEMS.length ? "" : "disabled"}></th><th>SL.</th><th>Product</th><th>Code</th><th>Barcode quality</th><th>Number of labels</th><th>Action</th></tr></thead><tbody>${rows || empty(7)}</tbody></table></div>
         ${problems.includes("none") ? warn("A code marked \"Does not fit\" is too long for this label. Use a wider label or a shorter code.") : problems.length ? warn("A barcode marked \"Thin\" has very narrow bars. A wider label or a shorter code makes it scan more reliably.") : ""}
         <h3 style="margin:18px 18px 4px">2. Label and printer</h3>
         <div class="settings-form-grid" style="padding:0 18px 12px">
@@ -2210,8 +2212,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         // Adding a product that is already listed gives it more labels, so labels can be added one at a time.
         const listed = itemFor(product.id);
         const amount = clampQty(+$("#bcQty").value);
-        if (listed) listed.qty = clampQty(listed.qty + amount);
-        else BARCODE_ITEMS.push({ id: product.id, qty: amount });
+        if (listed) Object.assign(listed, { qty: clampQty(listed.qty + amount), on: true });
+        else BARCODE_ITEMS.push({ id: product.id, qty: amount, on: true });
         barcodePage();
         $("#bcProduct").value = String(product.id);
       });
@@ -2220,10 +2222,20 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           const amount = clampQty(+product.stock || 1);
           const listed = itemFor(product.id);
           if (listed) listed.qty = amount;
-          else BARCODE_ITEMS.push({ id: product.id, qty: amount });
+          else BARCODE_ITEMS.push({ id: product.id, qty: amount, on: true });
         });
         barcodePage();
       });
+      $("#bcPickAll").addEventListener("change", () => {
+        const on = $("#bcPickAll").checked;
+        BARCODE_ITEMS.forEach((item) => { item.on = on; });
+        barcodePage();
+      });
+      document.querySelectorAll(".bc-pick").forEach((box) => box.addEventListener("change", () => {
+        const listed = itemFor((box as HTMLElement).dataset.id);
+        if (listed) listed.on = (box as HTMLInputElement).checked;
+        barcodePage();
+      }));
       $("#bcClear")?.addEventListener("click", () => { BARCODE_ITEMS = []; barcodePage(); });
       $("#bcPaper").addEventListener("change", () => {
         options.paper = $("#bcPaper").value === "a4" ? "a4" : "roll";
