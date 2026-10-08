@@ -4,6 +4,8 @@
 
 const CACHE = "hishabpos-v1";
 const PAGE = "/";
+// Where the list of the current version's files is remembered.
+const VERSION = "/__app-version";
 
 // Stores the page and the files it names, and drops script and style files from
 // older versions of the app.
@@ -15,10 +17,19 @@ async function keepPage(response) {
   await Promise.all(files.map(async (file) => {
     if (!(await cache.match(file))) await cache.add(file);
   }));
-  for (const request of await cache.keys()) {
-    const path = new URL(request.url).pathname;
-    if (path.startsWith("/assets/") && !files.includes(path)) await cache.delete(request);
+  // Old files are cleared out only when a new version of the app has arrived.
+  // Parts of the app that are fetched later (the camera's barcode reader) are not
+  // named in the page, and would otherwise be thrown away on every visit.
+  const version = files.join(" ");
+  const kept = await cache.match(VERSION);
+  if (kept && (await kept.text()) === version) return;
+  if (kept) {
+    for (const request of await cache.keys()) {
+      const path = new URL(request.url).pathname;
+      if (path.startsWith("/assets/") && !files.includes(path)) await cache.delete(request);
+    }
   }
+  await cache.put(VERSION, new Response(version));
 }
 
 self.addEventListener("install", (event) => {

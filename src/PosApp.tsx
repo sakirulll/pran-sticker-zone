@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ORIGINAL_APP } from "./appShell";
 import { canEncode, code128Svg, fitModule } from "./barcode";
+import { canScanWithCamera, openScanner } from "./cameraScanner";
 import { canUseBluetooth, canUseSerial, connectBluetooth, connectSerial, drawLabel, tsplJob, type LabelSpec, type PrinterLink } from "./labelPrinter";
 import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
 import { currentLanguage, switchLanguage, translate } from "./i18n";
@@ -919,7 +920,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
               </div>
             ` : ""}
 
-            ${s ? `<div class="serial-scan"><label for="serialScan">Scan a barcode, or enter a product code or serial number, then press Enter</label><input id="serialScan" autocomplete="off" placeholder="Barcode, product code or serial number"></div>` : ""}
+            ${s ? `<div class="serial-scan"><label for="serialScan">Scan a barcode, or enter a product code or serial number, then press Enter</label><div style="display:flex;gap:8px"><input id="serialScan" autocomplete="off" placeholder="Barcode, product code or serial number" style="flex:1;min-width:0">${canScanWithCamera() ? `<button class="btn pu" id="scanCamera" type="button" aria-label="Scan with the camera" title="Scan with the camera" style="flex:0 0 auto;padding:0 14px"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg></button>` : ""}</div></div>` : ""}
 
             <div class="wrap">
               <table style="min-width:560px">
@@ -1095,6 +1096,16 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         };
         partySelect?.addEventListener("change", syncWalkinFields);
         syncWalkinFields();
+        // The camera stays open over the page, so several products can be scanned in a row.
+        $("#scanCamera")?.addEventListener("click", () => void openScanner(root, (code) => {
+          const message = $("#toast");
+          if (message) message.style.display = "none";
+          addSerialFromScan(code);
+          // The scan box takes the focus after a scan, which would bring up the phone's keyboard under the camera.
+          (document.activeElement as HTMLElement | null)?.blur();
+          // A message such as "not found" appears behind the camera, so it is shown on the camera screen instead.
+          return message && message.style.display === "block" ? message.textContent || "" : "";
+        }));
         const serialScan = $("#serialScan");
         serialScan?.addEventListener("keydown", (event: KeyboardEvent) => {
           if (event.key !== "Enter") return;

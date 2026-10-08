@@ -8,10 +8,11 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "node --test --test-concurrency=1 tests/barcode.test.ts tests/labelPrinter.test.ts tests/receiptPrinter.test.ts tests/sync.test.ts tests/auth.test.ts tests/billing.test.ts"
+    "test": "node --test --test-concurrency=1 tests/barcode.test.ts tests/barcodeReader.test.ts tests/labelPrinter.test.ts tests/receiptPrinter.test.ts tests/sync.test.ts tests/auth.test.ts tests/billing.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@zxing/library": "^0.21.3",
     "lucide-react": "^1.48.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
