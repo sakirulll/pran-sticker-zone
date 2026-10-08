@@ -2089,7 +2089,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // Sizes are in millimetres, as printed. They are remembered on this device,
     // because they belong to the label paper and printer in use here.
     const BARCODE_SAVED = "hishabpos_barcode_v2";
-    const BARCODE_PRESETS: [number, number][] = [[50, 25], [40, 30], [38, 25], [30, 20], [60, 40], [100, 50]];
+    const BARCODE_PRESETS: [number, number][] = [[50, 30], [50, 25], [40, 30], [40, 25], [38, 25], [30, 20], [60, 40], [58, 40], [80, 50], [100, 50]];
     const BARCODE_OPTIONS = {
       shop: true, name: true, code: true, price: true,
       paper: "roll" as "roll" | "a4",
@@ -2105,7 +2105,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     } catch {
       // Nothing usable was saved; the defaults above apply.
     }
-    const BARCODE_LIMITS = { across: [1, 10], width: [15, 200], height: [10, 200], bars: [3, 80], font: [5, 16], gap: [0, 20], offsetX: [-10, 10], offsetY: [-10, 10] } as const;
+    const BARCODE_LIMITS = { across: [1, 10], width: [15, 200], height: [10, 200], bars: [3, 80], font: [5, 16], gap: [0, 20], offsetX: [-30, 80], offsetY: [-30, 80] } as const;
     const BARCODE_SIDE = 1.5; // blank strip kept at each side of a label, in mm
     const BARCODE_STYLE = `.bc-grid{display:grid;grid-template-columns:repeat(var(--bc-across),var(--bc-width));gap:var(--bc-gap);justify-content:start}.bc-row{display:flex;gap:var(--bc-gap);width:max-content;margin-bottom:3mm}.bc-turn{overflow:hidden;margin-bottom:3mm}.bc-label{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 auto;width:var(--bc-width);height:var(--bc-height);padding:0 ${BARCODE_SIDE}mm;outline:1px dashed #94a3b8;outline-offset:-1px;background:#fff;color:#000;text-align:center;font:var(--bc-font)/1.15 Arial,Helvetica,sans-serif;overflow:hidden;break-inside:avoid}.bc-label > div{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-label svg{display:block;flex:0 0 auto;margin:.5mm 0 .3mm}.bc-shop,.bc-price{font-weight:700}.bc-code{letter-spacing:.2mm}`;
     const barcodeOf = (product: any) => String(product?.code || "").trim();
@@ -2194,7 +2194,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           ${size("offsetY", "Move down (mm)")}
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px">${check("shop", "Shop Name")}${check("name", "Product Name")}${check("code", "Code")}${check("price", "Sale Price")}</div>
         </div>
-        ${roll ? `<div style="padding:0 18px 4px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="bcSendSize" type="checkbox" style="width:auto" ${options.sendSize ? "checked" : ""}> Send the label size to the printer</label><p class="settings-help" style="margin:4px 0 0">Leave this off if a print comes out blank. The printer then uses its own paper size, which should be ${paperSize} mm.</p></div><p class="settings-help" style="padding:0 18px">In the print window choose your label printer, set Margins to None and Scale to 100.</p>` : rowWidth > A4_WIDTH ? warn(`These labels need ${rowWidth} mm across, but an A4 sheet has ${A4_WIDTH} mm. Use fewer labels per row or a smaller width.`) : ""}
+        ${roll ? `<div style="padding:0 18px 4px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="bcSendSize" type="checkbox" style="width:auto" ${options.sendSize ? "checked" : ""}> Send the label size to the printer</label><p class="settings-help" style="margin:4px 0 0">Leave this off if a print comes out blank. The printer then uses its own paper size, which should be ${paperSize} mm.</p></div><p class="settings-help" style="padding:0 18px">In the print window choose your label printer, set Margins to None and Scale to 100.</p><div style="margin:8px 18px 12px;padding:12px 14px;border:1px solid var(--ln);border-radius:8px"><b>Lining up the printer</b><p class="settings-help" style="margin:6px 0 10px">Print the test label first. It has a line all round its edge. If the whole line is on the label, everything is right. If part is missing, move the print with "Move right" and "Move down" (a minus number moves it left or up) and print it again.</p><button class="btn" id="bcTest" type="button" style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)">Print test label</button></div>` : rowWidth > A4_WIDTH ? warn(`These labels need ${rowWidth} mm across, but an A4 sheet has ${A4_WIDTH} mm. Use fewer labels per row or a smaller width.`) : ""}
         ${needed > options.height ? warn(`The text and barcode need about ${Math.ceil(needed)} mm but the label is ${options.height} mm high, so part of it will be cut off. Make the barcode or text smaller, or hide a line.`) : ""}
         ${labels.length ? `<div style="padding:6px 18px 18px"><h3 style="margin:0 0 4px">3. Preview</h3><p class="settings-help" style="margin:0 0 10px">Shown at the size it will print. The dashed line is the edge of the label and is not printed.</p><div style="overflow-x:auto;padding:2px" data-no-translate>${barcodeSheet(labels.slice(0, 60))}</div>${labels.length > 60 ? `<p class="settings-help">Showing the first 60 of ${labels.length} labels. All of them are printed.</p>` : ""}</div>` : ""}
       </section>`;
@@ -2278,7 +2278,14 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         BARCODE_ITEMS = BARCODE_ITEMS.filter((item) => String(item.id) !== (button as HTMLElement).dataset.id);
         barcodePage();
       }));
-      const printLabels = (only?: any) => {
+      // A label that shows where the print lands: a line right round the edge, the
+      // size it is meant to be, and a barcode to try the scanner on. Printing it and
+      // looking at the result is how the printer and the label are lined up.
+      const testLabel = () => {
+        const fit = fitModule("TEST1234", options.width - BARCODE_SIDE * 2, options.dpi);
+        return `<div class="bc-label" style="border:0.4mm solid #000"><div class="bc-shop">${options.width} × ${options.height} mm</div>${fit.moduleMm ? code128Svg("TEST1234", Math.min(options.bars, Math.max(3, options.height - 12)), fit.moduleMm) : ""}<div class="bc-code">TEST1234</div></div>`;
+      };
+      const printLabels = (only?: any, test = false) => {
         const sheet = window.open("", "_blank", "width=900,height=900");
         if (!sheet) { toast("Allow pop-ups to print the labels"); return; }
         // On a roll every row of labels is its own page, exactly the size of the row,
@@ -2292,13 +2299,14 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           .toolbar{display:flex;justify-content:center;gap:12px;align-items:center;padding:14px;font-size:13px;color:#374151}.toolbar button{border:0;border-radius:4px;padding:9px 22px;background:#07851b;color:#fff;font-weight:700;cursor:pointer}
           .sheet{padding:0 14px 14px}
           ${BARCODE_STYLE}
-          .bc-label > *{transform:translate(${options.offsetX}mm,${options.offsetY}mm)}
+          .bc-row,.bc-turn,.bc-grid{position:relative;left:${options.offsetX}mm;top:${options.offsetY}mm}
           @media print{body{background:#fff}.toolbar{display:none}.sheet{padding:0}.bc-label{outline:0}}
           ${page}
-        </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button><span>${roll ? `Paper: ${paperSize} mm, no margins, 100% scale` : `Paper: A4 ${options.orient}, 100% scale`}</span></div><div class="sheet">${barcodeSheet(barcodeLabels(only))}</div></body></html>`);
+        </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button><span>${roll ? `Paper: ${paperSize} mm, no margins, 100% scale` : `Paper: A4 ${options.orient}, 100% scale`}</span></div><div class="sheet">${barcodeSheet(test ? [testLabel()] : barcodeLabels(only))}</div></body></html>`);
         sheet.document.close();
       };
       $("#bcPrint").addEventListener("click", () => printLabels());
+      $("#bcTest")?.addEventListener("click", () => printLabels(undefined, true));
       document.querySelectorAll(".bc-print-one").forEach((button) => button.addEventListener("click", () => printLabels((button as HTMLElement).dataset.id)));
     };
 

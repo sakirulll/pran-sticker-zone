@@ -91,6 +91,8 @@ const words: Record<string, string> = {
   "Printer": "প্রিন্টার", "Label printer (roll)": "লেবেল প্রিন্টার (রোল)", "A4 sheet (normal printer)": "A4 কাগজ (সাধারণ প্রিন্টার)",
   "Tick the products you want to print, then press Print Selected. The Print button on a row prints that product alone.": "যে পণ্যগুলো ছাপতে চান সেগুলোতে টিক দিন, তারপর \"বাছাই করা প্রিন্ট করুন\" চাপুন। সারির প্রিন্ট বাটন শুধু ওই পণ্যটাই ছাপে।",
   "Print this product": "এই পণ্যটি ছাপুন",
+  "Lining up the printer": "প্রিন্টার মেলানো", "Print test label": "পরীক্ষার লেবেল ছাপুন",
+  "Print the test label first. It has a line all round its edge. If the whole line is on the label, everything is right. If part is missing, move the print with \"Move right\" and \"Move down\" (a minus number moves it left or up) and print it again.": "আগে পরীক্ষার লেবেলটি ছাপুন। এর চারপাশে একটি দাগ আছে। পুরো দাগটি লেবেলের ভেতরে এলে সব ঠিক আছে। কোনো অংশ বাদ পড়লে \"ডানে সরান\" ও \"নিচে সরান\" দিয়ে ছাপা সরান (মাইনাস সংখ্যা দিলে বাঁয়ে বা উপরে সরে), তারপর আবার ছাপুন।",
   "Send the label size to the printer": "লেবেলের মাপ প্রিন্টারে পাঠান",
   "In the print window choose your label printer, set Margins to None and Scale to 100.": "প্রিন্টের জানালায় আপনার লেবেল প্রিন্টার বাছুন, Margins-এ None আর Scale-এ 100 দিন।",
   "Page direction": "পাতার দিক", "Portrait (tall)": "Portrait (লম্বালম্বি)", "Landscape (wide)": "Landscape (আড়াআড়ি)",
