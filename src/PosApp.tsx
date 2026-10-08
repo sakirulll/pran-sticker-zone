@@ -2107,7 +2107,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     }
     const BARCODE_LIMITS = { across: [1, 10], width: [15, 200], height: [10, 200], bars: [3, 80], font: [5, 16], gap: [0, 20], offsetX: [-30, 80], offsetY: [-30, 80] } as const;
     const BARCODE_SIDE = 1.5; // blank strip kept at each side of a label, in mm
-    const BARCODE_STYLE = `.bc-grid{display:grid;grid-template-columns:repeat(var(--bc-across),var(--bc-width));gap:var(--bc-gap);justify-content:start}.bc-row{display:flex;gap:var(--bc-gap);width:max-content;margin-bottom:3mm}.bc-turn{overflow:hidden;margin-bottom:3mm}.bc-label{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 auto;width:var(--bc-width);height:var(--bc-height);padding:0 ${BARCODE_SIDE}mm;outline:1px dashed #94a3b8;outline-offset:-1px;background:#fff;color:#000;text-align:center;font:var(--bc-font)/1.15 Arial,Helvetica,sans-serif;overflow:hidden;break-inside:avoid}.bc-label > div{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-label svg{display:block;flex:0 0 auto;margin:.5mm 0 .3mm}.bc-shop,.bc-price{font-weight:700}.bc-code{letter-spacing:.2mm}`;
+    const BARCODE_STYLE = `.bc-grid{display:grid;grid-template-columns:repeat(var(--bc-across),var(--bc-width));gap:var(--bc-gap);justify-content:start}.bc-row{display:flex;gap:var(--bc-gap);width:max-content;margin-bottom:3mm}.bc-turn{overflow:hidden;margin-bottom:3mm}.bc-label{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 auto;width:var(--bc-width);height:var(--bc-height);padding:0 ${BARCODE_SIDE}mm;outline:1px dashed #94a3b8;outline-offset:-1px;background:#fff;color:#000;text-align:center;font:var(--bc-font)/1.15 Arial,Helvetica,sans-serif;overflow:hidden;break-inside:avoid}.bc-label > div{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-label svg{display:block;flex:0 0 auto;margin:.5mm 0 .3mm}.bc-shop{font-size:calc(var(--bc-font) + 3pt)}.bc-price{font-size:calc(var(--bc-font) + 2pt)}.bc-code{letter-spacing:.2mm}`;
     const barcodeOf = (product: any) => String(product?.code || "").trim();
     const barcodeFit = (product: any) => fitModule(barcodeOf(product), BARCODE_OPTIONS.width - BARCODE_SIDE * 2, BARCODE_OPTIONS.dpi);
     const barcodeVars = () => `--bc-across:${BARCODE_OPTIONS.across};--bc-width:${BARCODE_OPTIONS.width}mm;--bc-height:${BARCODE_OPTIONS.height}mm;--bc-gap:${BARCODE_OPTIONS.gap}mm;--bc-font:${BARCODE_OPTIONS.font}pt`;
@@ -2116,7 +2116,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const product = prod(id);
       const fit = product ? barcodeFit(product) : null;
       if (!product || !fit || !fit.moduleMm) return [];
-      const label = `<div class="bc-label">${BARCODE_OPTIONS.shop ? `<div class="bc-shop">${esc(D.user.shop || "")}</div>` : ""}${BARCODE_OPTIONS.name ? `<div class="bc-name">${esc(product.name)}</div>` : ""}${code128Svg(barcodeOf(product), BARCODE_OPTIONS.bars, fit.moduleMm)}${BARCODE_OPTIONS.code ? `<div class="bc-code">${esc(barcodeOf(product))}</div>` : ""}${BARCODE_OPTIONS.price ? `<div class="bc-price">${tk(product.sell)}</div>` : ""}</div>`;
+      // Laid out the way shop labels usually are: shop, product, price, then the barcode with its number under it.
+      const price = +product.sell || 0;
+      const label = `<div class="bc-label">${BARCODE_OPTIONS.shop ? `<div class="bc-shop">${esc(D.user.shop || "")}</div>` : ""}${BARCODE_OPTIONS.name ? `<div class="bc-name">${esc(product.name)}</div>` : ""}${BARCODE_OPTIONS.price ? `<div class="bc-price">Price: ${Number.isInteger(price) ? price : price.toFixed(2)}</div>` : ""}${code128Svg(barcodeOf(product), BARCODE_OPTIONS.bars, fit.moduleMm)}${BARCODE_OPTIONS.code ? `<div class="bc-code">${esc(barcodeOf(product))}</div>` : ""}</div>`;
       return new Array(qty).fill(label);
     });
     // On a roll, each row of labels across the roll is one page; on A4 the labels flow down the sheet.
@@ -2151,8 +2153,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const paperSize = turned ? `${options.height} × ${rowWidth}` : `${rowWidth} × ${options.height}`;
       const A4_WIDTH = barcodeSheetWidth();
       // Roughly what the chosen lines and bars need from top to bottom, to warn before paper is wasted.
-      const lineMm = options.font * 0.3528 * 1.15;
-      const needed = (+options.shop + +options.name + +options.code + +options.price) * lineMm + options.bars + 1.2;
+      // The shop name and the price are printed larger than the other lines.
+      const lineMm = (points: number) => points * 0.3528 * 1.15;
+      const needed = +options.shop * lineMm(options.font + 3) + +options.name * lineMm(options.font) + +options.price * lineMm(options.font + 2) + +options.code * lineMm(options.font) + options.bars + 1.2;
       const qualityText = { good: "Good", thin: "Thin, may not scan", none: "Does not fit" };
       const rows = BARCODE_ITEMS.map((item, index) => {
         const product = prod(item.id);
