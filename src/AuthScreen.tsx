@@ -119,6 +119,7 @@ export function AuthScreen({ onSignedIn, initialNotice = "" }: { onSignedIn: (us
             {mode === "register" && <>Already have an account? <button type="button" onClick={() => switchTo("login")}>Log in</button></>}
             {(mode === "forgot" || mode === "reset") && <button type="button" onClick={() => switchTo("login")}>Back to log in</button>}
           </div>
+          <p className="auth-legal"><a href="/terms.html" target="_blank" rel="noopener">{mode === "register" ? "By creating an account you agree to the Terms and Privacy Policy" : "Terms and Privacy Policy"}</a></p>
         </section>
       </div>
     </main>

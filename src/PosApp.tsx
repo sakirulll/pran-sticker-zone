@@ -206,6 +206,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           currencyId: 40,
           taxRate: 0,
           invoiceFooter: "Thank you for your purchase!",
+          // What a sale may not be saved without; each shop chooses.
+          requirePhone: false,
+          requireReceived: false,
           notifications: { lowStock: true, dueReminders: true, sales: true, purchases: true, expenses: true },
         },
 
@@ -921,7 +924,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             ${s ? `
               <div class="two walkin-fields" id="walkinFields">
                 <input id="walkName" type="text" placeholder="Walk-in customer name">
-                <input id="walkPhone" type="tel" inputmode="tel" placeholder="Walk-in phone number" required>
+                <input id="walkPhone" type="tel" inputmode="tel" placeholder="Walk-in phone number" ${D.settings.requirePhone ? "required" : ""}>
               </div>
             ` : ""}
 
@@ -959,8 +962,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                   id="rc"
                   type="number"
                   min="0"
-                  value="${s ? "" : "0"}"
-                  ${s ? "required" : ""}
+                  value="${s && D.settings.requireReceived ? "" : "0"}"
+                  ${s && D.settings.requireReceived ? "required" : ""}
                   oninput="calc()"
                 >
 
@@ -1444,8 +1447,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
       const s = PT === "sale";
 
-      // A sale needs the buyer's phone number (unless a saved customer is chosen)
-      // and the amount received, typed in; 0 is typed for a sale wholly on credit.
+      // Where the shop has asked for it in General Settings, a sale needs the buyer's
+      // phone number (unless a saved customer is chosen) and the amount received,
+      // typed in; 0 is typed for a sale wholly on credit.
       if (s) {
         const missing = (id: string, message: string) => {
           const field = $("#" + id);
@@ -1456,8 +1460,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           field.focus();
           return true;
         };
-        if (!$("#pp").value && missing("walkPhone", "Enter the customer's phone number")) return;
-        if (missing("rc", "Enter the amount received (0 if nothing was paid)")) return;
+        if (D.settings.requirePhone && !$("#pp").value && missing("walkPhone", "Enter the customer's phone number")) return;
+        if (D.settings.requireReceived && missing("rc", "Enter the amount received (0 if nothing was paid)")) return;
       }
 
       const T = calc();
@@ -2241,7 +2245,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const generalSettingsPage = () => {
-      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
+      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedPhone" type="checkbox" style="width:auto" ${D.settings.requirePhone ? "checked" : ""}> A walk-in sale needs the customer's phone number</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedReceived" type="checkbox" style="width:auto" ${D.settings.requireReceived ? "checked" : ""}> The amount received has to be typed on every sale</label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
       $("#generalSettingsForm").addEventListener("submit", async (event: Event) => {
         event.preventDefault();
         const logoFile = $("#settingLogo")?.files?.[0] as File | undefined;
@@ -2264,6 +2268,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         D.settings.currencyId = +$("#settingCurrency").value;
         D.settings.taxRate = Math.max(0, +$("#settingTax").value || 0);
         D.settings.invoiceFooter = $("#settingFooter").value.trim();
+        D.settings.requirePhone = $("#settingNeedPhone").checked;
+        D.settings.requireReceived = $("#settingNeedReceived").checked;
         CURRENCY_SYMBOL = D.currencies.find((currency: any) => currency.id == D.settings.currencyId)?.symbol || String.fromCharCode(2547);
         save(); hdr(); render(); toast("General settings saved");
       });

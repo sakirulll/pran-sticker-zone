@@ -180,3 +180,11 @@ test("an owner who never confirms the email is stopped after the allowed days, u
     await admin.call("billing.php?action=admin-settings", { ...settings, verify_grace_days: 3 });
   }
 });
+
+test("prices and the support number can be read without logging in, and nothing else", { skip: !BASE }, async () => {
+  const admin = await adminSession();
+  await admin.call("billing.php?action=admin-settings", { price_monthly: 100, price_yearly: 999, trial_days: 14, verify_grace_days: 3, bkash_number: "01700000001", nagad_number: "", support_phone: "01700000002" });
+  const seen = await new Session().call("contact.php");
+  assert.equal(seen.status, 200);
+  assert.deepEqual(seen.body, { priceMonthly: 100, priceYearly: 999, trialDays: 14, supportPhone: "01700000002" });
+});

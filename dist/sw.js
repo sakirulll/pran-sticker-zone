@@ -50,7 +50,8 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
   // The page: always the newest when online, the kept copy when not.
-  if (request.mode === "navigate") {
+  // Only the app itself; other pages (the terms) are simply fetched.
+  if (request.mode === "navigate" && url.pathname === PAGE) {
     event.respondWith(
       fetch(request)
         .then((response) => {
