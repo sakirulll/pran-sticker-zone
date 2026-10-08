@@ -1119,7 +1119,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
       $("#pg").innerHTML = products.map((p: any) => `
         <button class="pos-product-card" onclick="addc(${p.id})">
-          ${typeof p.image === "string" && p.image.startsWith("data:image/")
+          ${typeof p.image === "string" && p.image
             ? `<img class="pos-product-image" src="${esc(p.image)}" alt="${esc(p.name)}">`
             : `<div class="pos-product-placeholder">No image</div>`}
           <span class="pos-product-info">

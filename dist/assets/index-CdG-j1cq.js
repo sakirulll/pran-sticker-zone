@@ -1033,7 +1033,7 @@ dialog label{
         </div>
       `,t){let e=x(`#pp`),t=x(`#walkinFields`),n=()=>{t&&(t.hidden=!!e?.value)};e?.addEventListener(`change`,n),n();let r=x(`#serialScan`);r?.addEventListener(`keydown`,e=>{if(e.key!==`Enter`)return;e.preventDefault();let t=r.value.trim();t&&Ze(t)})}Je(``),dt()},Je=e=>{let t=We===`sale`,n=e.toLowerCase(),r=D.products.filter(e=>(e.name+e.code).toLowerCase().includes(n)&&(!Ge||String(e.category)===Ge)&&(!Ke||String(e.brand)===Ke));x(`#pg`).innerHTML=r.map(e=>`
         <button class="pos-product-card" onclick="addc(${e.id})">
-          ${typeof e.image==`string`&&e.image.startsWith(`data:image/`)?`<img class="pos-product-image" src="${S(e.image)}" alt="${S(e.name)}">`:`<div class="pos-product-placeholder">No image</div>`}
+          ${typeof e.image==`string`&&e.image?`<img class="pos-product-image" src="${S(e.image)}" alt="${S(e.name)}">`:`<div class="pos-product-placeholder">No image</div>`}
           <span class="pos-product-info">
             <b>${S(e.name)}</b>
             <small>${S(e.code||``)}</small>
