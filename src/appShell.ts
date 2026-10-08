@@ -329,6 +329,7 @@ h3{
 .product-field input,.product-field select{height:45px;padding:10px 0 0;border:0;outline:0;background:transparent;color:var(--tx);font:inherit}
 .product-field input[type=file]{padding-top:11px;font-size:13px}
 .product-serial-input{width:100%;min-height:88px;margin-top:13px;padding:10px;border:1px solid var(--ln);border-radius:7px;background:var(--in);color:var(--tx);font:inherit;resize:vertical}
+.scan-choice{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:8px 10px;border:1px solid var(--ln);border-top:0;background:var(--bg);color:var(--tx);font:inherit;text-align:left;cursor:pointer}.scan-choice small{flex:0 0 auto;color:var(--mut)}.scan-choice.on{background:var(--pu);color:#fff}.scan-choice.on small{color:#fff}.scan-keys{margin:6px 0 0;color:var(--mut);font-size:12px}
 .serial-scan{margin:10px 0}.serial-scan label{display:block;margin-bottom:5px;color:var(--mut);font-size:12px}.serial-scan input{border-color:var(--pu)}
 .product-create-actions{display:flex;justify-content:center;gap:18px;margin:32px 0 8px}
 .product-create-actions .btn{min-width:134px}

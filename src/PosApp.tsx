@@ -409,6 +409,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           + (dues.length ? `<h4>Customer Due (${dues.length})</h4>${dues.slice(0, shown).map((sale: any) => `<a href="#dues"><span>${esc(sale.party || "Customer")}</span><small>${esc(sale.inv)} · ${tk(sale.due)}</small></a>`).join("")}` : "");
     };
 
+    // A computer with a keyboard and mouse, as against a phone or tablet.
+    const KEYBOARD_DEVICE = typeof matchMedia === "function" && matchMedia("(hover: hover) and (pointer: fine)").matches;
     // Whether the Sale screen's camera scanner was left switched on, on this device.
     const CAMERA_SCAN_SAVED = "hishabpos_camera_scan";
 
@@ -923,7 +925,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
               </div>
             ` : ""}
 
-            ${s ? `<div class="serial-scan"><label for="serialScan">Scan a barcode, or enter a product code or serial number, then press Enter</label><div style="display:flex;gap:8px"><input id="serialScan" autocomplete="off" placeholder="Barcode, product code or serial number" style="flex:1;min-width:0">${canScanWithCamera() ? `<button class="btn pu" id="scanCamera" type="button" aria-label="Scan with the camera" title="Scan with the camera" style="flex:0 0 auto;padding:0 14px"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg></button>` : ""}</div><div id="scanPanel"></div></div>` : ""}
+            ${s ? `<div class="serial-scan"><label for="serialScan">Scan a barcode, or type a product name, code or serial number, then press Enter</label><div style="display:flex;gap:8px"><input id="serialScan" autocomplete="off" placeholder="Barcode, product code or serial number" style="flex:1;min-width:0">${canScanWithCamera() ? `<button class="btn pu" id="scanCamera" type="button" aria-label="Scan with the camera" title="Scan with the camera" style="flex:0 0 auto;padding:0 14px"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg></button>` : ""}</div><div id="scanSuggest"></div>${KEYBOARD_DEVICE ? `<p class="scan-keys">F2 Product box · ↑ ↓ Choose · Enter Add · + − Quantity · Del Remove · F4 Receive amount · F9 Save</p>` : ""}<div id="scanPanel"></div></div>` : ""}
 
             <div class="wrap">
               <table style="min-width:560px">
@@ -1125,14 +1127,74 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           startCamera();
         });
         if (scanPanel && $("#scanCamera") && remembered()) startCamera();
+        // The whole sale can be made from the keyboard: type part of a name or code,
+        // pick with the arrow keys, Enter to add. A scanner types a full code and
+        // Enter, which adds that product at once.
         const serialScan = $("#serialScan");
+        const suggest = $("#scanSuggest");
+        let choices: any[] = [];
+        let chosen = 0;
+        const showChoices = () => {
+          const query = serialScan.value.trim().toLowerCase();
+          choices = query ? D.products.filter((p: any) => `${p.name} ${p.code || ""}`.toLowerCase().includes(query)).slice(0, 8) : [];
+          chosen = Math.max(0, Math.min(chosen, choices.length - 1));
+          suggest.innerHTML = choices.map((p: any, index: number) => `<button type="button" tabindex="-1" data-no-translate data-choice="${index}" class="scan-choice${index === chosen ? " on" : ""}"><span>${esc(p.name)}</span><small>${esc(p.code || "")} · ${tk(p.sell)} · ${+p.stock || 0}</small></button>`).join("");
+        };
+        const clearScan = () => { serialScan.value = ""; chosen = 0; showChoices(); };
+        const takeChoice = (product: any) => {
+          if (+product.stock <= 0) { toast("This product is out of stock"); return; }
+          addc(product.id);
+          clearScan();
+          serialScan.focus();
+        };
+        serialScan?.addEventListener("input", () => { chosen = 0; showChoices(); });
+        // mousedown, so the box does not lose the keyboard before the product is added.
+        suggest?.addEventListener("mousedown", (event: MouseEvent) => {
+          const button = (event.target as HTMLElement).closest<HTMLElement>("[data-choice]");
+          if (!button) return;
+          event.preventDefault();
+          takeChoice(choices[+button.dataset.choice!]);
+        });
         serialScan?.addEventListener("keydown", (event: KeyboardEvent) => {
+          const value = serialScan.value.trim();
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            if (!choices.length) return;
+            event.preventDefault();
+            chosen = (chosen + (event.key === "ArrowDown" ? 1 : choices.length - 1)) % choices.length;
+            showChoices();
+          } else if (event.key === "Escape") {
+            if (value) { event.preventDefault(); clearScan(); }
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            if (!value) return;
+            const typed = value.toLowerCase();
+            const exact = D.products.some((p: any) => p.hasSerial
+              ? (p.serials || []).some((serial: string) => serial.toLowerCase() === typed)
+              : String(p.code || "").trim().toLowerCase() === typed);
+            if (exact || !choices.length) {
+              addSerialFromScan(value);
+              if (!serialScan.value) clearScan();
+            } else {
+              takeChoice(choices[chosen]);
+            }
+          } else if (!value && CART.length && ["+", "=", "-", "Delete"].includes(event.key)) {
+            // With the box empty these keys work on the product added last.
+            event.preventDefault();
+            const last = CART[CART.length - 1];
+            if (event.key === "Delete") { removeCartItem(CART.length - 1); return; }
+            if (prod(last.id)?.hasSerial) { toast("Add one unit by selecting the product and entering its serial number"); return; }
+            last.qty = Math.max(1, last.qty + (event.key === "-" ? -1 : 1));
+            draw();
+          }
+        });
+        $("#rc")?.addEventListener("keydown", (event: KeyboardEvent) => {
           if (event.key !== "Enter") return;
           event.preventDefault();
-          const value = serialScan.value.trim();
-          if (!value) return;
-          addSerialFromScan(value);
+          savePos();
         });
+        // On a computer the box is ready for typing as soon as the screen opens; on a
+        // phone that would bring the keyboard up over the page.
+        if (KEYBOARD_DEVICE) serialScan?.focus();
       }
 
       pgrid("");
@@ -1926,7 +1988,11 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       // Made ready now, because sharing has to start in the very moment of the tap.
       let picture: File | null = null;
       canvas.toBlob((blob) => { if (blob) picture = new File([blob], `receipt-${String(sale.inv || id).replace(/[^\w-]+/g, "_")}.png`, { type: "image/png" }); }, "image/png");
-      if (!dialog.open) dialog.showModal();
+      if (!dialog.open) {
+        dialog.showModal();
+        // With a keyboard, Enter then prints and Esc closes.
+        if (KEYBOARD_DEVICE) ($("#rcPrint") || $("#rcWindow"))?.focus();
+      }
 
       const connect = async (open: () => Promise<PrinterLink>) => {
         try {
@@ -3976,6 +4042,27 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
     document.addEventListener("click", closeUserMenu);
 
+    // Keys that work on the Sale screen wherever the cursor is, and F2 from any
+    // screen, so a sale can be started and finished without the mouse.
+    const onShortcut = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.altKey || event.metaKey || document.querySelector("dialog[open]")) return;
+      const scanBox = document.getElementById("serialScan") as HTMLInputElement | null;
+      if (event.key === "F2") {
+        event.preventDefault();
+        if (scanBox) { scanBox.focus(); scanBox.select(); } else location.hash = "sale-new";
+      } else if (event.key === "F4" && scanBox) {
+        const receive = document.getElementById("rc") as HTMLInputElement | null;
+        if (!receive) return;
+        event.preventDefault();
+        receive.focus();
+        receive.select();
+      } else if (event.key === "F9" && scanBox) {
+        event.preventDefault();
+        savePos();
+      }
+    };
+    document.addEventListener("keydown", onShortcut);
+
     const themeBtn =
       document.getElementById(
         "themeBtn",
@@ -4135,6 +4222,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         onHash,
       );
       document.removeEventListener("click", closeUserMenu);
+      document.removeEventListener("keydown", onShortcut);
 
       document.body.classList.remove(
         "nav",
