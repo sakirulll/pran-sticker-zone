@@ -3,7 +3,8 @@ import { ORIGINAL_APP } from "./appShell";
 import { canEncode, code128Svg, fitModule } from "./barcode";
 import { canUseBluetooth, canUseSerial, connectBluetooth, connectSerial, drawLabel, tsplJob, type LabelSpec, type PrinterLink } from "./labelPrinter";
 import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
-import { currentLanguage, switchLanguage } from "./i18n";
+import { currentLanguage, switchLanguage, translate } from "./i18n";
+import { drawReceipt, escposJob, PAPER_DOTS, pictureCanvas, tsplReceiptJob, type Receipt } from "./receiptPrinter";
 import { clearOfflineShop, readOfflineShop, writeOfflineShop } from "./offlineStore";
 import { buildShopData, chunkChanges, ShopSync, type RecordRow, type StoredRow } from "./shopSync";
 import { canUseShop, daysLeft, escapeHtml, money, mountSubscriptionPanel, resendVerification, subscriptionBadge } from "./subscriptionPanel";
@@ -1465,7 +1466,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             : D.settings.notifications.sales ? "Sale saved" : "Saved"
         : D.settings.notifications.purchases ? "Purchase saved" : "Saved";
       toast(notice);
-      if (s) openInvoice(D.sales[0].id, true, true);
+      if (s) quickReceipt(D.sales[0].id);
 
       location.hash = s
         ? "sales"
@@ -1717,6 +1718,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       });
     };
 
+    // The printer connected for printing straight to it (labels and receipts), kept while moving between screens.
+    let PRINTER_LINK: PrinterLink | null = null;
+
     const openInvoice = (id: number, compact = false, autoPrint = false) => {
       const sale = D.sales.find((item: any) => item.id == id);
       if (!sale) {
@@ -1795,6 +1799,144 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         ${autoPrint ? `<script>window.onload=()=>setTimeout(()=>window.print(),250)</script>` : ""}
         </body></html>`);
       invoiceWindow.document.close();
+    };
+
+    // ---- Receipts straight to a receipt printer, or shared as a picture.
+    // A phone has no print window worth using, and an iPhone's browser is not
+    // allowed to reach a Bluetooth printer at all, so there are three ways out:
+    // print on a connected printer, share the receipt as a picture (which a
+    // printer's own app can print), or the print window as before.
+    const RECEIPT_SAVED = "hishabpos_receipt";
+    const RECEIPT_OPTIONS = { kind: "escpos" as "escpos" | "tspl", paper: 58 as 58 | 80 };
+    try {
+      Object.assign(RECEIPT_OPTIONS, JSON.parse(localStorage.getItem(RECEIPT_SAVED) || "{}"));
+    } catch {
+      // Nothing usable was saved; the defaults above apply.
+    }
+    // The receipt is a picture, so its words are not reached by the page's translation and are put through it here.
+    const said = (text: string) => (currentLanguage() === "bn" ? translate(text) : text);
+    const receiptFor = (sale: any): Receipt => {
+      const items = (sale.items || []).map((item: any) => {
+        const product = prod(item.id);
+        const price = +(item.price ?? product?.sell ?? 0);
+        const qty = +item.qty || 0;
+        return { name: String(item.name || product?.name || said("Product")), qty, price: tk(price), total: tk(price * qty), amount: price * qty, note: item.serials?.length ? `${said("Serial")}: ${item.serials.join(", ")}` : "" };
+      });
+      const total = +sale.total || 0;
+      const paid = +sale.paid || 0;
+      const extra = (label: string, amount: number) => (amount ? [{ label: said(label), value: tk(amount) }] : []);
+      return {
+        shop: String(D.user.shop || "My Shop"),
+        header: [D.user.phone, D.user.address, said("Money Receipt")].filter(Boolean).map(String),
+        details: [
+          [said("Invoice"), String(sale.inv || "")],
+          [said("Date"), String(sale.date || "")],
+          [said("Customer"), String(sale.party || said("Walk-in Customer"))],
+          ...(sale.phone ? [[said("Mobile"), String(sale.phone)] as [string, string]] : []),
+          [said("Payment"), said(String(sale.pay || "Cash"))],
+        ],
+        items,
+        totals: [
+          { label: said("Subtotal"), value: tk(+(sale.subtotal ?? sum(items, (item: any) => item.amount))) },
+          ...extra("VAT", +sale.vat || 0),
+          ...extra("Shipping", +sale.shipping || 0),
+          ...extra("Discount", +sale.disc || 0),
+          { label: said("Total Amount"), value: tk(total), strong: true },
+          { label: said("Paid Amount"), value: tk(paid) },
+          { label: said("Due"), value: tk(+(sale.due ?? Math.max(total - paid, 0))) },
+        ],
+        footer: String(D.settings.invoiceFooter || "Thank you for your purchase!"),
+      };
+    };
+    const receiptPicture = (sale: any) => drawReceipt(receiptFor(sale), PAPER_DOTS[RECEIPT_OPTIONS.paper] || PAPER_DOTS[58]);
+    // Resolves to whether the receipt reached the printer.
+    const sendReceipt = async (sale: any): Promise<boolean> => {
+      if (!PRINTER_LINK) return false;
+      try {
+        const picture = receiptPicture(sale);
+        await PRINTER_LINK.send(RECEIPT_OPTIONS.kind === "tspl" ? tsplReceiptJob(picture) : escposJob(picture));
+        toast("Receipt sent to the printer");
+        return true;
+      } catch (error) {
+        console.error("Could not print the receipt directly", error);
+        PRINTER_LINK = null;
+        toast("The printer stopped answering. Connect it again.");
+        return false;
+      }
+    };
+    const receiptDialog = (id: number) => {
+      const sale = D.sales.find((item: any) => item.id == id);
+      if (!sale) { toast("Invoice not found"); return; }
+      try { localStorage.setItem(RECEIPT_SAVED, JSON.stringify(RECEIPT_OPTIONS)); } catch { /* the choice then lasts only for this visit */ }
+      const dialog = $("#dlg") as HTMLDialogElement;
+      const quiet = `style="background:var(--bg);color:var(--tx);border:1px solid var(--ln)"`;
+      const canConnect = canUseBluetooth() || canUseSerial();
+      const pick = (name: string, choices: [string | number, string][], chosen: string | number) => `<select id="${name}" style="width:auto">${choices.map(([value, text]) => `<option value="${value}" ${value === chosen ? "selected" : ""}>${text}</option>`).join("")}</select>`;
+      dialog.innerHTML = `<h3>Receipt</h3>
+        <div id="rcPreview" style="max-height:44vh;overflow:auto;padding:8px;border:1px solid var(--ln);border-radius:6px;background:#fff;text-align:center"></div>
+        <p id="rcState" style="margin:12px 0 8px;font-weight:600">${PRINTER_LINK ? `Connected: ${esc(PRINTER_LINK.name)}` : "Not connected"}</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          ${PRINTER_LINK
+            ? `<button class="btn pu" id="rcPrint" type="button">Print receipt</button><button class="btn" id="rcDisconnect" type="button" ${quiet}>Disconnect</button>`
+            : `${canUseBluetooth() ? `<button class="btn pu" id="rcBluetooth" type="button">Connect by Bluetooth</button>` : ""}${canUseSerial() ? `<button class="btn" id="rcSerial" type="button" ${quiet}>Connect by cable (COM port)</button>` : ""}`}
+          <button class="btn ${canConnect ? "" : "pu"}" id="rcShare" type="button" ${canConnect ? quiet : ""}>Share or save picture</button>
+          <button class="btn" id="rcWindow" type="button" ${quiet}>Open print window</button>
+          <button class="btn" id="rcClose" type="button" ${quiet}>Close</button>
+        </div>
+        ${canUseBluetooth() ? "" : `<p class="settings-help" style="margin:10px 0 0">This browser cannot reach a Bluetooth printer (an iPhone does not allow it). Press "Share or save picture" and choose your printer's app to print the receipt.</p>`}
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0">Printer ${pick("rcKind", [["escpos", "Receipt printer"], ["tspl", "Label printer"]], RECEIPT_OPTIONS.kind)}</label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0">Paper ${pick("rcPaper", [[58, "58 mm"], [80, "80 mm"]], RECEIPT_OPTIONS.paper)}</label>
+        </div>`;
+      const canvas = pictureCanvas(receiptPicture(sale));
+      canvas.style.cssText = "max-width:100%;width:260px;height:auto;image-rendering:pixelated";
+      $("#rcPreview").append(canvas);
+      // Made ready now, because sharing has to start in the very moment of the tap.
+      let picture: File | null = null;
+      canvas.toBlob((blob) => { if (blob) picture = new File([blob], `receipt-${String(sale.inv || id).replace(/[^\w-]+/g, "_")}.png`, { type: "image/png" }); }, "image/png");
+      if (!dialog.open) dialog.showModal();
+
+      const connect = async (open: () => Promise<PrinterLink>) => {
+        try {
+          PRINTER_LINK = await open();
+          toast("Printer connected");
+        } catch (error) {
+          if ((error as Error)?.name !== "NotFoundError") toast(error instanceof Error ? error.message : "The printer could not be connected.");
+        }
+        receiptDialog(id);
+      };
+      $("#rcBluetooth")?.addEventListener("click", () => void connect(connectBluetooth));
+      $("#rcSerial")?.addEventListener("click", () => void connect(connectSerial));
+      $("#rcDisconnect")?.addEventListener("click", () => { void PRINTER_LINK?.close().catch(() => undefined); PRINTER_LINK = null; receiptDialog(id); });
+      $("#rcPrint")?.addEventListener("click", async () => {
+        const state = $("#rcState");
+        if (state) state.textContent = "Printing…";
+        if (await sendReceipt(sale)) dialog.close();
+        else receiptDialog(id);
+      });
+      $("#rcShare").addEventListener("click", () => {
+        if (!picture) { toast("The picture is still being made. Try again."); return; }
+        if (navigator.canShare?.({ files: [picture] })) {
+          void navigator.share({ files: [picture], title: picture.name }).catch(() => undefined);
+          return;
+        }
+        // No sharing here (most computers): save the picture instead.
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(picture);
+        link.download = picture.name;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      });
+      $("#rcWindow").addEventListener("click", () => { dialog.close(); openInvoice(id, true, true); });
+      $("#rcClose").addEventListener("click", () => dialog.close());
+      $("#rcKind").addEventListener("change", () => { RECEIPT_OPTIONS.kind = $("#rcKind").value === "tspl" ? "tspl" : "escpos"; receiptDialog(id); });
+      $("#rcPaper").addEventListener("change", () => { RECEIPT_OPTIONS.paper = +$("#rcPaper").value === 80 ? 80 : 58; receiptDialog(id); });
+    };
+    // After a sale: print at once when a printer is connected, otherwise offer the ways to print.
+    const quickReceipt = (id: number) => {
+      const sale = D.sales.find((item: any) => item.id == id);
+      if (sale && PRINTER_LINK) void sendReceipt(sale);
+      else receiptDialog(id);
     };
 
     let PRODUCT_LIST_QUERY = "";
@@ -2087,8 +2229,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // A label carries the product's code, which the Sale screen accepts from a scanner.
     // `on` is the tick on the row: only ticked products are printed by the button at the top.
     let BARCODE_ITEMS: { id: any; qty: number; on: boolean }[] = [];
-    // The printer connected for printing straight to it, kept while moving between screens.
-    let BARCODE_LINK: PrinterLink | null = null;
     // Sizes are in millimetres, as printed. They are remembered on this device,
     // because they belong to the label paper and printer in use here.
     const BARCODE_SAVED = "hishabpos_barcode_v2";
@@ -2194,8 +2334,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       // A label printer is printed to directly; that is the way that works without any printer set-up.
       const directBox = `<div style="margin:0 18px 12px;padding:12px 14px;border:2px solid var(--pu);border-radius:8px">
           <p class="settings-help" style="margin:0 0 10px">The label goes straight to the printer, the way a phone label app sends it. Switch the printer on, then connect.</p>
-          <p style="margin:0 0 10px;font-weight:600" id="bcLinkState">${BARCODE_LINK ? `Connected: ${esc(BARCODE_LINK.name)}` : "Not connected"}</p>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${BARCODE_LINK
+          <p style="margin:0 0 10px;font-weight:600" id="bcLinkState">${PRINTER_LINK ? `Connected: ${esc(PRINTER_LINK.name)}` : "Not connected"}</p>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${PRINTER_LINK
             ? `<button class="btn pu" id="bcDirect" type="button" ${labels.length ? "" : "disabled"}>Print Selected (${labels.length})</button><button class="btn" id="bcDirectTest" type="button" ${quiet}>Print test label</button><button class="btn" id="bcDisconnect" type="button" ${quiet}>Disconnect</button>`
             : `${canUseBluetooth() ? `<button class="btn pu" id="bcBluetooth" type="button">Connect by Bluetooth</button>` : ""}${canUseSerial() ? `<button class="btn" id="bcSerial" type="button" ${quiet}>Connect by cable (COM port)</button>` : ""}${canUseBluetooth() || canUseSerial() ? "" : `<span style="color:var(--rd)">This browser cannot connect to a printer directly. Use Chrome or Edge on a computer.</span>`}`}
             <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0"><input id="bcContinuous" type="checkbox" style="width:auto" ${options.continuous ? "checked" : ""}> Paper has no gaps between labels</label>
@@ -2368,7 +2508,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const directModule = (code: string) => Math.max(1, fitModule(code, options.width - BARCODE_SIDE * 2, options.dpi).dots);
       const connect = async (open: () => Promise<PrinterLink>) => {
         try {
-          BARCODE_LINK = await open();
+          PRINTER_LINK = await open();
           toast("Printer connected");
         } catch (error) {
           // Closing the browser's device chooser without choosing is not a failure worth a message.
@@ -2379,12 +2519,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#bcBluetooth")?.addEventListener("click", () => void connect(connectBluetooth));
       $("#bcSerial")?.addEventListener("click", () => void connect(connectSerial));
       $("#bcDisconnect")?.addEventListener("click", () => {
-        void BARCODE_LINK?.close().catch(() => undefined);
-        BARCODE_LINK = null;
+        void PRINTER_LINK?.close().catch(() => undefined);
+        PRINTER_LINK = null;
         barcodePage();
       });
       const sendDirect = async (jobs: { spec: LabelSpec; copies: number; moduleDots: number; border?: boolean }[]) => {
-        if (!BARCODE_LINK) { toast("Connect the printer first"); return; }
+        if (!PRINTER_LINK) { toast("Connect the printer first"); return; }
         const state = $("#bcLinkState");
         const sideways = options.turn === 90 || options.turn === 270;
         try {
@@ -2395,7 +2535,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
               widthMm: options.width, heightMm: options.height, barsMm: options.bars, moduleDots: job.moduleDots,
               dotsPerMm: printerDots, turn: options.turn, offsetXMm: options.offsetX, offsetYMm: options.offsetY, border: job.border,
             });
-            await BARCODE_LINK.send(tsplJob(picture, {
+            await PRINTER_LINK.send(tsplJob(picture, {
               widthMm: sideways ? options.height : options.width, heightMm: sideways ? options.width : options.height,
               gapMm: options.continuous ? 0 : 2, copies: job.copies,
             }));
@@ -2403,7 +2543,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           toast("Sent to the printer");
         } catch (error) {
           console.error("Could not print directly", error);
-          BARCODE_LINK = null;
+          PRINTER_LINK = null;
           toast("The printer stopped answering. Connect it again.");
         }
         barcodePage();
@@ -2432,7 +2572,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#bcDirect")?.addEventListener("click", () => void sendDirect(directJobs()));
       document.querySelectorAll(".bc-print-one").forEach((button) => button.addEventListener("click", () => {
         const id = (button as HTMLElement).dataset.id;
-        if (roll && BARCODE_LINK) void sendDirect(directJobs(id));
+        if (roll && PRINTER_LINK) void sendDirect(directJobs(id));
         else printLabels(id);
       }));
       $("#bcDirectTest")?.addEventListener("click", () => {
@@ -3848,7 +3988,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     (
       window as any
-    ).printInvoice = (id: number) => openInvoice(id, true, true);
+    ).printInvoice = (id: number) => receiptDialog(id);
 
     (
       window as any
