@@ -89,6 +89,8 @@ const words: Record<string, string> = {
   "1. Choose products": "১. পণ্য বাছুন", "2. Label and printer": "২. লেবেল ও প্রিন্টার", "3. Preview": "৩. নমুনা", "Search": "খুঁজুন",
   "Barcode quality": "বারকোডের মান", "Good": "ভালো", "Thin, may not scan": "চিকন, স্ক্যান নাও হতে পারে", "Does not fit": "জায়গা হয় না",
   "Printer": "প্রিন্টার", "Label printer (roll)": "লেবেল প্রিন্টার (রোল)", "A4 sheet (normal printer)": "A4 কাগজ (সাধারণ প্রিন্টার)",
+  "Page direction": "পাতার দিক", "Portrait (tall)": "Portrait (লম্বালম্বি)", "Landscape (wide)": "Landscape (আড়াআড়ি)",
+  "Portrait (label turned sideways)": "Portrait (লেবেল ঘুরিয়ে)", "Landscape (label as it is)": "Landscape (লেবেল যেমন আছে)",
   "Printer sharpness": "প্রিন্টারের সূক্ষ্মতা", "203 dpi (most label printers)": "২০৩ dpi (বেশিরভাগ লেবেল প্রিন্টার)", "600 dpi (laser or inkjet)": "৬০০ dpi (লেজার বা ইংকজেট)",
   "Custom size": "নিজের মাপ", "Labels across the roll": "রোলের এক সারিতে লেবেল", "Gap between labels (mm)": "লেবেলের মাঝের ফাঁক (মিমি)",
   "Text size (pt)": "লেখার আকার (pt)", "Move right (mm)": "ডানে সরান (মিমি)", "Move down (mm)": "নিচে সরান (মিমি)",

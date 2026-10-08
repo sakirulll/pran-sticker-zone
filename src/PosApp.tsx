@@ -2092,6 +2092,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const BARCODE_OPTIONS = {
       shop: true, name: true, code: true, price: true,
       paper: "roll" as "roll" | "a4",
+      // Which way up the printed page is. On a roll, landscape is the label as designed.
+      orient: "landscape" as "landscape" | "portrait",
       across: 1, width: 50, height: 25, bars: 9, font: 7, gap: 2, dpi: 203, offsetX: 0, offsetY: 0,
     };
     try {
@@ -2101,8 +2103,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     }
     const BARCODE_LIMITS = { across: [1, 10], width: [15, 200], height: [10, 200], bars: [3, 80], font: [5, 16], gap: [0, 20], offsetX: [-10, 10], offsetY: [-10, 10] } as const;
     const BARCODE_SIDE = 1.5; // blank strip kept at each side of a label, in mm
-    const A4_WIDTH = 194; // what is left of an A4 sheet between the print margins, in mm
-    const BARCODE_STYLE = `.bc-grid{display:grid;grid-template-columns:repeat(var(--bc-across),var(--bc-width));gap:var(--bc-gap);justify-content:start}.bc-row{display:flex;gap:var(--bc-gap);width:max-content;margin-bottom:3mm}.bc-label{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 auto;width:var(--bc-width);height:var(--bc-height);padding:0 ${BARCODE_SIDE}mm;outline:1px dashed #94a3b8;outline-offset:-1px;background:#fff;color:#000;text-align:center;font:var(--bc-font)/1.15 Arial,Helvetica,sans-serif;overflow:hidden;break-inside:avoid}.bc-label > div{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-label svg{display:block;flex:0 0 auto;margin:.5mm 0 .3mm}.bc-shop,.bc-price{font-weight:700}.bc-code{letter-spacing:.2mm}`;
+    const BARCODE_STYLE = `.bc-grid{display:grid;grid-template-columns:repeat(var(--bc-across),var(--bc-width));gap:var(--bc-gap);justify-content:start}.bc-row{display:flex;gap:var(--bc-gap);width:max-content;margin-bottom:3mm}.bc-turn{overflow:hidden;margin-bottom:3mm}.bc-label{box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 auto;width:var(--bc-width);height:var(--bc-height);padding:0 ${BARCODE_SIDE}mm;outline:1px dashed #94a3b8;outline-offset:-1px;background:#fff;color:#000;text-align:center;font:var(--bc-font)/1.15 Arial,Helvetica,sans-serif;overflow:hidden;break-inside:avoid}.bc-label > div{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bc-label svg{display:block;flex:0 0 auto;margin:.5mm 0 .3mm}.bc-shop,.bc-price{font-weight:700}.bc-code{letter-spacing:.2mm}`;
     const barcodeOf = (product: any) => String(product?.code || "").trim();
     const barcodeFit = (product: any) => fitModule(barcodeOf(product), BARCODE_OPTIONS.width - BARCODE_SIDE * 2, BARCODE_OPTIONS.dpi);
     const barcodeVars = () => `--bc-across:${BARCODE_OPTIONS.across};--bc-width:${BARCODE_OPTIONS.width}mm;--bc-height:${BARCODE_OPTIONS.height}mm;--bc-gap:${BARCODE_OPTIONS.gap}mm;--bc-font:${BARCODE_OPTIONS.font}pt`;
@@ -2115,11 +2116,20 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       return new Array(qty).fill(label);
     });
     // On a roll, each row of labels across the roll is one page; on A4 the labels flow down the sheet.
+    // The width of one row of labels, and what an A4 sheet has between its print margins either way up.
+    const barcodeRowWidth = () => BARCODE_OPTIONS.across * BARCODE_OPTIONS.width + (BARCODE_OPTIONS.across - 1) * BARCODE_OPTIONS.gap;
+    const barcodeSheetWidth = () => (BARCODE_OPTIONS.orient === "landscape" ? 281 : 194);
     const barcodeSheet = (labels: string[]) => {
       if (BARCODE_OPTIONS.paper === "a4") return `<div class="bc-grid" style="${barcodeVars()}">${labels.join("")}</div>`;
+      // Portrait on a roll: the page is the label turned on its side, for printers
+      // that feed the label short edge first. The row is drawn as usual, then turned.
+      const turned = BARCODE_OPTIONS.orient === "portrait";
       let rows = "";
       for (let index = 0; index < labels.length; index += BARCODE_OPTIONS.across) {
-        rows += `<div class="bc-row" style="${barcodeVars()}">${labels.slice(index, index + BARCODE_OPTIONS.across).join("")}</div>`;
+        const row = labels.slice(index, index + BARCODE_OPTIONS.across).join("");
+        rows += turned
+          ? `<div class="bc-turn" style="width:${BARCODE_OPTIONS.height}mm;height:${barcodeRowWidth()}mm"><div class="bc-row" style="${barcodeVars()};margin:0;transform-origin:top left;transform:translateX(${BARCODE_OPTIONS.height}mm) rotate(90deg)">${row}</div></div>`
+          : `<div class="bc-row" style="${barcodeVars()}">${row}</div>`;
       }
       return rows;
     };
@@ -2131,7 +2141,11 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const unusable = D.products.length - usable.length;
       const labels = barcodeLabels();
       const roll = options.paper === "roll";
-      const rowWidth = options.across * options.width + (options.across - 1) * options.gap;
+      const rowWidth = barcodeRowWidth();
+      const turned = roll && options.orient === "portrait";
+      // The paper as the printer sees it.
+      const paperSize = turned ? `${options.height} × ${rowWidth}` : `${rowWidth} × ${options.height}`;
+      const A4_WIDTH = barcodeSheetWidth();
       // Roughly what the chosen lines and bars need from top to bottom, to warn before paper is wasted.
       const lineMm = options.font * 0.3528 * 1.15;
       const needed = (+options.shop + +options.name + +options.code + +options.price) * lineMm + options.bars + 1.2;
@@ -2162,6 +2176,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <h3 style="margin:18px 18px 4px">2. Label and printer</h3>
         <div class="settings-form-grid" style="padding:0 18px 12px">
           <label>Printer<select id="bcPaper"><option value="roll" ${roll ? "selected" : ""}>Label printer (roll)</option><option value="a4" ${roll ? "" : "selected"}>A4 sheet (normal printer)</option></select></label>
+          <label>Page direction<select id="bcOrient"><option value="portrait" ${options.orient === "portrait" ? "selected" : ""}>${roll ? "Portrait (label turned sideways)" : "Portrait (tall)"}</option><option value="landscape" ${options.orient === "landscape" ? "selected" : ""}>${roll ? "Landscape (label as it is)" : "Landscape (wide)"}</option></select></label>
           <label>Printer sharpness<select id="bcDpi">${[[203, "203 dpi (most label printers)"], [300, "300 dpi"], [600, "600 dpi (laser or inkjet)"]].map(([dpi, text]) => `<option value="${dpi}" ${options.dpi === dpi ? "selected" : ""}>${text}</option>`).join("")}</select></label>
           <label>Label size<select id="bcPreset">${BARCODE_PRESETS.map(([width, height]) => `<option value="${width}x${height}" ${preset && preset[0] === width && preset[1] === height ? "selected" : ""}>${width} × ${height} mm</option>`).join("")}<option value="" ${preset ? "" : "selected"}>Custom size</option></select></label>
           ${size("width", "Label width (mm)")}
@@ -2174,7 +2189,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           ${size("offsetY", "Move down (mm)")}
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px">${check("shop", "Shop Name")}${check("name", "Product Name")}${check("code", "Code")}${check("price", "Sale Price")}</div>
         </div>
-        ${roll ? `<p class="settings-help" style="padding:0 18px">In the printer's own settings, set the paper size to ${rowWidth} × ${options.height} mm and the margins to none, and print at 100% scale.</p>` : rowWidth > A4_WIDTH ? warn(`These labels need ${rowWidth} mm across, but an A4 sheet has ${A4_WIDTH} mm. Use fewer labels per row or a smaller width.`) : ""}
+        ${roll ? `<p class="settings-help" style="padding:0 18px">In the printer's own settings, set the paper size to ${paperSize} mm and the margins to none, and print at 100% scale.</p>` : rowWidth > A4_WIDTH ? warn(`These labels need ${rowWidth} mm across, but an A4 sheet has ${A4_WIDTH} mm. Use fewer labels per row or a smaller width.`) : ""}
         ${needed > options.height ? warn(`The text and barcode need about ${Math.ceil(needed)} mm but the label is ${options.height} mm high, so part of it will be cut off. Make the barcode or text smaller, or hide a line.`) : ""}
         ${labels.length ? `<div style="padding:6px 18px 18px"><h3 style="margin:0 0 4px">3. Preview</h3><p class="settings-help" style="margin:0 0 10px">Shown at the size it will print. The dashed line is the edge of the label and is not printed.</p><div style="overflow-x:auto;padding:2px" data-no-translate>${barcodeSheet(labels.slice(0, 60))}</div>${labels.length > 60 ? `<p class="settings-help">Showing the first 60 of ${labels.length} labels. All of them are printed.</p>` : ""}</div>` : ""}
       </section>`;
@@ -2210,9 +2225,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#bcPaper").addEventListener("change", () => {
         options.paper = $("#bcPaper").value === "a4" ? "a4" : "roll";
         // Each kind of printer starts from what suits it; every value can still be changed.
-        Object.assign(options, options.paper === "a4" ? { across: 3, dpi: 600 } : { across: 1, dpi: 203 });
+        Object.assign(options, options.paper === "a4" ? { across: 3, dpi: 600, orient: "portrait" } : { across: 1, dpi: 203, orient: "landscape" });
         barcodePage();
       });
+      $("#bcOrient").addEventListener("change", () => { options.orient = $("#bcOrient").value === "portrait" ? "portrait" : "landscape"; barcodePage(); });
       $("#bcDpi").addEventListener("change", () => { options.dpi = +$("#bcDpi").value; barcodePage(); });
       $("#bcPreset").addEventListener("change", () => {
         const [width, height] = $("#bcPreset").value.split("x").map(Number);
@@ -2251,9 +2267,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         if (!sheet) { toast("Allow pop-ups to print the labels"); return; }
         // On a roll every row of labels is its own page, exactly the size of the row,
         // and the last one must not ask for a page after it or a blank label comes out.
+        const each = turned ? ".bc-turn" : ".bc-row";
         const page = roll
-          ? `@page{size:${rowWidth}mm ${options.height}mm;margin:0}@media print{.bc-row{margin:0;break-after:page;page-break-after:always}.bc-row:last-child{break-after:auto;page-break-after:auto}}`
-          : `@page{size:A4;margin:8mm}`;
+          ? `@page{size:${turned ? `${options.height}mm ${rowWidth}mm` : `${rowWidth}mm ${options.height}mm`};margin:0}@media print{${each}{margin:0;break-after:page;page-break-after:always}${each}:last-child{break-after:auto;page-break-after:auto}}`
+          : `@page{size:A4 ${options.orient};margin:8mm}`;
         sheet.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Barcode labels</title><style>
           *{box-sizing:border-box}html,body{margin:0;padding:0}body{background:#f3f4f6;font-family:Arial,sans-serif}
           .toolbar{display:flex;justify-content:center;gap:12px;align-items:center;padding:14px;font-size:13px;color:#374151}.toolbar button{border:0;border-radius:4px;padding:9px 22px;background:#07851b;color:#fff;font-weight:700;cursor:pointer}
@@ -2262,7 +2279,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           .bc-label > *{transform:translate(${options.offsetX}mm,${options.offsetY}mm)}
           @media print{body{background:#fff}.toolbar{display:none}.sheet{padding:0}.bc-label{outline:0}}
           ${page}
-        </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button><span>${roll ? `Paper: ${rowWidth} × ${options.height} mm, no margins, 100% scale` : "Paper: A4, 100% scale"}</span></div><div class="sheet">${barcodeSheet(barcodeLabels(only))}</div></body></html>`);
+        </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button><span>${roll ? `Paper: ${paperSize} mm, no margins, 100% scale` : `Paper: A4 ${options.orient}, 100% scale`}</span></div><div class="sheet">${barcodeSheet(barcodeLabels(only))}</div></body></html>`);
         sheet.document.close();
       };
       $("#bcPrint").addEventListener("click", () => printLabels());
