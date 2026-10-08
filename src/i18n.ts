@@ -95,6 +95,7 @@ const words: Record<string, string> = {
   "Connect by cable (COM port)": "তার দিয়ে সংযোগ করুন (COM port)", "Disconnect": "সংযোগ বিচ্ছিন্ন করুন", "Paper has no gaps between labels": "কাগজে লেবেলের মাঝে ফাঁক নেই",
   "203 dpi (usual)": "২০৩ dpi (সাধারণত)", "If the print comes out much too big or too small, change the printer type here.": "ছাপা অনেক বড় বা অনেক ছোট এলে এখানে প্রিন্টারের ধরন বদলান।",
   "F2 Product box · ↑ ↓ Choose · Enter Add · + − Quantity · Del Remove · F4 Receive amount · F9 Save": "F2 পণ্যের বক্স · ↑ ↓ বাছুন · Enter যোগ করুন · + − পরিমাণ · Del বাদ দিন · F4 গৃহীত টাকা · F9 সেভ",
+  "Enter the customer's phone number": "ক্রেতার ফোন নম্বর লিখুন", "Enter the amount received (0 if nothing was paid)": "গৃহীত টাকার পরিমাণ লিখুন (কিছু না দিলে 0 লিখুন)",
   "Scan with the camera": "ক্যামেরা দিয়ে স্ক্যান করুন", "Scan a barcode": "বারকোড স্ক্যান করুন", "Starting the camera…": "ক্যামেরা চালু হচ্ছে…",
   "Hold the red line across the barcode.": "লাল দাগটি বারকোডের উপর ধরুন।", "Done": "শেষ", "Light": "আলো",
   "The camera is blocked. Allow the camera for this site in the browser's settings, then try again.": "ক্যামেরা বন্ধ করা আছে। ব্রাউজারের সেটিংসে এই সাইটের জন্য ক্যামেরার অনুমতি দিন, তারপর আবার চেষ্টা করুন।",

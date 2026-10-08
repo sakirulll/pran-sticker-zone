@@ -921,7 +921,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             ${s ? `
               <div class="two walkin-fields" id="walkinFields">
                 <input id="walkName" type="text" placeholder="Walk-in customer name">
-                <input id="walkPhone" type="tel" inputmode="tel" placeholder="Walk-in phone number">
+                <input id="walkPhone" type="tel" inputmode="tel" placeholder="Walk-in phone number" required>
               </div>
             ` : ""}
 
@@ -959,7 +959,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                   id="rc"
                   type="number"
                   min="0"
-                  value="0"
+                  value="${s ? "" : "0"}"
+                  ${s ? "required" : ""}
                   oninput="calc()"
                 >
 
@@ -1442,6 +1443,22 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       }
 
       const s = PT === "sale";
+
+      // A sale needs the buyer's phone number (unless a saved customer is chosen)
+      // and the amount received, typed in; 0 is typed for a sale wholly on credit.
+      if (s) {
+        const missing = (id: string, message: string) => {
+          const field = $("#" + id);
+          const empty = field && !field.value.trim();
+          if (field) field.style.borderColor = empty ? "#dc2626" : "";
+          if (!empty) return false;
+          toast(message);
+          field.focus();
+          return true;
+        };
+        if (!$("#pp").value && missing("walkPhone", "Enter the customer's phone number")) return;
+        if (missing("rc", "Enter the amount received (0 if nothing was paid)")) return;
+      }
 
       const T = calc();
 
