@@ -12,7 +12,7 @@ export const ORIGINAL_APP = String.raw`
   --mut:#6b7280;
   --ln:#e5e7eb;
   --in:#fff;
-  --pu:#8a0a9e;
+  --pu:#ea580c;
   --rd:#c8202b;
   --or:#ff9800;
   --bl:#1e88ff;
@@ -260,7 +260,7 @@ body.nav .main{
 @media(max-width:760px){.profile-layout{grid-template-columns:1fr}.profile-form{grid-template-columns:1fr;gap:7px}.profile-form input{margin-bottom:9px}.profile-form .profile-save{grid-column:1;margin-top:10px}}
 @media(max-width:620px){.settings-form-grid{grid-template-columns:1fr}.settings-wide{grid-column:auto}.role-permissions{grid-template-columns:1fr}}
 
-.profit-page{padding:14px 0 16px;overflow:hidden}.profit-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 14px 14px;border-bottom:1px solid #a000b5}.profit-heading h2{font-size:18px}.profit-heading button{display:inline-flex;align-items:center;gap:5px}.profit-heading button svg{width:14px;height:14px;flex:0 0 14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.profit-heading>div{display:flex;gap:8px}.profit-heading .btn,.profit-heading .ib{width:auto;padding:8px 12px}.profit-heading .btn svg{stroke:#fff}.profit-heading .profit-selected svg{stroke:var(--pu)}.profit-selected{border-color:var(--pu);color:var(--pu)}.profit-stats{display:grid;grid-template-columns:repeat(4,minmax(105px,128px));gap:18px 34px;padding:20px 22px 26px}.profit-stat{min-height:92px;padding:13px 14px;border-radius:9px;box-shadow:0 3px 7px #0002;color:#27313a}.profit-stat span{display:block;font-size:18px;font-weight:600}.profit-stat b{display:block;margin:2px 0;font-size:15px;font-weight:500}.profit-stat small{display:inline-block;padding:2px 7px;border-radius:5px;background:#fff;font-size:10px;font-weight:600}.profit-filters{display:grid;grid-template-columns:minmax(150px,226px) 1fr;gap:14px;padding:0 14px 26px;align-items:end}.profit-filters>select{width:auto}.profit-filters>input{width:100%}.profit-filters>label{grid-column:2;display:grid;gap:3px;color:var(--mut);font-size:12px}.profit-date-range{display:flex;align-items:center;gap:8px}.profit-date-range input{height:34px}.profit-export{display:flex;justify-content:flex-end;gap:9px;padding:0 14px 2px}.profit-export button{width:24px;height:22px;display:grid;place-items:center;padding:2px;border:0;background:transparent;color:#16a66a;cursor:pointer}.profit-export button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.profit-export button:nth-child(2){color:#9c50fa}.profit-export button:nth-child(3){color:#ff8a27}.profit-table{min-width:700px}.profit-table thead{background:#9000a5;color:#fff}.profit-table th{background:#9000a5;color:#fff}.profit-table td{text-align:center}.profit-table td:nth-child(5){white-space:nowrap}@media(max-width:700px){.profit-heading{align-items:flex-start;flex-direction:column}.profit-stats{grid-template-columns:repeat(2,minmax(105px,1fr));gap:12px;padding:16px}.profit-filters{grid-template-columns:1fr}.profit-filters>label{grid-column:1}.profit-date-range{flex-wrap:wrap}}
+.profit-page{padding:14px 0 16px;overflow:hidden}.profit-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 14px 14px;border-bottom:1px solid var(--ln)}.profit-heading h2{font-size:18px}.profit-heading button{display:inline-flex;align-items:center;gap:5px}.profit-heading button svg{width:14px;height:14px;flex:0 0 14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.profit-heading>div{display:flex;gap:8px}.profit-heading .btn,.profit-heading .ib{width:auto;padding:8px 12px}.profit-heading .btn svg{stroke:#fff}.profit-heading .profit-selected svg{stroke:var(--pu)}.profit-selected{border-color:var(--pu);color:var(--pu)}.profit-stats{display:grid;grid-template-columns:repeat(4,minmax(105px,128px));gap:18px 34px;padding:20px 22px 26px}.profit-stat{min-height:92px;padding:13px 14px;border-radius:9px;box-shadow:0 3px 7px #0002;color:#27313a}.profit-stat span{display:block;font-size:18px;font-weight:600}.profit-stat b{display:block;margin:2px 0;font-size:15px;font-weight:500}.profit-stat small{display:inline-block;padding:2px 7px;border-radius:5px;background:#fff;font-size:10px;font-weight:600}.profit-filters{display:grid;grid-template-columns:minmax(150px,226px) 1fr;gap:14px;padding:0 14px 26px;align-items:end}.profit-filters>select{width:auto}.profit-filters>input{width:100%}.profit-filters>label{grid-column:2;display:grid;gap:3px;color:var(--mut);font-size:12px}.profit-date-range{display:flex;align-items:center;gap:8px}.profit-date-range input{height:34px}.profit-export{display:flex;justify-content:flex-end;gap:9px;padding:0 14px 2px}.profit-export button{width:24px;height:22px;display:grid;place-items:center;padding:2px;border:0;background:transparent;color:#16a66a;cursor:pointer}.profit-export button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.profit-export button:nth-child(2){color:#9c50fa}.profit-export button:nth-child(3){color:#ff8a27}.profit-table{min-width:700px}.profit-table td:nth-child(5){white-space:nowrap}@media(max-width:700px){.profit-heading{align-items:flex-start;flex-direction:column}.profit-stats{grid-template-columns:repeat(2,minmax(105px,1fr));gap:12px;padding:16px}.profit-filters{grid-template-columns:1fr}.profit-filters>label{grid-column:1}.profit-date-range{flex-wrap:wrap}}
 
 #app{
   padding:16px 18px
@@ -770,6 +770,56 @@ dialog label{
     grid-template-columns:1fr 1fr
   }
 }
+/* ---- The look shared by every screen ---- */
+#root{width:auto;max-width:none;border:0}
+#app,dialog,.hdr{text-align:left}
+.side{background:#12141c;border-right:1px solid #1f2230}
+.brand{padding:18px 18px 14px;font:700 17px/1.25 Inter,"Segoe UI",system-ui,sans-serif;font-style:normal;border-bottom:1px solid #232634;text-align:left}
+.brand small{margin:4px 0 0;font:600 10px sans-serif;letter-spacing:2.5px;text-transform:uppercase;color:#8b90a0}
+#menu{padding:8px 0 16px}
+.side a,.gh{align-items:center;padding:9px 12px;margin:1px 10px;color:#c9cdd8;font-size:13.5px;font-weight:500;text-align:left}
+.side a:hover,.gh:hover{background:#1d2030;color:#fff}
+.side .mi{display:flex;align-items:center;gap:11px;min-width:0}
+.side .mi svg{flex:0 0 18px;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.side a.on,.sub a.on{background:var(--pu);color:#fff;font-weight:600}
+.gh.on{background:transparent;color:#fff;font-weight:600}
+.gh .chev{color:#8b90a0;transition:transform .15s}
+.grp.open .gh .chev{transform:rotate(90deg)}
+.sub{margin:2px 10px 6px 30px;padding-left:8px;border-left:1px solid #2a2e3f}
+.sub a{margin:1px 0;padding:7px 12px;font-size:13px}
+.hdr{gap:8px}
+.ib{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:38px;height:38px;padding:0 11px;border-radius:9px;background:var(--pn)}
+.ib:hover{background:var(--bg)}
+.ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.card{box-shadow:0 1px 2px #0000000a}
+.btn{transition:filter .12s}
+.btn:hover{filter:brightness(.94)}
+.btn.or{background:var(--pn);color:var(--tx);box-shadow:inset 0 0 0 1px var(--ln)}
+.btn.or:hover{background:var(--bg);filter:none}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--pu);box-shadow:0 0 0 3px color-mix(in srgb,var(--pu) 16%,transparent)}
+.product-field input:focus,.product-field select:focus,.role-field input:focus,input[type=checkbox]:focus,input[type=file]:focus{box-shadow:none}
+.product-field:focus-within,.role-field:focus-within{border-color:var(--pu)}
+:focus-visible{outline-color:var(--pu)}
+th{padding:10px 8px;text-align:left;font-size:12.5px;font-weight:600;color:var(--mut)}
+td{padding:11px 8px;text-align:left}
+tbody tr:hover{background:color-mix(in srgb,var(--bg) 60%,transparent)}
+.bd{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:600;white-space:nowrap}
+.bd.ok{background:color-mix(in srgb,var(--gr) 14%,transparent);color:var(--gr)}
+.bd.dn{background:color-mix(in srgb,var(--rd) 12%,transparent);color:var(--rd)}
+.mini{padding:5px 10px;border-radius:7px}
+.mini:hover{border-color:var(--pu);color:var(--pu)}
+.stats{gap:14px}
+.stats div{margin:0;padding:16px 18px;border-radius:14px;background:var(--pn)}
+.stats span{display:block;padding-right:44px}
+.stats b{font-size:21px}
+.stats em{width:36px;height:36px;border-radius:10px}
+.start-card a{color:var(--pu)}
+.pos-product-toolbar select{border:1px solid var(--ln);background:var(--in);color:var(--tx);font-weight:500}
+.product-search-button{background:var(--pu)}
+.pg button:hover{border-color:var(--pu);box-shadow:0 0 0 1px var(--pu)}
+dialog{padding:20px;box-shadow:0 20px 50px #0004}
+dialog h3{margin-bottom:14px;font-size:17px}
+.toast{border-radius:10px;box-shadow:0 8px 24px #0004}
 </style>
 
 <aside class="side">
@@ -779,12 +829,12 @@ dialog label{
 
 <div class="main">
   <div class="hdr">
-    <button class="ib" id="menuBtn" aria-label="Menu">☰</button>
+    <button class="ib" id="menuBtn" aria-label="Menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
     <span class="sp"></span>
     <button class="ib" id="langBtn" data-no-translate></button>
-    <button class="ib" id="themeBtn">Theme</button>
+    <button class="ib" id="themeBtn" type="button" aria-label="Theme" title="Theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
     <span class="bell-wrap">
-      <button class="ib" id="bellBtn" type="button" aria-expanded="false" aria-label="Notifications">🔔 <b id="bellCount">0</b></button>
+      <button class="ib" id="bellBtn" type="button" aria-expanded="false" aria-label="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><b id="bellCount">0</b></button>
       <div class="bell-panel" id="bellPanel"></div>
     </span>
 

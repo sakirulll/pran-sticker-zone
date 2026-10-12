@@ -4320,6 +4320,30 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       ],
     ];
 
+    // The line drawing beside each sidebar entry, looked up by the name of the entry.
+    const MENU_ICONS: Record<string, string> = {
+      Dashboard: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+      Sales: LX_ICONS.cart,
+      Purchases: '<path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+      Products: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>',
+      "Stock List": '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+      Employee: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+      "Salary Slip": '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+      Warehouse: '<path d="M3 21V9l9-5 9 5v12"/><path d="M8 21v-7h8v7"/>',
+      "Warehouse Transfer": '<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
+      Customers: LX_ICONS.people,
+      Suppliers: LX_ICONS.truck,
+      Expenses: LX_ICONS.wallet,
+      "Due List": LX_ICONS.clock,
+      Subscription: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/>',
+      "Profit & Loss List": '<path d="M4 20V4M4 20h16"/><path d="M8 15l3-4 3 2 4-6"/>',
+      Profile: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18a6 6 0 0 1 11 0"/>',
+      Settings: '<path d="M4 6h8M16 6h4M4 12h2M10 12h10M4 18h10M18 18h2"/><circle cx="14" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/>',
+      Admin: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+      Help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7M12 17h.01"/>',
+    };
+    const menuIcon = (name: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${MENU_ICONS[name] || MENU_ICONS.Help}</svg>`;
+
     const hdr = () => {
       const un = $("#un");
       const ua = $("#ua");
@@ -4409,11 +4433,11 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                   data-group="${m[0]}"
                 >
 
-                  <span>
-                    ${m[1]} ${m[0]}
+                  <span class="mi">
+                    ${menuIcon(m[0])}<span>${m[0]}</span>
                   </span>
 
-                  <span>›</span>
+                  <span class="chev">›</span>
 
                 </div>
 
@@ -4450,8 +4474,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                     : ""
                 }"
               >
-                <span>
-                  ${m[1]} ${m[0]}
+                <span class="mi">
+                  ${menuIcon(m[0])}<span>${m[0]}</span>
                 </span>
               </a>
             `,
