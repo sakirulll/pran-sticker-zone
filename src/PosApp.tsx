@@ -1580,7 +1580,25 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         }
       });
 
-      const pid = $("#pp").value;
+      let pid = $("#pp").value;
+
+      // A buyer whose name or phone was typed is kept as a customer, so the next
+      // sale, their dues and their history all find them. The phone number says
+      // who they are; without one the name does.
+      const typedName = s && !pid ? $("#walkName")?.value.trim() || "" : "";
+      const typedPhone = s && !pid ? $("#walkPhone")?.value.trim() || "" : "";
+      if (typedName || typedPhone) {
+        const known = D.customers.find((person: any) => typedPhone
+          ? String(person.phone || "").trim() === typedPhone
+          : !person.phone && String(person.name || "").trim().toLowerCase() === typedName.toLowerCase());
+        if (known) {
+          pid = String(known.id);
+        } else {
+          const customer = { id: uid(), status: "Active", name: typedName || typedPhone, phone: typedPhone, address: "" };
+          D.customers.push(customer);
+          pid = String(customer.id);
+        }
+      }
 
       // The number shown on the form may have been used since it opened, by this
       // device or another one, so move on to the next one that is free.
