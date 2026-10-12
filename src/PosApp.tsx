@@ -214,7 +214,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           // What a sale may not be saved without; each shop chooses.
           requirePhone: false,
           requireReceived: false,
-          notifications: { lowStock: true, dueReminders: true, sales: true, purchases: true, expenses: true },
+          notifications: { lowStock: true, expiry: true, dueReminders: true, sales: true, purchases: true, expenses: true },
         },
 
         user: {
@@ -394,11 +394,56 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const prod = (id: any) =>
       D.products.find((p: any) => p.id == id);
 
+    // Product fields that only some kinds of shop use: [label, hint].
+    const EXTRA_FIELDS: Record<string, [string, string]> = {
+      size: ["Size", "EX: M, XL, 32"],
+      color: ["Color", "EX: Black"],
+      fabric: ["Fabric", "EX: Cotton"],
+      genericName: ["Generic Name", "EX: Paracetamol"],
+      strength: ["Strength", "EX: 500 mg"],
+      batchNo: ["Batch No", "Enter batch number"],
+      rack: ["Rack / Shelf", "EX: A-3"],
+      model: ["Model", "Enter model"],
+      warranty: ["Warranty", "EX: 1 year"],
+      author: ["Author", "Enter author name"],
+      publisher: ["Publisher", "Enter publisher name"],
+    };
+
+    // What each kind of shop fills in for a product. `show` lists the optional
+    // built-in fields it uses, `extra` the fields from EXTRA_FIELDS; the units
+    // and categories are added to the shop's lists when the kind is chosen.
+    const BUSINESS_TYPES: Record<string, { label: string; show: string[]; extra: string[]; units: string[]; categories: string[] }> = {
+      general: { label: "General Store", show: ["brand", "lowAlert", "wholesale", "dealer", "manufacturer", "manufactureDate", "expireDate", "serial"], extra: [], units: [], categories: [] },
+      clothing: { label: "Clothing Shop", show: ["brand", "lowAlert", "wholesale"], extra: ["size", "color", "fabric"], units: ["Dozen", "Yard", "Meter"], categories: ["Shirt", "Pant", "Panjabi", "Saree", "Three Piece", "Kids Wear"] },
+      grocery: { label: "Grocery Shop", show: ["brand", "lowAlert", "wholesale", "dealer", "expireDate"], extra: [], units: ["Gram", "Liter", "Ml", "Dozen", "Hali", "Packet", "Bag", "Carton"], categories: ["Rice", "Lentils", "Flour", "Oil", "Spices", "Sugar & Salt", "Eggs", "Milk & Dairy", "Tea & Coffee", "Biscuits", "Snacks", "Beverages", "Soap & Detergent", "Baby Food"] },
+      pharmacy: { label: "Pharmacy", show: ["brand", "lowAlert", "manufacturer", "manufactureDate", "expireDate"], extra: ["genericName", "strength", "batchNo", "rack"], units: ["Strip", "Bottle", "Tube", "Vial"], categories: ["Tablet", "Capsule", "Syrup", "Injection", "Ointment", "Drops"] },
+      restaurant: { label: "Restaurant", show: [], extra: [], units: ["Plate", "Cup", "Glass", "Bottle"], categories: ["Rice Items", "Curry", "Fast Food", "Snacks", "Drinks", "Dessert"] },
+      electronics: { label: "Mobile & Electronics", show: ["brand", "lowAlert", "wholesale", "dealer", "serial"], extra: ["model", "warranty"], units: [], categories: ["Mobile", "Accessories", "Laptop", "TV", "Home Appliance"] },
+      cosmetics: { label: "Cosmetics Shop", show: ["brand", "lowAlert", "wholesale", "manufacturer", "manufactureDate", "expireDate"], extra: ["batchNo"], units: ["Bottle", "Tube", "Packet"], categories: ["Skin Care", "Hair Care", "Makeup", "Perfume"] },
+      hardware: { label: "Hardware Shop", show: ["brand", "lowAlert", "wholesale", "dealer"], extra: ["size"], units: ["Feet", "Meter", "Liter", "Bag", "Dozen"], categories: ["Paint", "Pipe & Fittings", "Electrical", "Tools", "Cement"] },
+      stationery: { label: "Books & Stationery", show: ["brand", "lowAlert", "wholesale"], extra: ["author", "publisher"], units: ["Dozen", "Packet", "Ream"], categories: ["Books", "Notebooks", "Pens", "Paper", "School Supplies"] },
+    };
+    const businessType = () => BUSINESS_TYPES[D.settings.businessType] || BUSINESS_TYPES.general;
+    // The extra details a product has, for showing beside its name.
+    const productDetails = (product: any) => Object.keys(EXTRA_FIELDS).map((id) => String(product[id] || "").trim()).filter(Boolean).join(" · ");
+
     // A product is low when its stock is at or under its own alert quantity
     // (10 when none was set). The dashboard, the bell and the sale message all use this.
     const alertQty = (product: any) => (+product.lowAlert > 0 ? +product.lowAlert : 10);
     const isLowStock = (product: any) => (+product.stock || 0) <= alertQty(product);
     const lowStockProducts = () => D.products.filter(isLowStock);
+    // Quantities can be fractions (half a kg), kept to three decimal places.
+    const q3 = (amount: number) => Math.round((+amount || 0) * 1000) / 1000;
+
+    // Products still in stock whose expire date has passed or comes within 30 days.
+    const expiringProducts = () => {
+      const limit = new Date(today());
+      limit.setUTCDate(limit.getUTCDate() + 30);
+      const last = limit.toISOString().slice(0, 10);
+      return D.products
+        .filter((product: any) => product.expireDate && +product.stock > 0 && product.expireDate <= last)
+        .sort((a: any, b: any) => String(a.expireDate).localeCompare(String(b.expireDate)));
+    };
 
     // The bell: what needs attention now, according to the alerts switched on in Settings.
     const updateBell = () => {
@@ -407,13 +452,15 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       if (!button || !panel) return;
       const low = D.settings.notifications.lowStock ? lowStockProducts() : [];
       const dues = D.settings.notifications.dueReminders ? D.sales.filter((sale: any) => +sale.due > 0 && !sale.ret) : [];
-      const count = low.length + dues.length;
+      const expiring = D.settings.notifications.expiry ? expiringProducts() : [];
+      const count = low.length + dues.length + expiring.length;
       $("#bellCount").textContent = String(count);
       button.classList.toggle("has-alerts", count > 0);
       const shown = 30;
       panel.innerHTML = count === 0
         ? "<p>Nothing needs your attention.</p>"
         : (low.length ? `<h4>Low Stock (${low.length})</h4>${low.slice(0, shown).map((product: any) => `<a href="#stocks"><span>${esc(product.name)}</span><small>${(+product.stock || 0) <= 0 ? "Out of stock" : `Stock ${+product.stock}`} · Alert Qty ${alertQty(product)}</small></a>`).join("")}` : "")
+          + (expiring.length ? `<h4>Expiring Soon (${expiring.length})</h4>${expiring.slice(0, shown).map((product: any) => `<a href="#products"><span>${esc(product.name)}</span><small>${product.expireDate < today() ? "Expired" : "Expires"} ${esc(product.expireDate)} · Stock ${+product.stock}</small></a>`).join("")}` : "")
           + (dues.length ? `<h4>Customer Due (${dues.length})</h4>${dues.slice(0, shown).map((sale: any) => `<a href="#dues"><span>${esc(sale.party || "Customer")}</span><small>${esc(sale.inv)} · ${tk(sale.due)}</small></a>`).join("")}` : "");
     };
 
@@ -759,8 +806,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           record.items.forEach((item: any) => {
             const product = prod(item.id);
             if (!product) return;
-            if (k === "sales") product.stock += +item.qty || 0;
-            if (k === "purchases") product.stock -= +item.qty || 0;
+            if (k === "sales") product.stock = q3(product.stock + (+item.qty || 0));
+            if (k === "purchases") product.stock = q3(product.stock - (+item.qty || 0));
           });
         }
         D[k] = D[k].filter((x: any) => x.id !== id);
@@ -784,7 +831,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         const p = prod(i.id);
 
         if (p) {
-          p.stock += k === "sales" ? i.qty : -i.qty;
+          p.stock = q3(p.stock + (k === "sales" ? i.qty : -i.qty));
         }
       });
 
@@ -861,6 +908,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     let CART: any[] = [];
 
     let PT = "sale";
+    // Which of a product's prices the sale being made uses: sell (retail), wholesale or dealer.
+    let PRICE_LEVEL = "sell";
+    const salePrice = (product: any) => (+product[PRICE_LEVEL] > 0 ? +product[PRICE_LEVEL] : +product.sell || 0);
     let PRODUCT_CATEGORY = "";
     let PRODUCT_BRAND = "";
 
@@ -868,8 +918,11 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       PT = t;
 
       CART = [];
+      PRICE_LEVEL = "sell";
 
       const s = t === "sale";
+      const priceLevels = [["sell", "Retail Price"], ["wholesale", "Wholesale Price"], ["dealer", "Dealer Price"]]
+        .filter(([level]) => level === "sell" || businessType().show.includes(level));
 
       $("#app").innerHTML = `
         <div class="pos">
@@ -932,6 +985,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                 <input id="walkPhone" type="tel" inputmode="tel" placeholder="Walk-in phone number" ${D.settings.requirePhone ? "required" : ""}>
               </div>
             ` : ""}
+
+            ${s && priceLevels.length > 1 ? `<label for="priceLevel">Price for this sale</label><select id="priceLevel" onchange="setPriceLevel(this.value)">${priceLevels.map(([level, label]) => `<option value="${level}">${label}</option>`).join("")}</select>` : ""}
 
             ${s ? `<div class="serial-scan"><label for="serialScan">Scan a barcode, or type a product name, code or serial number, then press Enter</label><div style="display:flex;gap:8px"><input id="serialScan" autocomplete="off" placeholder="Barcode, product code or serial number" style="flex:1;min-width:0">${canScanWithCamera() ? `<button class="btn pu" id="scanCamera" type="button" aria-label="Scan with the camera" title="Scan with the camera" style="flex:0 0 auto;padding:0 14px"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg></button>` : ""}</div><div id="scanSuggest"></div>${KEYBOARD_DEVICE ? `<p class="scan-keys">F2 Product box · ↑ ↓ Choose · Enter Add · + − Quantity · Del Remove · F4 Receive amount · F9 Save</p>` : ""}<div id="scanPanel"></div></div>` : ""}
 
@@ -1281,7 +1336,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         CART.push({
           id,
           qty: 1,
-          price: PT === "sale" ? p.sell : p.buy,
+          price: PT === "sale" ? salePrice(p) : p.buy,
           serials: serial ? [serial] : [],
         });
       }
@@ -1326,8 +1381,26 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       if (!item) return;
       item.qty = prod(item.id)?.hasSerial && PT === "sale"
         ? item.serials.length
-        : Math.max(1, +value || 1);
+        : (+value > 0 ? q3(+value) : 1);
       calc();
+    };
+
+    // Switching between retail, wholesale and dealer reprices what is already in the cart.
+    const setPriceLevel = (level: string) => {
+      PRICE_LEVEL = level;
+      CART.forEach((item) => { const product = prod(item.id); if (product) item.price = salePrice(product); });
+      draw();
+    };
+
+    // "20 taka of sugar": works out the quantity from the money the customer wants to spend.
+    const setCartAmount = (index: number) => {
+      const item = CART[index];
+      if (!item || !(item.price > 0)) return;
+      const entered = window.prompt(said("How much money's worth?"));
+      const amount = +(entered || 0);
+      if (!(amount > 0)) return;
+      item.qty = Math.max(0.001, q3(amount / item.price));
+      draw();
     };
 
     const removeCartItem = (index: number) => {
@@ -1360,12 +1433,14 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
               <td>
                 <input
                   type="number"
-                  min="1"
+                  min="0.001"
+                  step="any"
                   style="width:64px"
                   value="${c.qty}"
                   ${PT === "sale" && prod(c.id)?.hasSerial ? "readonly title=\"Add one unit by selecting the product and entering its serial number\"" : ""}
                   oninput="setCartQty(${i},this.value)"
                 >
+                ${PT === "sale" && D.settings.businessType === "grocery" && !prod(c.id)?.hasSerial ? `<button class="mini" type="button" title="Sell by amount" aria-label="Sell by amount" onclick="setCartAmount(${i})">${esc(CURRENCY_SYMBOL)}</button>` : ""}
               </td>
 
               <td id="st${i}"></td>
@@ -1494,13 +1569,13 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         if (!pr) return;
 
         if (s) {
-          pr.stock -= c.qty;
+          pr.stock = q3(pr.stock - c.qty);
           if (pr.hasSerial && c.serials?.length) {
             const soldSerials = new Set(c.serials.map((value: string) => value.toLowerCase()));
             pr.serials = (pr.serials || []).filter((value: string) => !soldSerials.has(value.toLowerCase()));
           }
         } else {
-          pr.stock += c.qty;
+          pr.stock = q3(pr.stock + c.qty);
           pr.buy = c.price;
         }
       });
@@ -1724,6 +1799,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const productForm = () => {
+      const kind = businessType();
+      const uses = (field: string) => kind.show.includes(field);
       const textField = (id: string, label: string, hint: string, type = "text", required = false) =>
         `<label class="product-field"><span>${label}</span><input id="p_${id}" type="${type}" placeholder="${hint}" ${required ? "required" : ""} ${type === "number" ? 'min="0" step="0.01"' : ""}></label>`;
       const selectField = (id: string, label: string, data: any[]) =>
@@ -1740,21 +1817,22 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
               ${textField("name", "Product Name", "Enter Product Name", "text", true)}
               ${selectField("warehouse", "WareHouse", D.warehouses)}
               ${selectField("category", "Product Category", D.categories)}
-              ${selectField("brand", "Product Brand", D.brands)}
+              ${uses("brand") ? selectField("brand", "Product Brand", D.brands) : ""}
               ${selectField("unit", "Product Unit", D.units)}
               ${textField("code", "Product Code", "Enter Product Code", "text", true)}
+              ${kind.extra.map((id) => textField(id, EXTRA_FIELDS[id][0], EXTRA_FIELDS[id][1])).join("")}
               ${textField("stock", "Stock", "Enter stock qty", "number", true)}
-              ${textField("lowAlert", "Low Stock Alert", "EX: 5", "number")}
+              ${uses("lowAlert") ? textField("lowAlert", "Low Stock Alert", "EX: 5", "number") : ""}
               ${textField("buy", "Purchase Price", "Enter purchase price", "number", true)}
               ${textField("mrp", "MRP Price", "Enter MRP price", "number", true)}
-              ${textField("wholesale", "Wholesale Price", "Enter wholesale price", "number")}
-              ${textField("dealer", "Dealer Price", "Enter dealer price", "number")}
-              ${textField("manufacturer", "Manufacturer", "Enter manufacturer name")}
-              ${textField("manufactureDate", "Manufacture Date", "", "date")}
-              ${textField("expireDate", "Expire Date", "", "date")}
+              ${uses("wholesale") ? textField("wholesale", "Wholesale Price", "Enter wholesale price", "number") : ""}
+              ${uses("dealer") ? textField("dealer", "Dealer Price", "Enter dealer price", "number") : ""}
+              ${uses("manufacturer") ? textField("manufacturer", "Manufacturer", "Enter manufacturer name") : ""}
+              ${uses("manufactureDate") ? textField("manufactureDate", "Manufacture Date", "", "date") : ""}
+              ${uses("expireDate") ? textField("expireDate", "Expire Date", "", "date") : ""}
               <label class="product-field"><span>Image (max ${MAX_IMAGE_FILE_KB} KB)</span><input id="p_image" type="file" accept="image/*"><img id="productImagePreview" class="product-image-preview" alt="Product image preview"></label>
-              <label class="product-field"><span>Has Serial</span><select id="p_hasSerial"><option>No</option><option>Yes</option></select></label>
-              <label class="product-field serial-inventory-field" id="serialInventoryField" hidden><span>Available Serial Numbers</span><textarea id="p_serials" class="product-serial-input" placeholder="Enter one serial number per line, or separate with commas"></textarea></label>
+              ${uses("serial") ? `<label class="product-field"><span>Has Serial</span><select id="p_hasSerial"><option>No</option><option>Yes</option></select></label>
+              <label class="product-field serial-inventory-field" id="serialInventoryField" hidden><span>Available Serial Numbers</span><textarea id="p_serials" class="product-serial-input" placeholder="Enter one serial number per line, or separate with commas"></textarea></label>` : ""}
             </div>
             <div class="product-create-actions">
               <button class="btn or" type="reset">Reset</button>
@@ -1764,7 +1842,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         </section>`;
 
       const serialField = $("#serialInventoryField");
-      const syncSerialField = () => { serialField.hidden = $("#p_hasSerial").value !== "Yes"; };
+      const syncSerialField = () => { if (serialField) serialField.hidden = $("#p_hasSerial").value !== "Yes"; };
       $("#p_hasSerial")?.addEventListener("change", syncSerialField);
       syncSerialField();
 
@@ -1812,8 +1890,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           code: value("code"),
           warehouse: +value("warehouse"),
           category: +value("category"),
-          brand: +value("brand"),
+          brand: uses("brand") ? +value("brand") : D.brands[0]?.id || 0,
           unit: +value("unit"),
+          ...Object.fromEntries(kind.extra.map((id) => [id, value(id)])),
           stock: +value("stock"),
           lowAlert: +value("lowAlert") || 0,
           buy: +value("buy"),
@@ -2069,7 +2148,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     const filteredProducts = () => D.products.filter((product: any) => {
       const query = PRODUCT_LIST_QUERY.toLowerCase();
-      return `${product.name || ""} ${product.code || ""} ${nm("brands", product.brand)} ${nm("categories", product.category)}`
+      return `${product.name || ""} ${product.code || ""} ${nm("brands", product.brand)} ${nm("categories", product.category)} ${productDetails(product)}`
         .toLowerCase().includes(query);
     });
 
@@ -2084,7 +2163,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           <td>${typeof product.image === "string" && product.image
             ? `<img class="product-thumb" src="${esc(product.image)}" alt="${esc(product.name)}">`
             : `<span class="product-thumb-empty">No image</span>`}</td>
-          <td>${esc(product.name)}</td><td>${esc(product.code)}</td>
+          <td>${esc(product.name)}${productDetails(product) ? `<br><small class="mut">${esc(productDetails(product))}</small>` : ""}</td><td>${esc(product.code)}</td>
           <td>${esc(nm("brands", product.brand))}</td><td>${esc(nm("categories", product.category))}</td>
           <td>${esc(nm("units", product.unit))}</td><td>${tk(product.buy)}</td><td>${tk(product.sell)}</td>
           <td>${+product.stock || 0}</td><td>${product.hasSerial ? "Yes" : "No"}</td>
@@ -2148,6 +2227,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const editProduct = (id: number) => {
       const product = prod(id);
       if (!product) return;
+      // The fields this kind of shop uses, and any the product already has from before the kind was changed.
+      const extraIds = Object.keys(EXTRA_FIELDS).filter((id) => businessType().extra.includes(id) || product[id]);
       const dialog = $("#dlg");
       dialog.innerHTML = `
         <h3>Edit Product</h3>
@@ -2156,8 +2237,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <label>Brand</label><select id="ep_brand">${opts(D.brands, product.brand)}</select>
         <label>Category</label><select id="ep_category">${opts(D.categories, product.category)}</select>
         <label>Unit</label><select id="ep_unit">${opts(D.units, product.unit)}</select>
+        ${extraIds.map((id) => `<label>${EXTRA_FIELDS[id][0]}</label><input id="ep_${id}" value="${esc(product[id] || "")}" placeholder="${EXTRA_FIELDS[id][1]}">`).join("")}
         <div class="two"><div><label>Purchase Price</label><input id="ep_buy" type="number" min="0" step="0.01" value="${+product.buy || 0}"></div><div><label>Sale Price</label><input id="ep_sell" type="number" min="0" step="0.01" value="${+product.sell || 0}"></div></div>
-        <div class="two"><div><label>Stock</label><input id="ep_stock" type="number" min="0" step="1" value="${+product.stock || 0}"></div><div><label>Low Stock Alert</label><input id="ep_lowAlert" type="number" min="0" step="1" placeholder="EX: 5" value="${+product.lowAlert || ""}"></div><div><label>Serial</label><select id="ep_serial"><option value="false" ${product.hasSerial ? "" : "selected"}>No</option><option value="true" ${product.hasSerial ? "selected" : ""}>Yes</option></select></div></div>
+        <div class="two"><div><label>Stock</label><input id="ep_stock" type="number" min="0" step="any" value="${+product.stock || 0}"></div><div><label>Low Stock Alert</label><input id="ep_lowAlert" type="number" min="0" step="1" placeholder="EX: 5" value="${+product.lowAlert || ""}"></div><div><label>Serial</label><select id="ep_serial"><option value="false" ${product.hasSerial ? "" : "selected"}>No</option><option value="true" ${product.hasSerial ? "selected" : ""}>Yes</option></select></div></div>
         <label id="editSerialInventoryField">Available Serial Numbers<textarea id="ep_serials" class="product-serial-input" placeholder="Enter one serial number per line, or separate with commas">${esc((product.serials || []).join("\n"))}</textarea></label>
         <label>Replace Image (optional, max ${MAX_IMAGE_FILE_KB} KB)</label><input id="ep_image" type="file" accept="image/*">
         <div class="two" style="margin-top:16px"><button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button><button class="btn pu" type="button" id="saveProductEdit">Save Changes</button></div>`;
@@ -2186,6 +2268,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         Object.assign(product, {
           name: $("#ep_name").value.trim(), code: $("#ep_code").value.trim(),
           brand: +$("#ep_brand").value, category: +$("#ep_category").value, unit: +$("#ep_unit").value,
+          ...Object.fromEntries(extraIds.map((id) => [id, $("#ep_" + id).value.trim()])),
           buy: Math.max(0, +$("#ep_buy").value || 0), sell: Math.max(0, +$("#ep_sell").value || 0),
           stock: Math.max(0, +$("#ep_stock").value || 0), lowAlert: Math.max(0, +$("#ep_lowAlert").value || 0), hasSerial: $("#ep_serial").value === "true",
           serials: $("#ep_serial").value === "true"
@@ -2240,7 +2323,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const notificationsPage = () => {
-      const options: [string, string][] = [["lowStock", "Low stock alerts"], ["dueReminders", "Customer due reminders"], ["sales", "New sale notifications"], ["purchases", "New purchase notifications"], ["expenses", "Expense notifications"]];
+      const options: [string, string][] = [["lowStock", "Low stock alerts"], ["expiry", "Expiry date alerts"], ["dueReminders", "Customer due reminders"], ["sales", "New sale notifications"], ["purchases", "New purchase notifications"], ["expenses", "Expense notifications"]];
       $("#app").innerHTML = `<section class="card settings-card"><h2>Notifications</h2><p class="settings-help">Choose which in-app alerts you want to enable.</p><form id="notificationForm">${options.map(([key, label]) => `<label class="setting-toggle"><span>${label}</span><input type="checkbox" name="${key}" ${D.settings.notifications[key] ? "checked" : ""}></label>`).join("")}<button class="btn pu" type="submit">Save Changes</button></form></section>`;
       $("#notificationForm").addEventListener("submit", (event: Event) => {
         event.preventDefault();
@@ -2250,7 +2333,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const generalSettingsPage = () => {
-      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedPhone" type="checkbox" style="width:auto" ${D.settings.requirePhone ? "checked" : ""}> A walk-in sale needs the customer's phone number</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedReceived" type="checkbox" style="width:auto" ${D.settings.requireReceived ? "checked" : ""}> The amount received has to be typed on every sale</label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
+      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Business Type<select id="settingBusinessType">${Object.entries(BUSINESS_TYPES).map(([id, kind]) => `<option value="${id}" ${id === (D.settings.businessType || "general") ? "selected" : ""}>${kind.label}</option>`).join("")}</select></label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedPhone" type="checkbox" style="width:auto" ${D.settings.requirePhone ? "checked" : ""}> A walk-in sale needs the customer's phone number</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedReceived" type="checkbox" style="width:auto" ${D.settings.requireReceived ? "checked" : ""}> The amount received has to be typed on every sale</label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
       $("#generalSettingsForm").addEventListener("submit", async (event: Event) => {
         event.preventDefault();
         const logoFile = $("#settingLogo")?.files?.[0] as File | undefined;
@@ -2275,6 +2358,13 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         D.settings.invoiceFooter = $("#settingFooter").value.trim();
         D.settings.requirePhone = $("#settingNeedPhone").checked;
         D.settings.requireReceived = $("#settingNeedReceived").checked;
+        D.settings.businessType = $("#settingBusinessType").value;
+        // Give the shop the units and categories its kind of business usually needs.
+        for (const list of ["units", "categories"] as const) {
+          for (const name of businessType()[list]) {
+            if (!D[list].some((entry: any) => String(entry.name).toLowerCase() === name.toLowerCase())) D[list].push({ id: uid(), name, status: "Active" });
+          }
+        }
         CURRENCY_SYMBOL = D.currencies.find((currency: any) => currency.id == D.settings.currencyId)?.symbol || String.fromCharCode(2547);
         save(); hdr(); render(); toast("General settings saved");
       });
@@ -2898,6 +2988,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const startCard = () => {
       if (!isWorkspaceOwner || D.settings.guideHidden) return "";
       const items: [string, string, boolean][] = [
+        ["Choose your type of business", "settings-general", Boolean(D.settings.businessType)],
         ["Enter your shop's phone number and address", "settings-general", Boolean(D.user.phone && D.user.address)],
         ["Add your first product", "product-add", D.products.length > 0],
         ["Make your first sale", "sale-new", D.sales.length > 0],
@@ -4257,6 +4348,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     (window as any).setCartPrice = setCartPrice;
     (window as any).setCartQty = setCartQty;
+    (window as any).setCartAmount = setCartAmount;
+    (window as any).setPriceLevel = setPriceLevel;
     (window as any).removeCartItem = removeCartItem;
     (window as any).hideStartCard = () => { D.settings.guideHidden = true; save(); render(); };
 
