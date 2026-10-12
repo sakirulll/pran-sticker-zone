@@ -1611,6 +1611,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           ? (D[s ? "customers" : "suppliers"].find((person: any) => person.id == pid)?.phone || "")
           : (s ? $("#walkPhone")?.value.trim() : "") || "",
 
+        // Which saved customer or supplier this is for; 0 for a walk-in.
+        partyId: +pid || 0,
+
         total: T.tot,
 
         subtotal: T.subtotal,
@@ -2984,12 +2987,37 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#app").innerHTML = `<section class="card settings-card"><h2>How to use HishabPOS</h2><p class="settings-help">Follow these steps in order when you start. Each one has a button that takes you to the right screen.</p>${GUIDE_STEPS.map(([heading, lines, button]) => `<div class="guide-step"><h3>${heading}</h3><ul>${lines.map((line) => `<li>${line}</li>`).join("")}</ul>${button ? `<a class="btn pu" href="#${button[1]}">${button[0]}</a>` : ""}</div>`).join("")}</section>`;
     };
 
-    // ---- Due list: who owes the shop and whom the shop owes, one line per person, with payments taken here.
+    // ---- Customers, suppliers and dues: one line per person with what is owing, and payments taken here.
     type DueList = "sales" | "purchases";
+    type PeopleList = "customers" | "suppliers";
     let DUE_VIEW: DueList = "sales";
     let DUE_QUERY = "";
+    let PEOPLE_QUERY = "";
     const money2 = (amount: number) => Math.round(amount * 100) / 100;
     const daysSince = (date: string) => Math.max(0, Math.round((Date.parse(today()) - Date.parse(date)) / 864e5) || 0);
+
+    const LX_ICONS: Record<string, string> = {
+      people: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 5"/>',
+      cart: '<path d="M3 4h2l2.2 11.5a2 2 0 0 0 2 1.5h8.9a2 2 0 0 0 2-1.6L22 8H6"/><circle cx="10" cy="20" r="1"/><circle cx="18" cy="20" r="1"/>',
+      wallet: '<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v10a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z"/><path d="M17 14h.01"/>',
+      truck: '<path d="M3 7h12v11H3zM15 11h4l3 3v4h-7z"/><circle cx="7" cy="19" r="2"/><circle cx="18" cy="19" r="2"/>',
+      clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+      eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+      edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+      trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/>',
+      print: '<path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v7H7z"/>',
+      plus: '<path d="M12 5v14M5 12h14"/>',
+    };
+    const lxIcon = (name: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${LX_ICONS[name]}</svg>`;
+    const lxKpi = (icon: string, label: string, value: string, note: string, color: string) =>
+      `<div class="lx-kpi" style="--c:${color}"><em>${lxIcon(icon)}</em><div><span>${label}</span><b>${value}</b>${note ? `<small>${note}</small>` : ""}</div></div>`;
+    const lxAvatar = (name: string) => `<i class="lx-av" data-no-translate>${esc(([...String(name || "").trim()][0] || "?").toUpperCase())}</i>`;
+    const lxWho = (name: string, phone: string) =>
+      `<div class="lx-who">${lxAvatar(name)}<div><b data-no-translate>${esc(name)}</b>${phone ? `<a class="lx-tel" href="tel:${esc(phone)}">${esc(phone)}</a>` : ""}</div></div>`;
+    // On a phone each row becomes a card, and every figure shows what it is.
+    const lxLabel = (text: string) => `data-label="${esc(said(text))}"`;
+    const lxPill = (text: string, color: string) => `<span class="lx-pill" style="--c:${color}">${text}</span>`;
+    const lxEmpty = (columns: number, text: string) => `<tr class="lx-empty"><td colspan="${columns}"><span>${text}</span></td></tr>`;
 
     // The phone number tells people apart when there is one, otherwise the name does.
     const dueParties = (list: DueList): AnyData[] => {
@@ -3013,30 +3041,33 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const suppliers = dueParties("purchases");
       const late = customers.filter((party) => party.days > 30);
       const forCustomers = DUE_VIEW === "sales";
-      const stat = (label: string, amount: number, note: string, color: string) =>
-        `<div><span>${label}</span><b style="color:${color}">${tk(amount)}</b><i style="color:var(--mut)">${note}</i></div>`;
 
       $("#app").innerHTML = `
-        <div class="stats due-stats">
-          ${stat("Customers Owe You", sum(customers, (party) => party.due), `${customers.length} customers`, "var(--gr)")}
-          ${stat("You Owe Suppliers", sum(suppliers, (party) => party.due), `${suppliers.length} suppliers`, "var(--rd)")}
-          ${stat("Overdue More Than 30 Days", sum(late, (party) => party.due), `${late.length} customers`, "var(--tx)")}
-        </div>
-        <section class="card">
-          <div class="hd">
-            <h2>Due List</h2>
-            <div class="due-tabs">
-              <button class="btn ${forCustomers ? "pu" : "or"}" type="button" data-view="sales">Customer Due</button>
-              <button class="btn ${forCustomers ? "or" : "pu"}" type="button" data-view="purchases">Supplier Due</button>
-              <button class="btn or" type="button" onclick="window.print()">Print</button>
-            </div>
+        <div class="lx">
+          <div class="lx-kpis">
+            ${lxKpi("wallet", "Customers Owe You", tk(sum(customers, (party) => party.due)), `${customers.length} customers`, "var(--gr)")}
+            ${lxKpi("truck", "You Owe Suppliers", tk(sum(suppliers, (party) => party.due)), `${suppliers.length} suppliers`, "var(--rd)")}
+            ${lxKpi("clock", "Overdue More Than 30 Days", tk(sum(late, (party) => party.due)), `${late.length} customers`, "var(--or)")}
           </div>
-          <input class="srch" id="dueSearch" value="${esc(DUE_QUERY)}" placeholder="Search by name or phone">
-          <div class="wrap"><table>
-            <thead><tr><th>SL.</th><th>${forCustomers ? "Customer" : "Supplier"}</th><th>Phone</th><th>Invoices</th><th>Oldest Due</th><th>Total Due</th><th class="due-actions">Action</th></tr></thead>
-            <tbody id="dueRows"></tbody>
-          </table></div>
-        </section>`;
+          <section class="card">
+            <div class="hd">
+              <h2>Due List</h2>
+              <button class="lx-out lx-noprint" type="button" onclick="window.print()">${lxIcon("print")}<span>Print</span></button>
+            </div>
+            <div class="lx-bar">
+              <div class="lx-seg">
+                <button type="button" class="${forCustomers ? "on" : ""}" data-view="sales">Customer Due</button>
+                <button type="button" class="${forCustomers ? "" : "on"}" data-view="purchases">Supplier Due</button>
+              </div>
+              <span class="sp"></span>
+              <input class="srch" id="dueSearch" value="${esc(DUE_QUERY)}" placeholder="Search by name or phone">
+            </div>
+            <div class="wrap"><table class="lx-table">
+              <thead><tr><th>${forCustomers ? "Customer" : "Supplier"}</th><th class="num">Invoices</th><th>Oldest Due</th><th class="num">Total Due</th><th></th></tr></thead>
+              <tbody id="dueRows"></tbody>
+            </table></div>
+          </section>
+        </div>`;
 
       let shown: AnyData[] = [];
       const drawRows = () => {
@@ -3044,20 +3075,18 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         shown = (forCustomers ? customers : suppliers).filter((party) => `${party.name} ${party.phone}`.toLowerCase().includes(query));
         $("#dueRows").innerHTML = shown.map((party, index) => `
           <tr>
-            <td>${index + 1}</td>
-            <td data-no-translate>${esc(party.name)}</td>
-            <td>${party.phone ? `<a href="tel:${esc(party.phone)}">${esc(party.phone)}</a>` : "-"}</td>
-            <td>${party.invoices.length}</td>
-            <td>${esc(party.oldest)}<br><small class="${party.days > 30 ? "due-late" : "due-age"}">${party.days} days</small></td>
-            <td><b>${tk(party.due)}</b></td>
-            <td class="due-actions"><button class="mini due-pay" type="button" data-pay="${index}">${forCustomers ? "Receive Payment" : "Pay"}</button><button class="mini" type="button" data-details="${index}">Details</button></td>
+            <td class="lx-main">${lxWho(party.name, party.phone)}</td>
+            <td class="num" ${lxLabel("Invoices")}>${party.invoices.length}</td>
+            <td ${lxLabel("Oldest Due")}><span class="lx-when">${esc(party.oldest)} ${lxPill(`${party.days} days`, party.days > 30 ? "var(--rd)" : "var(--mut)")}</span></td>
+            <td class="num" ${lxLabel("Total Due")}><b class="lx-due">${tk(party.due)}</b></td>
+            <td><div class="lx-acts"><button class="lx-go" type="button" data-pay="${index}">${forCustomers ? "Receive Payment" : "Pay"}</button><button class="lx-ic" type="button" title="Details" aria-label="Details" data-details="${index}">${lxIcon("eye")}</button></div></td>
           </tr>`).join("")
-          || `<tr><td class="mut" colspan="7">${forCustomers ? "No customer owes you anything" : "You owe no supplier anything"}</td></tr>`;
+          || lxEmpty(5, forCustomers ? "No customer owes you anything" : "You owe no supplier anything");
       };
       drawRows();
 
       $("#dueSearch").addEventListener("input", (event: Event) => { DUE_QUERY = (event.currentTarget as HTMLInputElement).value; drawRows(); });
-      document.querySelectorAll(".due-tabs [data-view]").forEach((button) => button.addEventListener("click", () => {
+      document.querySelectorAll(".lx-seg [data-view]").forEach((button) => button.addEventListener("click", () => {
         DUE_VIEW = (button as HTMLElement).dataset.view as DueList;
         DUE_QUERY = "";
         duesPage();
@@ -3070,14 +3099,20 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       });
     }
 
+    const lxDialogHead = (name: string, phone: string, address = "") => `
+      <div class="lx-head">${lxAvatar(name)}<div><b data-no-translate>${esc(name)}</b>
+        ${phone ? `<a class="lx-tel" href="tel:${esc(phone)}">${esc(phone)}</a>` : ""}
+        ${address ? `<small data-no-translate>${esc(address)}</small>` : ""}</div></div>`;
+
     const duePaymentDialog = (party: AnyData, fromCustomer: boolean) => {
       if (!party) return;
       const dialog = $("#dlg") as HTMLDialogElement;
-      dialog.innerHTML = `
+      dialog.innerHTML = `<div class="lx-dlg">
         <h3>${fromCustomer ? "Receive Payment" : "Pay Supplier"}</h3>
-        <p class="due-party"><b data-no-translate>${esc(party.name)}</b>${party.phone ? ` · ${esc(party.phone)}` : ""}</p>
-        <div class="due-total"><span>Total Due</span><b>${tk(party.due)}</b></div>
-        <label>Amount</label><input id="duePayAmount" type="number" min="0.01" max="${party.due}" step="0.01" value="${party.due}">
+        ${lxDialogHead(party.name, party.phone)}
+        <div class="lx-owed"><span>Total Due</span><b>${tk(party.due)}</b></div>
+        <label>Amount</label><input id="duePayAmount" type="number" inputmode="decimal" min="0.01" max="${party.due}" step="0.01" value="${party.due}">
+        <div class="lx-quick"><button type="button" data-part="1">Full amount</button><button type="button" data-part="0.5">Half</button><span>Due after this payment</span><b id="duePayLeft"></b></div>
         <div class="two" style="margin-top:10px">
           <div><label>Payment Type</label><select id="duePayMethod">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option>${type}</option>`).join("")}</select></div>
           <div><label>Date</label><input id="duePayDate" type="date" value="${today()}"></div>
@@ -3086,11 +3121,19 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <div class="two" style="margin-top:16px">
           <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
           <button class="btn pu" type="button" id="saveDuePayment">Save Payment</button>
-        </div>`;
+        </div></div>`;
       dialog.showModal();
-      $("#duePayAmount").select();
+      const amountBox = $("#duePayAmount") as HTMLInputElement;
+      const showLeft = () => { $("#duePayLeft").textContent = tk(Math.max(0, money2(party.due - (+amountBox.value || 0)))); };
+      amountBox.addEventListener("input", showLeft);
+      dialog.querySelectorAll("[data-part]").forEach((button) => button.addEventListener("click", () => {
+        amountBox.value = String(money2(party.due * +(button as HTMLElement).dataset.part!));
+        showLeft();
+      }));
+      showLeft();
+      amountBox.select();
       $("#saveDuePayment").addEventListener("click", () => {
-        const amount = money2(+$("#duePayAmount").value || 0);
+        const amount = money2(+amountBox.value || 0);
         if (!(amount > 0)) { toast("Enter the amount paid"); return; }
         if (amount > party.due) { toast("The amount is more than the due"); return; }
         const payment = { date: $("#duePayDate").value || today(), method: $("#duePayMethod").value };
@@ -3106,8 +3149,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         }
         save();
         dialog.close();
-        duesPage();
-        updateBell();
+        render();
         toast("Payment saved");
       });
     };
@@ -3115,24 +3157,188 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const dueDetailsDialog = (party: AnyData, fromCustomer: boolean) => {
       if (!party) return;
       const dialog = $("#dlg") as HTMLDialogElement;
-      dialog.innerHTML = `
+      dialog.innerHTML = `<div class="lx-dlg">
         <h3>Due Details</h3>
-        <p class="due-party"><b data-no-translate>${esc(party.name)}</b>${party.phone ? ` · ${esc(party.phone)}` : ""}</p>
-        <div class="wrap"><table style="min-width:0">
-          <thead><tr><th>Invoice</th><th>Date</th><th>Total</th><th>Paid</th><th>Due</th></tr></thead>
+        ${lxDialogHead(party.name, party.phone)}
+        <div class="lx-owed"><span>Total Due</span><b>${tk(party.due)}</b></div>
+        <div class="wrap lx-scroll"><table class="lx-mini">
+          <thead><tr><th>Invoice</th><th>Date</th><th class="num">Total</th><th class="num">Paid</th><th class="num">Due</th></tr></thead>
           <tbody>${party.invoices.map((entry: any) => `
-            <tr><td>${fromCustomer ? `<button class="mini" type="button" data-invoice="${entry.id}">${esc(entry.inv)}</button>` : esc(entry.inv)}</td><td>${esc(entry.date)}</td><td>${tk(entry.total)}</td><td>${tk(entry.paid)}</td><td><b>${tk(entry.due)}</b></td></tr>
-            ${(entry.payments || []).map((payment: any) => `<tr class="due-history"><td></td><td>${esc(payment.date)}</td><td colspan="2"><span>${fromCustomer ? "Payment received" : "Payment made"}</span> · <span>${esc(payment.method)}</span></td><td>${tk(payment.amount)}</td></tr>`).join("")}`).join("")}
+            <tr><td>${fromCustomer ? `<button class="lx-link" type="button" data-invoice="${entry.id}">${esc(entry.inv)}</button>` : esc(entry.inv)}</td><td>${esc(entry.date)}</td><td class="num">${tk(entry.total)}</td><td class="num">${tk(entry.paid)}</td><td class="num"><b>${tk(entry.due)}</b></td></tr>
+            ${(entry.payments || []).map((payment: any) => `<tr class="lx-hist"><td></td><td>${esc(payment.date)}</td><td colspan="2"><span>${fromCustomer ? "Payment received" : "Payment made"}</span> · <span>${esc(payment.method)}</span></td><td class="num">${tk(payment.amount)}</td></tr>`).join("")}`).join("")}
           </tbody>
         </table></div>
-        <div class="due-total"><span>Total Due</span><b>${tk(party.due)}</b></div>
         <div class="two" style="margin-top:16px">
           <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Close</button>
-          <button class="btn pu" type="button" id="dueDetailsPay">${fromCustomer ? "Receive Payment" : "Pay"}</button>
-        </div>`;
+          <button class="btn pu" type="button" id="dueDetailsPay" autofocus>${fromCustomer ? "Receive Payment" : "Pay"}</button>
+        </div></div>`;
       dialog.showModal();
       dialog.querySelectorAll("[data-invoice]").forEach((button) => button.addEventListener("click", () => openInvoice(+(button as HTMLElement).dataset.invoice!)));
       $("#dueDetailsPay").addEventListener("click", () => duePaymentDialog(party, fromCustomer));
+    };
+
+    // An invoice belongs to the person it was made for; invoices from before that was recorded only carry the name and phone.
+    const personInvoices = (k: PeopleList, person: any) => {
+      const phone = String(person.phone || "").trim();
+      const name = String(person.name || "").trim().toLowerCase();
+      return D[k === "customers" ? "sales" : "purchases"].filter((entry: any) =>
+        entry.partyId ? entry.partyId == person.id
+          : phone && entry.phone ? String(entry.phone).trim() === phone
+            : String(entry.party || "").trim().toLowerCase() === name);
+    };
+    const personTotals = (k: PeopleList, person: any) => {
+      const invoices = personInvoices(k, person);
+      const counted = invoices.filter((entry: any) => !entry.ret);
+      return {
+        invoices,
+        total: sum(counted, (entry) => +entry.total || 0),
+        paid: sum(counted, (entry) => +entry.paid || 0),
+        due: money2(sum(counted, (entry) => +entry.due || 0)),
+      };
+    };
+    // What the person can be asked to pay now: their open invoices, oldest first.
+    const personOwing = (person: any, totals: AnyData) => ({
+      name: person.name,
+      phone: person.phone || "",
+      due: totals.due,
+      invoices: totals.invoices.filter((entry: any) => +entry.due > 0 && !entry.ret)
+        .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date))),
+    });
+
+    function peoplePage(k: PeopleList) {
+      const forCustomers = k === "customers";
+      const title = C[k][0];
+      const bought = forCustomers ? "Total Sales" : "Total Purchase";
+      // "Walk-in Customer" is only the name given to a sale made to nobody in particular.
+      const people: AnyData[] = D[k].filter((person: any) => String(person.name || "").trim().toLowerCase() !== "walk-in customer")
+        .map((person: any) => ({ person, ...personTotals(k, person) }));
+      const owing = people.filter((row) => row.due > 0);
+
+      $("#app").innerHTML = `
+        <div class="lx">
+          <div class="lx-kpis">
+            ${lxKpi("people", forCustomers ? "Total Customer" : "Total Supplier", String(people.length), "", "var(--pu)")}
+            ${lxKpi(forCustomers ? "cart" : "truck", bought, tk(sum(people, (row) => row.total)), "", "var(--bl)")}
+            ${lxKpi("wallet", "Total Due", tk(sum(people, (row) => row.due)), `${owing.length} ${forCustomers ? "customers" : "suppliers"}`, forCustomers ? "var(--gr)" : "var(--rd)")}
+          </div>
+          <section class="card">
+            <div class="hd">
+              <h2>${title} List</h2>
+              <div class="lx-acts lx-noprint">
+                <button class="lx-out" type="button" onclick="window.print()">${lxIcon("print")}<span>Print</span></button>
+                <button class="lx-add" type="button" id="addPerson">${lxIcon("plus")}<span>Add new ${title}</span></button>
+              </div>
+            </div>
+            <div class="lx-bar"><input class="srch" id="peopleSearch" value="${esc(PEOPLE_QUERY)}" placeholder="Search by name or phone"></div>
+            <div class="wrap"><table class="lx-table">
+              <thead><tr><th>${title}</th><th>Address</th><th class="num">Invoices</th><th class="num">${bought}</th><th class="num">Due</th><th></th></tr></thead>
+              <tbody id="peopleRows"></tbody>
+            </table></div>
+          </section>
+        </div>`;
+
+      const drawRows = () => {
+        const query = PEOPLE_QUERY.trim().toLowerCase();
+        $("#peopleRows").innerHTML = people
+          .filter((row) => `${row.person.name} ${row.person.phone || ""}`.toLowerCase().includes(query))
+          .map((row) => `
+            <tr>
+              <td class="lx-main">${lxWho(row.person.name, row.person.phone || "")}</td>
+              <td class="${row.person.address ? "" : "lx-hide"}" ${lxLabel("Address")}><span data-no-translate>${esc(row.person.address || "-")}</span></td>
+              <td class="num" ${lxLabel("Invoices")}>${row.invoices.length}</td>
+              <td class="num" ${lxLabel(bought)}>${tk(row.total)}</td>
+              <td class="num" ${lxLabel("Due")}>${row.due > 0 ? `<b class="lx-due">${tk(row.due)}</b>` : row.invoices.length ? lxPill("Paid", "var(--gr)") : `<span class="lx-none">-</span>`}</td>
+              <td><div class="lx-acts">
+                ${row.due > 0 ? `<button class="lx-go" type="button" data-pay="${row.person.id}">${forCustomers ? "Receive Payment" : "Pay"}</button>` : ""}
+                <button class="lx-ic" type="button" title="View" aria-label="View" data-view="${row.person.id}">${lxIcon("eye")}</button>
+                <button class="lx-ic" type="button" title="Edit" aria-label="Edit" data-edit="${row.person.id}">${lxIcon("edit")}</button>
+                <button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-delete="${row.person.id}">${lxIcon("trash")}</button>
+              </div></td>
+            </tr>`).join("")
+          || lxEmpty(6, "No data yet");
+      };
+      drawRows();
+
+      $("#peopleSearch").addEventListener("input", (event: Event) => { PEOPLE_QUERY = (event.currentTarget as HTMLInputElement).value; drawRows(); });
+      $("#addPerson").addEventListener("click", () => personForm(k));
+      $("#peopleRows").addEventListener("click", (event: Event) => {
+        const data = ((event.target as HTMLElement).closest("button") as HTMLElement | null)?.dataset;
+        if (!data) return;
+        const row = people.find((entry) => entry.person.id == (data.pay || data.view || data.edit || data.delete));
+        if (!row) return;
+        if (data.pay) duePaymentDialog(personOwing(row.person, row), forCustomers);
+        if (data.view) personDialog(k, row.person);
+        if (data.edit) personForm(k, row.person);
+        if (data.delete) {
+          if (row.due > 0) toast(forCustomers ? "Collect the due before deleting this customer" : "Pay the due before deleting this supplier");
+          else del(k, row.person.id);
+        }
+      });
+    }
+
+    const personForm = (k: PeopleList, person?: any) => {
+      const title = C[k][0];
+      const dialog = $("#dlg") as HTMLDialogElement;
+      dialog.innerHTML = `<div class="lx-dlg">
+        <h3>${person ? `Edit ${title}` : `Add new ${title}`}</h3>
+        <label>Name</label><input id="personName" value="${esc(person?.name || "")}" placeholder="Enter the name">
+        <label>Phone</label><input id="personPhone" type="tel" inputmode="tel" value="${esc(person?.phone || "")}" placeholder="01XXXXXXXXX">
+        <label>Address</label><input id="personAddress" value="${esc(person?.address || "")}" placeholder="Optional">
+        <div class="two" style="margin-top:16px">
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
+          <button class="btn pu" type="button" id="savePerson">Save</button>
+        </div></div>`;
+      dialog.showModal();
+      $("#personName").focus();
+      $("#savePerson").addEventListener("click", () => {
+        const name = $("#personName").value.trim();
+        const phone = $("#personPhone").value.trim();
+        if (!name) { toast("Enter the name"); return; }
+        if (phone && D[k].some((other: any) => other.id !== person?.id && String(other.phone || "").trim() === phone)) { toast("This phone number is already saved"); return; }
+        const details = { name, phone, address: $("#personAddress").value.trim() };
+        if (person) {
+          // Their invoices are found by name and phone, so they have to follow the change.
+          for (const entry of personInvoices(k, person)) Object.assign(entry, { partyId: person.id, party: name, phone });
+          Object.assign(person, details);
+        } else {
+          D[k].push({ id: uid(), status: "Active", ...details });
+        }
+        save();
+        dialog.close();
+        render();
+        toast(title + " saved");
+      });
+    };
+
+    const personDialog = (k: PeopleList, person: any) => {
+      const forCustomers = k === "customers";
+      const totals = personTotals(k, person);
+      const invoices = [...totals.invoices].sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)));
+      const figure = (label: string, amount: number, color = "") => `<div><span>${label}</span><b ${color ? `style="color:${color}"` : ""}>${tk(amount)}</b></div>`;
+      const dialog = $("#dlg") as HTMLDialogElement;
+      dialog.innerHTML = `<div class="lx-dlg">
+        <h3>${C[k][0]} Details</h3>
+        ${lxDialogHead(person.name, person.phone || "", person.address || "")}
+        <div class="lx-figs">
+          ${figure(forCustomers ? "Total Sales" : "Total Purchase", totals.total)}
+          ${figure("Total Paid", totals.paid, "var(--gr)")}
+          ${figure("Total Due", totals.due, totals.due > 0 ? "var(--rd)" : "")}
+        </div>
+        <div class="wrap lx-scroll"><table class="lx-mini">
+          <thead><tr><th>Invoice</th><th>Date</th><th class="num">Total</th><th class="num">Due</th><th>Status</th></tr></thead>
+          <tbody>${invoices.map((entry: any) => `
+            <tr><td>${forCustomers ? `<button class="lx-link" type="button" data-invoice="${entry.id}">${esc(entry.inv)}</button>` : esc(entry.inv)}</td><td>${esc(entry.date)}</td><td class="num">${tk(entry.total)}</td><td class="num">${tk(entry.ret ? 0 : entry.due)}</td><td>${entry.ret ? lxPill("Returned", "var(--mut)") : +entry.due > 0 ? lxPill("Due", "var(--rd)") : lxPill("Paid", "var(--gr)")}</td></tr>`).join("")
+            || lxEmpty(5, "No data yet")}
+          </tbody>
+        </table></div>
+        <div class="two" style="margin-top:16px">
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Close</button>
+          ${totals.due > 0 ? `<button class="btn pu" type="button" id="personPay" autofocus>${forCustomers ? "Receive Payment" : "Pay"}</button>` : `<button class="btn pu" type="button" id="personEdit" autofocus>Edit</button>`}
+        </div></div>`;
+      dialog.showModal();
+      dialog.querySelectorAll("[data-invoice]").forEach((button) => button.addEventListener("click", () => openInvoice(+(button as HTMLElement).dataset.invoice!)));
+      $("#personPay")?.addEventListener("click", () => duePaymentDialog(personOwing(person, totals), forCustomers));
+      $("#personEdit")?.addEventListener("click", () => personForm(k, person));
     };
 
     // Shown on the dashboard to the owner of a shop that is still being set up.
@@ -3775,6 +3981,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       },
 
       dues: duesPage,
+      customers: () => peoplePage("customers"),
+      suppliers: () => peoplePage("suppliers"),
 
       profit: () => {
         let mode: "invoice" | "product" = "invoice";
