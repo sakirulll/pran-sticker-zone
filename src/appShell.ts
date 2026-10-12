@@ -488,6 +488,17 @@ td.mut{
 
 .stats em svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
+.due-stats{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px}
+.due-tabs{display:flex;gap:8px;flex-wrap:wrap}
+.due-age{color:var(--mut)}
+.due-late{color:var(--rd);font-weight:600}
+.due-pay{border-color:var(--pu);color:var(--pu);font-weight:600}
+.due-party{margin:0 0 10px}
+.due-total{display:flex;justify-content:space-between;align-items:center;margin:10px 0;padding:10px 12px;border-radius:8px;background:var(--bg)}
+.due-total b{font-size:18px}
+.due-history td{border-top:0;padding-top:0;color:var(--mut);font-size:12px}
+@media print{.due-tabs,.due-actions,#dueSearch{display:none!important}}
+
 .two{
   display:grid;
   grid-template-columns:1fr 1fr;

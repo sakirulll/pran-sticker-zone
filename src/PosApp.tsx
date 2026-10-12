@@ -2966,8 +2966,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         "Enter it as a purchase: choose the supplier, add the products and quantities, and save. The stock goes up by itself.",
       ], ["Open Purchase New", "purchase-new"]],
       ["7. Collect dues", [
-        "The Due List shows every invoice that still has money owing.",
-        "When the customer pays, open Sale List, choose Edit on that invoice and raise the Paid Amount.",
+        "The Due List shows everyone who still owes you money, and how long it has been owing.",
+        "When the customer pays, press Receive Payment beside their name and type the amount.",
       ], ["Open Due List", "dues"]],
       ["8. Give your staff their own login", [
         "Add a role, tick only the screens that person should see, and give them an email and password. Do not share your own password.",
@@ -2982,6 +2982,157 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     const helpPage = () => {
       $("#app").innerHTML = `<section class="card settings-card"><h2>How to use HishabPOS</h2><p class="settings-help">Follow these steps in order when you start. Each one has a button that takes you to the right screen.</p>${GUIDE_STEPS.map(([heading, lines, button]) => `<div class="guide-step"><h3>${heading}</h3><ul>${lines.map((line) => `<li>${line}</li>`).join("")}</ul>${button ? `<a class="btn pu" href="#${button[1]}">${button[0]}</a>` : ""}</div>`).join("")}</section>`;
+    };
+
+    // ---- Due list: who owes the shop and whom the shop owes, one line per person, with payments taken here.
+    type DueList = "sales" | "purchases";
+    let DUE_VIEW: DueList = "sales";
+    let DUE_QUERY = "";
+    const money2 = (amount: number) => Math.round(amount * 100) / 100;
+    const daysSince = (date: string) => Math.max(0, Math.round((Date.parse(today()) - Date.parse(date)) / 864e5) || 0);
+
+    // The phone number tells people apart when there is one, otherwise the name does.
+    const dueParties = (list: DueList): AnyData[] => {
+      const parties = new Map<string, AnyData>();
+      for (const entry of D[list]) {
+        if (!(+entry.due > 0) || entry.ret) continue;
+        const key = String(entry.phone || entry.party || "").trim().toLowerCase();
+        const party = parties.get(key) || { name: entry.party || "-", phone: entry.phone || "", invoices: [], due: 0 };
+        party.invoices.push(entry);
+        party.due = money2(party.due + +entry.due);
+        parties.set(key, party);
+      }
+      return [...parties.values()].map((party): AnyData => {
+        party.invoices.sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
+        return { ...party, oldest: party.invoices[0].date, days: daysSince(party.invoices[0].date) };
+      }).sort((a, b) => b.due - a.due);
+    };
+
+    function duesPage() {
+      const customers = dueParties("sales");
+      const suppliers = dueParties("purchases");
+      const late = customers.filter((party) => party.days > 30);
+      const forCustomers = DUE_VIEW === "sales";
+      const stat = (label: string, amount: number, note: string, color: string) =>
+        `<div><span>${label}</span><b style="color:${color}">${tk(amount)}</b><i style="color:var(--mut)">${note}</i></div>`;
+
+      $("#app").innerHTML = `
+        <div class="stats due-stats">
+          ${stat("Customers Owe You", sum(customers, (party) => party.due), `${customers.length} customers`, "var(--gr)")}
+          ${stat("You Owe Suppliers", sum(suppliers, (party) => party.due), `${suppliers.length} suppliers`, "var(--rd)")}
+          ${stat("Overdue More Than 30 Days", sum(late, (party) => party.due), `${late.length} customers`, "var(--tx)")}
+        </div>
+        <section class="card">
+          <div class="hd">
+            <h2>Due List</h2>
+            <div class="due-tabs">
+              <button class="btn ${forCustomers ? "pu" : "or"}" type="button" data-view="sales">Customer Due</button>
+              <button class="btn ${forCustomers ? "or" : "pu"}" type="button" data-view="purchases">Supplier Due</button>
+              <button class="btn or" type="button" onclick="window.print()">Print</button>
+            </div>
+          </div>
+          <input class="srch" id="dueSearch" value="${esc(DUE_QUERY)}" placeholder="Search by name or phone">
+          <div class="wrap"><table>
+            <thead><tr><th>SL.</th><th>${forCustomers ? "Customer" : "Supplier"}</th><th>Phone</th><th>Invoices</th><th>Oldest Due</th><th>Total Due</th><th class="due-actions">Action</th></tr></thead>
+            <tbody id="dueRows"></tbody>
+          </table></div>
+        </section>`;
+
+      let shown: AnyData[] = [];
+      const drawRows = () => {
+        const query = DUE_QUERY.trim().toLowerCase();
+        shown = (forCustomers ? customers : suppliers).filter((party) => `${party.name} ${party.phone}`.toLowerCase().includes(query));
+        $("#dueRows").innerHTML = shown.map((party, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td data-no-translate>${esc(party.name)}</td>
+            <td>${party.phone ? `<a href="tel:${esc(party.phone)}">${esc(party.phone)}</a>` : "-"}</td>
+            <td>${party.invoices.length}</td>
+            <td>${esc(party.oldest)}<br><small class="${party.days > 30 ? "due-late" : "due-age"}">${party.days} days</small></td>
+            <td><b>${tk(party.due)}</b></td>
+            <td class="due-actions"><button class="mini due-pay" type="button" data-pay="${index}">${forCustomers ? "Receive Payment" : "Pay"}</button><button class="mini" type="button" data-details="${index}">Details</button></td>
+          </tr>`).join("")
+          || `<tr><td class="mut" colspan="7">${forCustomers ? "No customer owes you anything" : "You owe no supplier anything"}</td></tr>`;
+      };
+      drawRows();
+
+      $("#dueSearch").addEventListener("input", (event: Event) => { DUE_QUERY = (event.currentTarget as HTMLInputElement).value; drawRows(); });
+      document.querySelectorAll(".due-tabs [data-view]").forEach((button) => button.addEventListener("click", () => {
+        DUE_VIEW = (button as HTMLElement).dataset.view as DueList;
+        DUE_QUERY = "";
+        duesPage();
+      }));
+      $("#dueRows").addEventListener("click", (event: Event) => {
+        const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
+        if (!button) return;
+        if (button.dataset.pay) duePaymentDialog(shown[+button.dataset.pay], forCustomers);
+        if (button.dataset.details) dueDetailsDialog(shown[+button.dataset.details], forCustomers);
+      });
+    }
+
+    const duePaymentDialog = (party: AnyData, fromCustomer: boolean) => {
+      if (!party) return;
+      const dialog = $("#dlg") as HTMLDialogElement;
+      dialog.innerHTML = `
+        <h3>${fromCustomer ? "Receive Payment" : "Pay Supplier"}</h3>
+        <p class="due-party"><b data-no-translate>${esc(party.name)}</b>${party.phone ? ` · ${esc(party.phone)}` : ""}</p>
+        <div class="due-total"><span>Total Due</span><b>${tk(party.due)}</b></div>
+        <label>Amount</label><input id="duePayAmount" type="number" min="0.01" max="${party.due}" step="0.01" value="${party.due}">
+        <div class="two" style="margin-top:10px">
+          <div><label>Payment Type</label><select id="duePayMethod">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option>${type}</option>`).join("")}</select></div>
+          <div><label>Date</label><input id="duePayDate" type="date" value="${today()}"></div>
+        </div>
+        <p class="settings-help">${party.invoices.length > 1 ? "The payment is taken off the oldest invoice first." : `Invoice ${esc(party.invoices[0].inv)}`}</p>
+        <div class="two" style="margin-top:16px">
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
+          <button class="btn pu" type="button" id="saveDuePayment">Save Payment</button>
+        </div>`;
+      dialog.showModal();
+      $("#duePayAmount").select();
+      $("#saveDuePayment").addEventListener("click", () => {
+        const amount = money2(+$("#duePayAmount").value || 0);
+        if (!(amount > 0)) { toast("Enter the amount paid"); return; }
+        if (amount > party.due) { toast("The amount is more than the due"); return; }
+        const payment = { date: $("#duePayDate").value || today(), method: $("#duePayMethod").value };
+        let left = amount;
+        for (const entry of party.invoices) {
+          if (left <= 0) break;
+          const part = Math.min(left, +entry.due);
+          entry.paid = money2((+entry.paid || 0) + part);
+          entry.due = money2(+entry.due - part);
+          // Kept on the invoice so the history of what was paid when stays with it.
+          entry.payments = [...(entry.payments || []), { ...payment, amount: part }];
+          left = money2(left - part);
+        }
+        save();
+        dialog.close();
+        duesPage();
+        updateBell();
+        toast("Payment saved");
+      });
+    };
+
+    const dueDetailsDialog = (party: AnyData, fromCustomer: boolean) => {
+      if (!party) return;
+      const dialog = $("#dlg") as HTMLDialogElement;
+      dialog.innerHTML = `
+        <h3>Due Details</h3>
+        <p class="due-party"><b data-no-translate>${esc(party.name)}</b>${party.phone ? ` · ${esc(party.phone)}` : ""}</p>
+        <div class="wrap"><table style="min-width:0">
+          <thead><tr><th>Invoice</th><th>Date</th><th>Total</th><th>Paid</th><th>Due</th></tr></thead>
+          <tbody>${party.invoices.map((entry: any) => `
+            <tr><td>${fromCustomer ? `<button class="mini" type="button" data-invoice="${entry.id}">${esc(entry.inv)}</button>` : esc(entry.inv)}</td><td>${esc(entry.date)}</td><td>${tk(entry.total)}</td><td>${tk(entry.paid)}</td><td><b>${tk(entry.due)}</b></td></tr>
+            ${(entry.payments || []).map((payment: any) => `<tr class="due-history"><td></td><td>${esc(payment.date)}</td><td colspan="2"><span>${fromCustomer ? "Payment received" : "Payment made"}</span> · <span>${esc(payment.method)}</span></td><td>${tk(payment.amount)}</td></tr>`).join("")}`).join("")}
+          </tbody>
+        </table></div>
+        <div class="due-total"><span>Total Due</span><b>${tk(party.due)}</b></div>
+        <div class="two" style="margin-top:16px">
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Close</button>
+          <button class="btn pu" type="button" id="dueDetailsPay">${fromCustomer ? "Receive Payment" : "Pay"}</button>
+        </div>`;
+      dialog.showModal();
+      dialog.querySelectorAll("[data-invoice]").forEach((button) => button.addEventListener("click", () => openInvoice(+(button as HTMLElement).dataset.invoice!)));
+      $("#dueDetailsPay").addEventListener("click", () => duePaymentDialog(party, fromCustomer));
     };
 
     // Shown on the dashboard to the owner of a shop that is still being set up.
@@ -3623,52 +3774,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         );
       },
 
-      dues: () => {
-        const r: any[][] = [];
-
-        D.sales.forEach(
-          (s: any) => {
-            if (
-              s.due > 0 &&
-              !s.ret
-            ) {
-              r.push([
-                "Customer",
-                esc(s.party),
-                s.inv,
-                tk(s.due),
-              ]);
-            }
-          },
-        );
-
-        D.purchases.forEach(
-          (s: any) => {
-            if (
-              s.due > 0 &&
-              !s.ret
-            ) {
-              r.push([
-                "Supplier",
-                esc(s.party),
-                s.inv,
-                tk(s.due),
-              ]);
-            }
-          },
-        );
-
-        $("#app").innerHTML = tab(
-          "Due List",
-          [
-            "Type",
-            "Party",
-            "Invoice",
-            "Due",
-          ],
-          r,
-        );
-      },
+      dues: duesPage,
 
       profit: () => {
         let mode: "invoice" | "product" = "invoice";
