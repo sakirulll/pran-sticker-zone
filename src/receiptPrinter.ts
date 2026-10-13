@@ -9,6 +9,9 @@
 
 import { packDots, type DotPicture } from "./labelPrinter.ts";
 
+/** Printed in small type at the foot of every receipt and invoice. */
+export const POWERED_BY = "Powered by pranstickerzone.com";
+
 export type Receipt = {
   shop: string;
   /** Lines under the shop name: phone, address, the receipt's title. */
@@ -97,6 +100,8 @@ export function drawReceipt(receipt: Receipt, width: number): DotPicture {
   receipt.totals.forEach((total) => pair(total.label, total.value, total.strong ? Math.round(base * 1.25) : base, total.strong));
   rule();
   centred(receipt.footer, base, true);
+  gap(Math.round(base * 0.4));
+  centred(POWERED_BY, Math.round(base * 0.8));
   // Blank paper at the end, so the last line clears the tear bar.
   gap(base * 3);
 

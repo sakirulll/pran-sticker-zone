@@ -6,7 +6,7 @@ import { contactHtml, loadContact } from "./contact";
 import { canUseBluetooth, canUseSerial, connectBluetooth, connectSerial, drawLabel, tsplJob, type LabelSpec, type PrinterLink } from "./labelPrinter";
 import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
 import { currentLanguage, switchLanguage, translate } from "./i18n";
-import { drawReceipt, escposJob, PAPER_DOTS, pictureCanvas, tsplReceiptJob, type Receipt } from "./receiptPrinter";
+import { drawReceipt, escposJob, PAPER_DOTS, pictureCanvas, POWERED_BY, tsplReceiptJob, type Receipt } from "./receiptPrinter";
 import { clearOfflineShop, readOfflineShop, writeOfflineShop } from "./offlineStore";
 import { buildShopData, chunkChanges, ShopSync, type RecordRow, type StoredRow } from "./shopSync";
 import { canUseShop, daysLeft, escapeHtml, money, mountSubscriptionPanel, resendVerification, subscriptionBadge } from "./subscriptionPanel";
@@ -2084,7 +2084,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           .center{text-align:center}.brand{font-size:${compact ? "19px" : "26px"};font-weight:800}.sub{color:#4b5563}.rule{border-top:1px dashed #64748b;margin:10px 0}
           .row{display:flex;justify-content:space-between;gap:8px;margin:5px 0}.meta{margin-top:12px}
           table{width:100%;border-collapse:collapse;margin:12px 0}th,td{text-align:left;padding:6px 2px;border-bottom:1px solid #e5e7eb;font-size:${compact ? "11px" : "13px"}}th:last-child,td:last-child{text-align:right}
-          .amounts{max-width:340px;margin-left:auto}.grand{font-size:17px;font-weight:800}.thank{margin-top:18px;font-weight:700}
+          .amounts{max-width:340px;margin-left:auto}.grand{font-size:17px;font-weight:800}.thank{margin-top:18px;font-weight:700}.powered{margin-top:10px;color:#555;font-size:11px}
           @media print{body{background:#fff}.toolbar{display:none}.paper{width:${compact ? "58mm" : "100%"};margin:0;border:0;padding:${compact ? "4mm" : "0"}}}
         </style></head><body>
         <div class="toolbar"><button onclick="window.print()">Print</button><button onclick="window.print()">Save PDF</button></div>
@@ -2111,6 +2111,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             <div class="row"><span>Due</span><span>${tk(due)}</span></div>
           </section>
           <div class="rule"></div><div class="center thank">${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}</div>
+          <div class="center powered">${POWERED_BY}</div>
         </main>
         ${autoPrint ? `<script>window.onload=()=>setTimeout(()=>window.print(),250)</script>` : ""}
         </body></html>`);
