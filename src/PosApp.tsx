@@ -3006,6 +3006,95 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     // ---- Platform admin: every shop on the system, payments waiting to be checked, and prices.
+    // ---- Platform admin: copies of the whole site sent to the admin's own Google Drive.
+    const DRIVE_SETUP = [
+      "Open console.cloud.google.com and make a new project.",
+      "In APIs & Services > Library, find Google Drive API and press Enable.",
+      "In APIs & Services > OAuth consent screen, choose External and fill in the app name and your email. Then, under Audience, press Publish app.",
+      "In APIs & Services > Credentials, press Create Credentials > OAuth client ID and choose Web application. Under Authorized redirect URIs, add the address shown below.",
+      "Copy the Client ID and the Client secret it gives you into the boxes here, press Save, and then press Connect Google Drive.",
+    ];
+    const DRIVE_NOTES: Record<string, string> = {
+      connected: "Google Drive is connected. The first copy is taken the next time a shop is opened, or press Back up now.",
+      refused: "Google Drive was not connected, because access was not allowed.",
+      expired: "That took too long. Press Connect Google Drive again.",
+      unreachable: "Google could not be reached. Try again in a little while.",
+      failed: "Google did not accept the Client ID and Client secret. Check them and connect again.",
+      setup: "Save the Client ID and Client secret first.",
+    };
+    const drivePage = async () => {
+      const app = $("#app");
+      app.innerHTML = `<section class="card settings-card"><h2>Google Drive Backup</h2><p class="mut">Loading…</p></section>`;
+      // Google sends the admin back here with the outcome in the address.
+      const note = new URLSearchParams(location.search).get("drive") || "";
+      if (note) history.replaceState(null, "", location.pathname + location.hash);
+      let status;
+      try {
+        status = await hostingApi.driveStatus();
+      } catch (error) {
+        app.innerHTML = `<section class="card settings-card"><h2>Google Drive Backup</h2><p class="settings-help">${esc(error instanceof Error ? error.message : "Could not load this page.")}</p></section>`;
+        return;
+      }
+      if (location.hash.slice(1) !== "admin-drive") return;
+      const ready = Boolean(status.clientId && status.hasSecret);
+      const size = (bytes: number) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+      const fileRows = status.files.map((file, index) => `<tr><td>${index + 1}</td><td data-no-translate>${esc(file.name)}</td><td>${esc(new Date(file.createdTime).toLocaleString())}</td><td>${size(file.size)}</td></tr>`).join("");
+      const setup = `
+        <div class="guide-step"><h3>${status.connected ? "Google account settings" : "1. Set it up with Google (once)"}</h3>
+          ${status.connected ? "" : `<ol class="drive-steps">${DRIVE_SETUP.map((line) => `<li>${line}</li>`).join("")}</ol>
+          <label class="drive-copy">Authorized redirect URI<input id="driveRedirect" value="${esc(status.redirectUri)}" readonly onclick="this.select()"></label>`}
+          <form id="driveSettings"><div class="settings-form-grid">
+            <label>Client ID<input id="driveClientId" value="${esc(status.clientId)}" autocomplete="off" required></label>
+            <label>Client secret<input id="driveSecret" type="password" autocomplete="new-password" placeholder="${status.hasSecret ? "Saved. Type a new one to change it." : ""}" ${status.hasSecret ? "" : "required"}></label>
+          </div><button class="btn ${ready ? "or" : "pu"}" type="submit">Save</button></form>
+        </div>`;
+      app.innerHTML = `
+        <section class="card settings-card">
+          <div class="hd"><h2>Google Drive Backup</h2><span class="bd ${status.connected ? "ok" : "dn"}">${status.connected ? "Connected" : "Not connected"}</span></div>
+          <p class="settings-help">Every day the whole database is copied to your own Google Drive, and the pictures once a week. Copies older than ${status.keepDays} days are deleted from Drive by themselves.</p>
+          ${note && DRIVE_NOTES[note] ? `<p class="plan-note ${note === "connected" ? "ok" : ""}" role="status">${DRIVE_NOTES[note]}</p>` : ""}
+          ${status.connected ? `
+            <div class="guide-step"><h3>Copies on Google Drive</h3>
+              ${status.problem ? `<p class="plan-note" role="alert" data-no-translate>${esc(status.problem)}</p>` : ""}
+              <p class="settings-help">${status.lastRun ? `<span>Last copy</span>: <span data-no-translate>${esc(status.lastRun)} — ${esc(status.lastResult)}</span>` : "No copy has been taken yet."}</p>
+              <div class="lx-acts" style="justify-content:flex-start;margin-bottom:12px"><button class="btn pu" type="button" id="driveRun">Back up now</button><button class="btn or" type="button" id="driveDisconnect">Disconnect</button></div>
+              <div class="wrap"><table><thead><tr><th>SL.</th><th>File</th><th>Date</th><th>Size</th></tr></thead><tbody>${fileRows || empty(4)}</tbody></table></div>
+            </div>${setup}` : `${setup}
+            <div class="guide-step"><h3>2. Connect</h3>
+              <p class="settings-help">Google will ask whether this site may keep its own files on your Drive. It cannot see anything else there.</p>
+              ${ready ? `<a class="btn pu" href="/api/drive.php?action=connect">Connect Google Drive</a>` : `<button class="btn pu" type="button" disabled>Connect Google Drive</button>`}
+            </div>`}
+        </section>`;
+
+      $("#driveSettings").addEventListener("submit", async (event: Event) => {
+        event.preventDefault();
+        try {
+          await hostingApi.driveSettings($("#driveClientId").value.trim(), $("#driveSecret").value.trim());
+          toast("Settings saved");
+          void drivePage();
+        } catch (error) {
+          toast(error instanceof Error ? error.message : "The settings could not be saved.");
+        }
+      });
+      $("#driveRun")?.addEventListener("click", async (event: Event) => {
+        const button = event.currentTarget as HTMLButtonElement;
+        button.disabled = true;
+        button.textContent = "Backing up…";
+        try {
+          const { result } = await hostingApi.driveRun();
+          toast(result.ok ? "The copy is on Google Drive" : result.message);
+        } catch (error) {
+          toast(error instanceof Error ? error.message : "The copy could not be taken.");
+        }
+        void drivePage();
+      });
+      $("#driveDisconnect")?.addEventListener("click", async () => {
+        if (!confirm("Stop sending copies to Google Drive? The copies already there stay.")) return;
+        await hostingApi.driveDisconnect().catch(() => undefined);
+        void drivePage();
+      });
+    };
+
     const adminPage = async (view: "shops" | "payments" | "settings") => {
       const title = { shops: "All Shops", payments: "Payments", settings: "Pricing & Payment Numbers" }[view];
       $("#app").innerHTML = `<section class="card"><div class="hd"><h2>${title}</h2></div><div class="wrap" id="adminBody"><p style="padding:18px">Loading…</p></div></section>`;
@@ -3729,6 +3818,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       "admin-shops": () => adminPage("shops"),
       "admin-payments": () => adminPage("payments"),
       "admin-settings": () => adminPage("settings"),
+      "admin-drive": drivePage,
 
       dashboard: () => {
         const cm = today().slice(0, 7);
@@ -4672,6 +4762,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           ["All Shops", "admin-shops"],
           ["Payments", "admin-payments"],
           ["Pricing", "admin-settings"],
+          ["Drive Backup", "admin-drive"],
         ],
       ],
 

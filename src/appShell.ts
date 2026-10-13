@@ -830,6 +830,11 @@ tbody tr:hover{background:color-mix(in srgb,var(--bg) 60%,transparent)}
 dialog{padding:20px;box-shadow:0 20px 50px #0004}
 dialog h3{margin-bottom:14px;font-size:17px}
 .toast{border-radius:10px;box-shadow:0 8px 24px #0004}
+.drive-steps{margin:0 0 14px;padding-left:20px;line-height:1.6}
+.drive-steps li{margin-bottom:6px}
+.drive-copy{display:block;max-width:560px;margin-bottom:16px;color:var(--mut);font-size:13px}
+.drive-copy input{display:block;margin-top:6px;font-family:Consolas,monospace;font-size:13px}
+
 /* Stock kept by size */
 .size-stock{grid-column:1/-1;padding:14px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);text-align:left}
 dialog .size-stock{margin-top:12px}

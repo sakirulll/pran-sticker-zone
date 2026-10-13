@@ -19,6 +19,10 @@ return [
     // folder next to this file, which is outside the public website folder.
     // 'backup_dir' => '/home/pranmzcs/pos-backups',
 
+    // Set 'app_url' above when the Google Drive backup is used: Google sends the
+    // admin back to <app_url>/api/drive.php, and that address has to match the
+    // one entered in the Google Cloud console exactly.
+
     // Optional. The address emails are sent from. It should be a mailbox that
     // exists on this hosting account, or the emails may land in spam.
     // 'mail_from' => 'no-reply@pranstickerzone.com',

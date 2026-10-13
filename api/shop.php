@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
 require __DIR__ . '/backup.php';
+require __DIR__ . '/drivebackup.php';
 require __DIR__ . '/subscription.php';
 
 // Shop data is stored one record per row. Every write bumps the shop's revision
@@ -250,15 +251,21 @@ if ($method === 'GET') {
 
     // The page already has its answer; take today's backup without making it wait.
     ignore_user_abort(true);
+    $released = true;
     if (function_exists('litespeed_finish_request')) {
         litespeed_finish_request();
     } elseif (function_exists('fastcgi_finish_request')) {
         fastcgi_finish_request();
     } else {
         flush();
+        $released = false;
     }
     if ($rev > 0) {
         backup_if_due($pdo, $shopId);
+    }
+    // Sending the whole site to Google Drive takes a while, so only when the page is truly not waiting.
+    if ($released) {
+        drive_backup_if_due($pdo);
     }
     exit;
 }

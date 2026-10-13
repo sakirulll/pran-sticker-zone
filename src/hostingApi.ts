@@ -31,6 +31,20 @@ export type BillingSettings = {
   verifyGraceDays: number;
 };
 
+/** The platform admin's Google Drive backup: how it is set up and what is on Drive. */
+export type DriveStatus = {
+  clientId: string;
+  hasSecret: boolean;
+  redirectUri: string;
+  connected: boolean;
+  keepDays: number;
+  lastRun: string;
+  lastOk: boolean;
+  lastResult: string;
+  problem: string;
+  files: { name: string; size: number; createdTime: string }[];
+};
+
 export type Payment = {
   id: number;
   plan: "monthly" | "yearly";
@@ -162,6 +176,15 @@ export const hostingApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  driveStatus: () => request<{ ok: true } & DriveStatus>("drive.php?action=status"),
+
+  driveSettings: (clientId: string, clientSecret: string) =>
+    request<{ ok: true }>("drive.php?action=settings", { method: "POST", body: JSON.stringify({ clientId, clientSecret }) }),
+
+  driveRun: () => request<{ ok: true; result: { ok: boolean; message: string } }>("drive.php?action=run", { method: "POST", body: "{}" }),
+
+  driveDisconnect: () => request<{ ok: true }>("drive.php?action=disconnect", { method: "POST", body: "{}" }),
 
   listBackups: () => request<{ ok: true; backups: ShopBackup[] }>("shop.php?action=backups"),
 
