@@ -414,7 +414,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // and categories are added to the shop's lists when the kind is chosen.
     const BUSINESS_TYPES: Record<string, { label: string; show: string[]; extra: string[]; units: string[]; categories: string[] }> = {
       general: { label: "General Store", show: ["brand", "lowAlert", "wholesale", "dealer", "manufacturer", "manufactureDate", "expireDate", "serial"], extra: [], units: [], categories: [] },
-      clothing: { label: "Clothing Shop", show: ["brand", "lowAlert", "wholesale"], extra: ["size", "color", "fabric"], units: ["Dozen", "Yard", "Meter"], categories: ["Shirt", "Pant", "Panjabi", "Saree", "Three Piece", "Kids Wear"] },
+      clothing: { label: "Clothing Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "fabric"], units: ["Dozen", "Yard", "Meter"], categories: ["Shirt", "Pant", "Panjabi", "Saree", "Three Piece", "Kids Wear"] },
       grocery: { label: "Grocery Shop", show: ["brand", "lowAlert", "wholesale", "dealer", "expireDate"], extra: [], units: ["Gram", "Liter", "Ml", "Dozen", "Hali", "Packet", "Bag", "Carton"], categories: ["Rice", "Lentils", "Flour", "Oil", "Spices", "Sugar & Salt", "Eggs", "Milk & Dairy", "Tea & Coffee", "Biscuits", "Snacks", "Beverages", "Soap & Detergent", "Baby Food"] },
       pharmacy: { label: "Pharmacy", show: ["brand", "lowAlert", "manufacturer", "manufactureDate", "expireDate"], extra: ["genericName", "strength", "batchNo", "rack"], units: ["Strip", "Bottle", "Tube", "Vial"], categories: ["Tablet", "Capsule", "Syrup", "Injection", "Ointment", "Drops"] },
       restaurant: { label: "Restaurant", show: [], extra: [], units: ["Plate", "Cup", "Glass", "Bottle"], categories: ["Rice Items", "Curry", "Fast Food", "Snacks", "Drinks", "Dessert"] },
@@ -425,7 +425,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
     const businessType = () => BUSINESS_TYPES[D.settings.businessType] || BUSINESS_TYPES.general;
     // The extra details a product has, for showing beside its name.
-    const productDetails = (product: any) => Object.keys(EXTRA_FIELDS).map((id) => String(product[id] || "").trim()).filter(Boolean).join(" · ");
+    const productDetails = (product: any) => [sizeSummary(product), ...Object.keys(EXTRA_FIELDS).map((id) => String(product[id] || "").trim())].filter(Boolean).join(" · ");
 
     // A product is low when its stock is at or under its own alert quantity
     // (10 when none was set). The dashboard, the bell and the sale message all use this.
@@ -434,6 +434,24 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const lowStockProducts = () => D.products.filter(isLowStock);
     // Quantities can be fractions (half a kg), kept to three decimal places.
     const q3 = (amount: number) => Math.round((+amount || 0) * 1000) / 1000;
+
+    // A product kept by size (clothing) holds its stock per size, and its own stock is their total.
+    const sizeList = (product: any): { size: string; qty: number }[] => (Array.isArray(product?.sizes) ? product.sizes : []);
+    const sizeQty = (product: any, size: string) => +(sizeList(product).find((row) => row.size === size)?.qty || 0);
+    const sizeSummary = (product: any) => sizeList(product).map((row) => `${row.size}: ${+row.qty || 0}`).join(" · ");
+    // Adds to a product's stock (or takes from it, with a negative amount), in the given size when it has one.
+    const moveStock = (product: any, amount: number, size = "") => {
+      if (size && sizeList(product).length) {
+        const rows = sizeList(product).map((row) => ({ ...row }));
+        const row = rows.find((entry) => entry.size === size);
+        if (row) row.qty = q3(+row.qty + amount);
+        else rows.push({ size, qty: q3(amount) });
+        product.sizes = rows;
+        product.stock = q3(sum(rows, (entry) => +entry.qty || 0));
+      } else {
+        product.stock = q3((+product.stock || 0) + amount);
+      }
+    };
 
     // Products still in stock whose expire date has passed or comes within 30 days.
     const expiringProducts = () => {
@@ -806,8 +824,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           record.items.forEach((item: any) => {
             const product = prod(item.id);
             if (!product) return;
-            if (k === "sales") product.stock = q3(product.stock + (+item.qty || 0));
-            if (k === "purchases") product.stock = q3(product.stock - (+item.qty || 0));
+            if (k === "sales") moveStock(product, +item.qty || 0, item.size);
+            if (k === "purchases") moveStock(product, -(+item.qty || 0), item.size);
           });
         }
         D[k] = D[k].filter((x: any) => x.id !== id);
@@ -831,7 +849,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         const p = prod(i.id);
 
         if (p) {
-          p.stock = q3(p.stock + (k === "sales" ? i.qty : -i.qty));
+          moveStock(p, k === "sales" ? i.qty : -i.qty, i.size);
         }
       });
 
@@ -1285,6 +1303,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             <small>${esc(p.code || "")}</small>
             <strong>${tk(isSale ? p.sell : p.buy)}</strong>
             <span class="pos-product-quantity">Quantity: <em>${+p.stock || 0}</em></span>
+            ${sizeList(p).length ? `<small data-no-translate>${esc(sizeSummary(p))}</small>` : ""}
           </span>
         </button>`).join("") || "<div class='mut'>No product found</div>";
     };
@@ -1294,10 +1313,33 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       PRODUCT_BRAND = $("#productBrandFilter")?.value || "";
       pgrid($("#productSearch")?.value || "");
     };
-    const addc = (id: number, enteredSerial?: string) => {
+    // Asks which size is wanted, then adds that size to the cart.
+    const chooseSize = (product: any) => {
+      const dialog = $("#dlg") as HTMLDialogElement;
+      const selling = PT === "sale";
+      dialog.innerHTML = `<div class="lx-dlg">
+        <h3>Choose a size</h3>
+        <p class="settings-help" data-no-translate>${esc(product.name)}</p>
+        <div class="size-pick">${sizeList(product).map((row, index) => `<button type="button" data-size="${index}" ${selling && !(+row.qty > 0) ? "disabled" : ""}><b data-no-translate>${esc(row.size)}</b><small>Stock ${+row.qty || 0}</small></button>`).join("")}</div>
+        <div class="two" style="margin-top:16px"><button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button><span></span></div>
+      </div>`;
+      dialog.showModal();
+      dialog.querySelectorAll("[data-size]").forEach((button) => button.addEventListener("click", () => {
+        dialog.close();
+        addc(product.id, undefined, sizeList(product)[+(button as HTMLElement).dataset.size!].size);
+      }));
+    };
+
+    const addc = (id: number, enteredSerial?: string, size = "") => {
       const p = prod(id);
 
       if (!p) return;
+
+      if (sizeList(p).length && !size) {
+        if (PT === "sale" && +p.stock <= 0) { toast("This product is out of stock"); return; }
+        chooseSize(p);
+        return;
+      }
 
       let serial = "";
       if (PT === "sale" && p.hasSerial) {
@@ -1327,7 +1369,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         }
       }
 
-      const c = CART.find((x) => x.id === id);
+      const c = CART.find((x) => x.id === id && (x.size || "") === size);
 
       if (c) {
         c.qty++;
@@ -1335,6 +1377,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       } else {
         CART.push({
           id,
+          size,
           qty: 1,
           price: PT === "sale" ? salePrice(p) : p.buy,
           serials: serial ? [serial] : [],
@@ -1416,7 +1459,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             <tr>
 
               <td>
-                ${esc(prod(c.id)?.name)}
+                ${esc(prod(c.id)?.name)}${c.size ? ` <span class="lx-pill" style="--c:var(--pu)" data-no-translate>${esc(c.size)}</span>` : ""}
               </td>
 
               <td>${c.serials?.length ? c.serials.map((value: string) => esc(value)).join(", ") : "-"}</td>
@@ -1551,7 +1594,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         CART.some(
           (c) =>
             c.qty >
-            (prod(c.id)?.stock || 0),
+            (c.size ? sizeQty(prod(c.id), c.size) : prod(c.id)?.stock || 0),
         )
       ) {
         toast("Not enough stock");
@@ -1569,13 +1612,13 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         if (!pr) return;
 
         if (s) {
-          pr.stock = q3(pr.stock - c.qty);
+          moveStock(pr, -c.qty, c.size);
           if (pr.hasSerial && c.serials?.length) {
             const soldSerials = new Set(c.serials.map((value: string) => value.toLowerCase()));
             pr.serials = (pr.serials || []).filter((value: string) => !soldSerials.has(value.toLowerCase()));
           }
         } else {
-          pr.stock = q3(pr.stock + c.qty);
+          moveStock(pr, c.qty, c.size);
           pr.buy = c.price;
         }
       });
@@ -1655,7 +1698,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           id: c.id,
           qty: c.qty,
           price: c.price,
-          name: prod(c.id)?.name || "Product",
+          name: (prod(c.id)?.name || "Product") + (c.size ? ` (${c.size})` : ""),
+          size: c.size || "",
           serials: c.serials || [],
         })),
 
@@ -1819,6 +1863,51 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       return image;
     };
 
+    // The "stock by size" box: a quantity for each size, with the total written into the stock field.
+    const SIZE_PRESETS = ["S", "M", "L", "XL", "XXL"];
+    const sizeEditorHtml = () => `
+      <div class="size-stock" id="sizeStock">
+        <div class="size-stock-head"><b>Stock by Size</b><span class="size-chips">${SIZE_PRESETS.map((size) => `<button type="button" data-add-size="${size}" data-no-translate>${size}</button>`).join("")}<button type="button" data-add-size="">+ Other size</button></span></div>
+        <div class="size-rows" id="sizeRows"></div>
+        <small class="size-stock-note">Leave this empty for a product that has no sizes.</small>
+      </div>`;
+    // Wires the box up and returns a function that reads the sizes back.
+    const sizeEditor = (initial: { size: string; qty: number }[], stockInput: HTMLInputElement) => {
+      let rows = initial.map((row) => ({ size: row.size, qty: +row.qty || 0 }));
+      const box = $("#sizeRows");
+      const showTotal = () => {
+        stockInput.readOnly = rows.length > 0;
+        if (rows.length) stockInput.value = String(q3(sum(rows, (row) => row.qty)));
+      };
+      const drawSizes = () => {
+        box.innerHTML = rows.map((row, index) => `<label class="size-row"><span data-no-translate>${esc(row.size)}</span><input type="number" min="0" step="any" inputmode="decimal" value="${row.qty}" data-row="${index}" aria-label="${esc(row.size)}"><button type="button" data-remove="${index}" title="Remove" aria-label="Remove">✕</button></label>`).join("");
+        showTotal();
+      };
+      box.addEventListener("input", (event: Event) => {
+        const input = event.target as HTMLInputElement;
+        if (input.dataset.row === undefined) return;
+        rows[+input.dataset.row].qty = Math.max(0, +input.value || 0);
+        showTotal();
+      });
+      box.addEventListener("click", (event: Event) => {
+        const remove = ((event.target as HTMLElement).closest("[data-remove]") as HTMLElement | null)?.dataset.remove;
+        if (remove === undefined) return;
+        event.preventDefault();
+        rows.splice(+remove, 1);
+        drawSizes();
+      });
+      $("#sizeStock").querySelectorAll("[data-add-size]").forEach((button: Element) => button.addEventListener("click", () => {
+        const size = ((button as HTMLElement).dataset.addSize || window.prompt(said("Size name (EX: 32, 2-3Y)")) || "").trim();
+        if (!size) return;
+        if (rows.some((row) => row.size.toLowerCase() === size.toLowerCase())) { toast("This size is already added"); return; }
+        rows.push({ size, qty: 0 });
+        drawSizes();
+        (box.querySelector(`[data-row="${rows.length - 1}"]`) as HTMLInputElement | null)?.select();
+      }));
+      drawSizes();
+      return () => rows.map((row) => ({ size: row.size, qty: q3(row.qty) }));
+    };
+
     const productForm = () => {
       const kind = businessType();
       const uses = (field: string) => kind.show.includes(field);
@@ -1843,6 +1932,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
               ${textField("code", "Product Code", "Enter Product Code", "text", true)}
               ${kind.extra.map((id) => textField(id, EXTRA_FIELDS[id][0], EXTRA_FIELDS[id][1])).join("")}
               ${textField("stock", "Stock", "Enter stock qty", "number", true)}
+              ${uses("sizeStock") ? sizeEditorHtml() : ""}
               ${uses("lowAlert") ? textField("lowAlert", "Low Stock Alert", "EX: 5", "number") : ""}
               ${textField("buy", "Purchase Price", "Enter purchase price", "number", true)}
               ${textField("mrp", "MRP Price", "Enter MRP price", "number", true)}
@@ -1861,6 +1951,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             </div>
           </form>
         </section>`;
+
+      const readSizes = uses("sizeStock") ? sizeEditor([], $("#p_stock")) : () => [];
+      // Reset empties the fields but not the size box, so start the form over.
+      $("#productCreateForm")?.addEventListener("reset", () => window.setTimeout(productForm));
 
       const serialField = $("#serialInventoryField");
       const syncSerialField = () => { if (serialField) serialField.hidden = $("#p_hasSerial").value !== "Yes"; };
@@ -1914,6 +2008,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           brand: uses("brand") ? +value("brand") : D.brands[0]?.id || 0,
           unit: +value("unit"),
           ...Object.fromEntries(kind.extra.map((id) => [id, value(id)])),
+          sizes: readSizes(),
           stock: +value("stock"),
           lowAlert: +value("lowAlert") || 0,
           buy: +value("buy"),
@@ -2250,6 +2345,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       if (!product) return;
       // The fields this kind of shop uses, and any the product already has from before the kind was changed.
       const extraIds = Object.keys(EXTRA_FIELDS).filter((id) => businessType().extra.includes(id) || product[id]);
+      const bySize = businessType().show.includes("sizeStock") || sizeList(product).length > 0;
       const dialog = $("#dlg");
       dialog.innerHTML = `
         <h3>Edit Product</h3>
@@ -2261,10 +2357,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         ${extraIds.map((id) => `<label>${EXTRA_FIELDS[id][0]}</label><input id="ep_${id}" value="${esc(product[id] || "")}" placeholder="${EXTRA_FIELDS[id][1]}">`).join("")}
         <div class="two"><div><label>Purchase Price</label><input id="ep_buy" type="number" min="0" step="0.01" value="${+product.buy || 0}"></div><div><label>Sale Price</label><input id="ep_sell" type="number" min="0" step="0.01" value="${+product.sell || 0}"></div></div>
         <div class="two"><div><label>Stock</label><input id="ep_stock" type="number" min="0" step="any" value="${+product.stock || 0}"></div><div><label>Low Stock Alert</label><input id="ep_lowAlert" type="number" min="0" step="1" placeholder="EX: 5" value="${+product.lowAlert || ""}"></div><div><label>Serial</label><select id="ep_serial"><option value="false" ${product.hasSerial ? "" : "selected"}>No</option><option value="true" ${product.hasSerial ? "selected" : ""}>Yes</option></select></div></div>
+        ${bySize ? sizeEditorHtml() : ""}
         <label id="editSerialInventoryField">Available Serial Numbers<textarea id="ep_serials" class="product-serial-input" placeholder="Enter one serial number per line, or separate with commas">${esc((product.serials || []).join("\n"))}</textarea></label>
         <label>Replace Image (optional, max ${MAX_IMAGE_FILE_KB} KB)</label><input id="ep_image" type="file" accept="image/*">
         <div class="two" style="margin-top:16px"><button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button><button class="btn pu" type="button" id="saveProductEdit">Save Changes</button></div>`;
       dialog.showModal();
+      const readSizes = bySize ? sizeEditor(sizeList(product), $("#ep_stock")) : () => [];
       const syncEditSerialField = () => { $("#editSerialInventoryField").hidden = $("#ep_serial").value !== "true"; };
       $("#ep_serial")?.addEventListener("change", syncEditSerialField);
       syncEditSerialField();
@@ -2291,7 +2389,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           brand: +$("#ep_brand").value, category: +$("#ep_category").value, unit: +$("#ep_unit").value,
           ...Object.fromEntries(extraIds.map((id) => [id, $("#ep_" + id).value.trim()])),
           buy: Math.max(0, +$("#ep_buy").value || 0), sell: Math.max(0, +$("#ep_sell").value || 0),
-          stock: Math.max(0, +$("#ep_stock").value || 0), lowAlert: Math.max(0, +$("#ep_lowAlert").value || 0), hasSerial: $("#ep_serial").value === "true",
+          sizes: readSizes(), stock: Math.max(0, +$("#ep_stock").value || 0), lowAlert: Math.max(0, +$("#ep_lowAlert").value || 0), hasSerial: $("#ep_serial").value === "true",
           serials: $("#ep_serial").value === "true"
             ? [...new Set(String($("#ep_serials").value).split(/[\n,;]+/).map((serial: string) => serial.trim()).filter(Boolean))]
             : [], image, imagePath,
@@ -3975,7 +4073,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           ],
           D.products.map(
             (p: any) => [
-              esc(p.name),
+              esc(p.name) + (sizeList(p).length ? `<br><small class="size-note" data-no-translate>${esc(sizeSummary(p))}</small>` : ""),
               tk(p.buy),
               p.stock,
               tk(p.sell),

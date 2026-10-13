@@ -820,6 +820,29 @@ tbody tr:hover{background:color-mix(in srgb,var(--bg) 60%,transparent)}
 dialog{padding:20px;box-shadow:0 20px 50px #0004}
 dialog h3{margin-bottom:14px;font-size:17px}
 .toast{border-radius:10px;box-shadow:0 8px 24px #0004}
+/* Stock kept by size */
+.size-stock{grid-column:1/-1;padding:14px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);text-align:left}
+dialog .size-stock{margin-top:12px}
+.size-stock-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.size-chips{display:flex;gap:6px;flex-wrap:wrap}
+.size-chips button{padding:5px 12px;border:1px solid var(--ln);border-radius:999px;background:var(--pn);color:var(--tx);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.size-chips button:hover{border-color:var(--pu);color:var(--pu)}
+.size-rows{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.size-row{display:flex;align-items:center;gap:6px;margin:0;padding:4px 4px 4px 12px;border:1px solid var(--ln);border-radius:9px;background:var(--pn)}
+.size-row span{flex:0 0 auto;min-width:34px;color:var(--tx);font-size:14px;font-weight:700}
+.size-row input{flex:1;min-width:0;padding:6px 8px;border:0;background:transparent;text-align:right}
+.size-row input:focus{box-shadow:none}
+.size-row:focus-within{border-color:var(--pu)}
+.size-row button{flex:0 0 28px;height:28px;border:0;border-radius:6px;background:transparent;color:var(--mut);cursor:pointer}
+.size-row button:hover{background:var(--bg);color:var(--rd)}
+.size-stock-note{display:block;color:var(--mut)}
+.size-rows:not(:empty)+.size-stock-note{display:none}
+.size-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.size-pick button{padding:12px 8px;border:1px solid var(--ln);border-radius:10px;background:var(--pn);color:var(--tx);font:inherit;text-align:center;cursor:pointer}
+.size-pick button b{display:block;font-size:17px}
+.size-pick small,.size-note{color:var(--mut)}
+.size-pick button:hover:not(:disabled){border-color:var(--pu);box-shadow:0 0 0 1px var(--pu)}
+.size-pick button:disabled{opacity:.45;cursor:not-allowed}
 </style>
 
 <aside class="side">
