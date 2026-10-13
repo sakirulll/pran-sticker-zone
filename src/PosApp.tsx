@@ -499,7 +499,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
       e.t = setTimeout(() => {
         e.style.display = "none";
-      }, 2200);
+      }, Math.max(2200, t.length * 55));
     };
 
     if (!cloudData && isWorkspaceOwner) {
@@ -2185,12 +2185,14 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
     const receiptPicture = (sale: any) => drawReceipt(receiptFor(sale), PAPER_DOTS[RECEIPT_OPTIONS.paper] || PAPER_DOTS[58]);
     // Resolves to whether the receipt reached the printer.
+    // Shown wherever a printer can be connected by cable, because a USB printer never turns up in that list.
+    const SERIAL_HINT = "The serial cable button is only for a printer that Windows shows as a COM port. A printer on a USB cable does not appear there: use Bluetooth, or the print window.";
     const sendReceipt = async (sale: any): Promise<boolean> => {
       if (!PRINTER_LINK) return false;
       try {
         const picture = receiptPicture(sale);
         await PRINTER_LINK.send(RECEIPT_OPTIONS.kind === "tspl" ? tsplReceiptJob(picture) : escposJob(picture));
-        toast("Receipt sent to the printer");
+        toast("Receipt sent. If nothing prints, check the printer type and the port you chose.");
         return true;
       } catch (error) {
         console.error("Could not print the receipt directly", error);
@@ -2213,11 +2215,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <div style="display:flex;flex-wrap:wrap;gap:8px">
           ${PRINTER_LINK
             ? `<button class="btn pu" id="rcPrint" type="button">Print receipt</button><button class="btn" id="rcDisconnect" type="button" ${quiet}>Disconnect</button>`
-            : `${canUseBluetooth() ? `<button class="btn pu" id="rcBluetooth" type="button">Connect by Bluetooth</button>` : ""}${canUseSerial() ? `<button class="btn" id="rcSerial" type="button" ${quiet}>Connect by cable (COM port)</button>` : ""}`}
+            : `${canUseBluetooth() ? `<button class="btn pu" id="rcBluetooth" type="button">Connect by Bluetooth</button>` : ""}${canUseSerial() ? `<button class="btn" id="rcSerial" type="button" ${quiet}>Connect by serial cable (COM port)</button>` : ""}`}
           <button class="btn ${canConnect ? "" : "pu"}" id="rcShare" type="button" ${canConnect ? quiet : ""}>Share or save picture</button>
           <button class="btn" id="rcWindow" type="button" ${quiet}>Open print window</button>
           <button class="btn" id="rcClose" type="button" ${quiet}>Close</button>
         </div>
+        ${!PRINTER_LINK && canUseSerial() ? `<p class="settings-help" style="margin:10px 0 0">${SERIAL_HINT}</p>` : ""}
         ${canUseBluetooth() ? "" : `<p class="settings-help" style="margin:10px 0 0">This browser cannot reach a Bluetooth printer. On an iPhone, Safari and Chrome are not allowed to: open this site in the Bluefy browser app to print straight to the printer. Or press "Share or save picture" and print the picture from your printer's app.</p>`}
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px">
           <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0">Printer ${pick("rcKind", [["escpos", "Receipt printer"], ["tspl", "Label printer"]], RECEIPT_OPTIONS.kind)}</label>
@@ -2692,9 +2695,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           <p style="margin:0 0 10px;font-weight:600" id="bcLinkState">${PRINTER_LINK ? `Connected: ${esc(PRINTER_LINK.name)}` : "Not connected"}</p>
           <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${PRINTER_LINK
             ? `<button class="btn pu" id="bcDirect" type="button" ${labels.length ? "" : "disabled"}>Print Selected (${labels.length})</button><button class="btn" id="bcDirectTest" type="button" ${quiet}>Print test label</button><button class="btn" id="bcDisconnect" type="button" ${quiet}>Disconnect</button>`
-            : `${canUseBluetooth() ? `<button class="btn pu" id="bcBluetooth" type="button">Connect by Bluetooth</button>` : ""}${canUseSerial() ? `<button class="btn" id="bcSerial" type="button" ${quiet}>Connect by cable (COM port)</button>` : ""}${canUseBluetooth() || canUseSerial() ? "" : `<span style="color:var(--rd)">This browser cannot connect to a printer directly. Use Chrome or Edge on a computer.</span>`}`}
+            : `${canUseBluetooth() ? `<button class="btn pu" id="bcBluetooth" type="button">Connect by Bluetooth</button>` : ""}${canUseSerial() ? `<button class="btn" id="bcSerial" type="button" ${quiet}>Connect by serial cable (COM port)</button>` : ""}${canUseBluetooth() || canUseSerial() ? "" : `<span style="color:var(--rd)">This browser cannot connect to a printer directly. Use Chrome or Edge on a computer.</span>`}`}
             <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin:0"><input id="bcContinuous" type="checkbox" style="width:auto" ${options.continuous ? "checked" : ""}> Paper has no gaps between labels</label>
           </div>
+          ${!PRINTER_LINK && canUseSerial() ? `<p class="settings-help" style="margin:10px 0 0">${SERIAL_HINT}</p>` : ""}
         </div>`;
       const windowBox = `<div style="padding:0 18px 12px"><button class="btn pu" id="bcPrint" type="button" ${labels.length ? "" : "disabled"}>Print Selected (${labels.length})</button><p class="settings-help" style="margin:8px 0 0">Opens the print window. Choose A4 paper and print at 100% scale.</p></div>`;
       // The print window is kept for label printers whose own driver is set up for the label.
@@ -2895,7 +2899,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
               gapMm: options.continuous ? 0 : 2, copies: job.copies,
             }));
           }
-          toast("Sent to the printer");
+          toast("Sent. If nothing prints, check that you chose the right printer.");
         } catch (error) {
           console.error("Could not print directly", error);
           PRINTER_LINK = null;
