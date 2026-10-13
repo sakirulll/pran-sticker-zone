@@ -195,6 +195,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         expenses: [],
         employees: [],
         salary: [],
+        attendance: [],
         transfers: [],
 
         currencies: [
@@ -3490,6 +3491,200 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#personEdit")?.addEventListener("click", () => personForm(k, person));
     };
 
+    // ---- Employees and their attendance: one register for each day, and each person's month.
+    let ATTENDANCE_DATE = "";
+    const ATTENDANCE_STATES: [string, string, string][] = [["present", "Present", "var(--gr)"], ["absent", "Absent", "var(--rd)"], ["leave", "Leave", "var(--or)"]];
+    const nowTime = () => new Date().toTimeString().slice(0, 5);
+    const attendanceOn = (employeeId: any, date: string) => D.attendance.find((record: any) => record.employee == employeeId && record.date === date);
+    const setAttendance = (employeeId: any, date: string, change: AnyData) => {
+      let record = attendanceOn(employeeId, date);
+      if (!record) {
+        record = { id: uid(), employee: employeeId, date, status: "", in: "", out: "" };
+        D.attendance.push(record);
+      }
+      Object.assign(record, change);
+      // A time in or out means the person came; someone marked away has no times.
+      if (change.status === undefined && (record.in || record.out)) record.status = "present";
+      if (change.status && change.status !== "present") Object.assign(record, { in: "", out: "" });
+      // Nothing left to say about the day, so the day goes back to "not marked".
+      if (!record.status && !record.in && !record.out) D.attendance = D.attendance.filter((entry: any) => entry !== record);
+      save();
+    };
+    // "8:30" for eight and a half hours between coming and going; "-" until both are known.
+    const hoursWorked = (record: any) => {
+      if (!record?.in || !record?.out) return "-";
+      const minutes = (time: string) => +time.slice(0, 2) * 60 + +time.slice(3, 5);
+      const worked = minutes(record.out) - minutes(record.in);
+      return worked > 0 ? `${Math.floor(worked / 60)}:${String(worked % 60).padStart(2, "0")}` : "-";
+    };
+    const monthAttendance = (employeeId: any, month: string) => {
+      const records = D.attendance.filter((record: any) => record.employee == employeeId && String(record.date).startsWith(month))
+        .sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)));
+      const count = (status: string) => records.filter((record: any) => record.status === status).length;
+      return { records, present: count("present"), absent: count("absent"), leave: count("leave") };
+    };
+    const statePill = (status: string) => {
+      const state = ATTENDANCE_STATES.find(([key]) => key === status);
+      return state ? lxPill(state[1], state[2]) : `<span class="lx-none">Not marked</span>`;
+    };
+
+    function employeesPage() {
+      const date = ATTENDANCE_DATE || today();
+      const isToday = date === today();
+      const month = date.slice(0, 7);
+      const staff: AnyData[] = D.employees.map((employee: any) => ({ employee, day: attendanceOn(employee.id, date), ...monthAttendance(employee.id, month) }));
+      const marked = (status: string) => staff.filter((row) => row.day?.status === status).length;
+
+      $("#app").innerHTML = `
+        <div class="lx">
+          <div class="lx-kpis lx-four">
+            ${lxKpi("people", "Total Employee", String(staff.length), "", "var(--pu)")}
+            ${lxKpi("clock", "Present", String(marked("present")), "", "var(--gr)")}
+            ${lxKpi("clock", "Absent", String(marked("absent")), "", "var(--rd)")}
+            ${lxKpi("wallet", "Monthly Salary", tk(sum(staff, (row) => +row.employee.salary || 0)), "", "var(--bl)")}
+          </div>
+          <section class="card">
+            <div class="hd">
+              <h2>Employee List</h2>
+              <div class="lx-acts lx-noprint">
+                <button class="lx-out" type="button" onclick="window.print()">${lxIcon("print")}<span>Print</span></button>
+                <button class="lx-add" type="button" id="addEmployee">${lxIcon("plus")}<span>Add new Employee</span></button>
+              </div>
+            </div>
+            <div class="lx-bar">
+              <label class="lx-date"><span>Attendance for</span><input id="attendanceDate" type="date" value="${esc(date)}" max="${today()}"></label>
+              <span class="sp"></span>
+              ${staff.some((row) => !row.day?.status) ? `<button class="lx-out lx-noprint" type="button" id="restAbsent">Mark the rest absent</button>` : ""}
+            </div>
+            <div class="wrap"><table class="lx-table">
+              <thead><tr><th>Employee</th><th>Status</th><th>Time In</th><th>Time Out</th><th class="num">Hours</th><th>This Month</th><th></th></tr></thead>
+              <tbody id="employeeRows">${staff.map((row) => {
+                const id = row.employee.id;
+                const timeBox = (which: "in" | "out", label: string) => `
+                  <span class="lx-time"><input type="time" data-time="${which}" data-employee="${id}" value="${esc(row.day?.[which] || "")}" aria-label="${label}">
+                  ${isToday && !row.day?.[which] ? `<button class="lx-now" type="button" data-now="${which}" data-employee="${id}">Now</button>` : ""}</span>`;
+                return `
+                <tr>
+                  <td class="lx-main"><div class="lx-who">${lxAvatar(row.employee.name)}<div><b data-no-translate>${esc(row.employee.name)}</b><small class="lx-tel" data-no-translate>${esc([row.employee.role, tk(row.employee.salary)].filter(Boolean).join(" · "))}</small></div></div></td>
+                  <td ${lxLabel("Status")}><select class="lx-state" data-status="${id}" aria-label="Status"><option value="">Not marked</option>${ATTENDANCE_STATES.map(([key, label]) => `<option value="${key}" ${row.day?.status === key ? "selected" : ""}>${label}</option>`).join("")}</select></td>
+                  <td ${lxLabel("Time In")}>${timeBox("in", "Time In")}</td>
+                  <td ${lxLabel("Time Out")}>${timeBox("out", "Time Out")}</td>
+                  <td class="num" ${lxLabel("Hours")}><span data-no-translate>${hoursWorked(row.day)}</span></td>
+                  <td ${lxLabel("This Month")}><span class="lx-when">${lxPill(`Present ${row.present}`, "var(--gr)")}${lxPill(`Absent ${row.absent}`, "var(--rd)")}</span></td>
+                  <td><div class="lx-acts">
+                    <button class="lx-ic" type="button" title="View" aria-label="View" data-sheet="${id}">${lxIcon("eye")}</button>
+                    <button class="lx-ic" type="button" title="Edit" aria-label="Edit" data-edit="${id}">${lxIcon("edit")}</button>
+                    <button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-delete="${id}">${lxIcon("trash")}</button>
+                  </div></td>
+                </tr>`;
+              }).join("") || lxEmpty(7, "No data yet")}</tbody>
+            </table></div>
+          </section>
+        </div>`;
+
+      $("#attendanceDate").addEventListener("change", (event: Event) => {
+        ATTENDANCE_DATE = (event.currentTarget as HTMLInputElement).value || today();
+        employeesPage();
+      });
+      $("#addEmployee").addEventListener("click", () => employeeForm());
+      $("#restAbsent")?.addEventListener("click", () => {
+        staff.filter((row) => !row.day?.status).forEach((row) => setAttendance(row.employee.id, date, { status: "absent" }));
+        employeesPage();
+      });
+      const rows = $("#employeeRows");
+      rows.addEventListener("change", (event: Event) => {
+        const field = event.target as HTMLInputElement | HTMLSelectElement;
+        if (field.dataset.status) setAttendance(field.dataset.status, date, { status: field.value });
+        else if (field.dataset.time) setAttendance(field.dataset.employee, date, { [field.dataset.time]: field.value });
+        else return;
+        employeesPage();
+      });
+      rows.addEventListener("click", (event: Event) => {
+        const data = ((event.target as HTMLElement).closest("button") as HTMLElement | null)?.dataset;
+        if (!data) return;
+        const employee = D.employees.find((entry: any) => entry.id == (data.employee || data.sheet || data.edit || data.delete));
+        if (!employee) return;
+        if (data.now) { setAttendance(employee.id, date, { [data.now]: nowTime() }); employeesPage(); }
+        if (data.sheet) employeeSheet(employee, month);
+        if (data.edit) employeeForm(employee);
+        if (data.delete) {
+          del("employees", employee.id);
+          // Their attendance goes with them.
+          if (!D.employees.some((entry: any) => entry.id == employee.id) && D.attendance.some((record: any) => record.employee == employee.id)) {
+            D.attendance = D.attendance.filter((record: any) => record.employee != employee.id);
+            save();
+          }
+        }
+      });
+    }
+
+    const employeeForm = (employee?: any) => {
+      const dialog = $("#dlg") as HTMLDialogElement;
+      dialog.innerHTML = `<div class="lx-dlg">
+        <h3>${employee ? "Edit Employee" : "Add new Employee"}</h3>
+        <label>Name</label><input id="employeeName" value="${esc(employee?.name || "")}" placeholder="Enter the name">
+        <div class="two">
+          <div><label>Phone</label><input id="employeePhone" type="tel" inputmode="tel" value="${esc(employee?.phone || "")}" placeholder="01XXXXXXXXX"></div>
+          <div><label>Role</label><input id="employeeRole" value="${esc(employee?.role || "")}" placeholder="EX: Salesman"></div>
+        </div>
+        <div class="two">
+          <div><label>Monthly Salary</label><input id="employeeSalary" type="number" min="0" step="any" inputmode="decimal" value="${employee ? +employee.salary || 0 : ""}"></div>
+          <div><label>Joining Date</label><input id="employeeJoined" type="date" value="${esc(employee?.joined || "")}"></div>
+        </div>
+        <div class="two" style="margin-top:16px">
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
+          <button class="btn pu" type="button" id="saveEmployee">Save</button>
+        </div></div>`;
+      dialog.showModal();
+      $("#employeeName").focus();
+      $("#saveEmployee").addEventListener("click", () => {
+        const name = $("#employeeName").value.trim();
+        if (!name) { toast("Enter the name"); return; }
+        const details = { name, phone: $("#employeePhone").value.trim(), role: $("#employeeRole").value.trim(), salary: Math.max(0, +$("#employeeSalary").value || 0), joined: $("#employeeJoined").value };
+        if (employee) Object.assign(employee, details);
+        else D.employees.push({ id: uid(), status: "Active", ...details });
+        save();
+        dialog.close();
+        render();
+        toast("Employee saved");
+      });
+    };
+
+    // One person's month: the days they came, were away or on leave, and what the absences cost.
+    const employeeSheet = (employee: any, month: string) => {
+      const sheet = monthAttendance(employee.id, month);
+      const [year, monthNumber] = month.split("-").map(Number);
+      const daysInMonth = new Date(year, monthNumber, 0).getDate();
+      const salary = +employee.salary || 0;
+      const cut = money2((salary / daysInMonth) * sheet.absent);
+      const figure = (label: string, value: string, color = "") => `<div><span>${label}</span><b ${color ? `style="color:${color}"` : ""}>${value}</b></div>`;
+      const dialog = $("#dlg") as HTMLDialogElement;
+      dialog.innerHTML = `<div class="lx-dlg">
+        <h3>Attendance</h3>
+        <div class="lx-head">${lxAvatar(employee.name)}<div><b data-no-translate>${esc(employee.name)}</b><small data-no-translate>${esc([employee.role, employee.phone].filter(Boolean).join(" · "))}</small></div></div>
+        <label>Month</label><input id="sheetMonth" type="month" value="${esc(month)}" max="${today().slice(0, 7)}">
+        <div class="lx-figs" style="margin-top:12px">
+          ${figure("Present", String(sheet.present), "var(--gr)")}
+          ${figure("Absent", String(sheet.absent), sheet.absent ? "var(--rd)" : "")}
+          ${figure("Leave", String(sheet.leave))}
+        </div>
+        <div class="lx-figs">
+          ${figure("Monthly Salary", tk(salary))}
+          ${figure("Cut for absence", tk(cut), cut ? "var(--rd)" : "")}
+          ${figure("Payable", tk(Math.max(0, salary - cut)), "var(--gr)")}
+        </div>
+        <div class="wrap lx-scroll"><table class="lx-mini">
+          <thead><tr><th>Date</th><th>Status</th><th>Time In</th><th>Time Out</th><th class="num">Hours</th></tr></thead>
+          <tbody>${sheet.records.map((record: any) => `<tr><td>${esc(record.date)}</td><td>${statePill(record.status)}</td><td>${esc(record.in || "-")}</td><td>${esc(record.out || "-")}</td><td class="num">${hoursWorked(record)}</td></tr>`).join("") || lxEmpty(5, "No data yet")}</tbody>
+        </table></div>
+        <div class="two" style="margin-top:16px">
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Close</button>
+          <button class="btn pu" type="button" onclick="window.print()">Print</button>
+        </div></div>`;
+      if (!dialog.open) dialog.showModal();
+      $("#sheetMonth").addEventListener("change", (event: Event) => employeeSheet(employee, (event.currentTarget as HTMLInputElement).value || month));
+    };
+
     // Shown on the dashboard to the owner of a shop that is still being set up.
     const startCard = () => {
       if (!isWorkspaceOwner || D.settings.guideHidden) return "";
@@ -4130,6 +4325,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       },
 
       dues: duesPage,
+      employees: employeesPage,
       customers: () => peoplePage("customers"),
       suppliers: () => peoplePage("suppliers"),
 

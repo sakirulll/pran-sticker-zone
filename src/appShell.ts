@@ -494,6 +494,16 @@ td.mut{
 .lx-who>div,.lx-head>div{min-width:0}
 .lx-dlg h3{margin-top:0}
 .lx-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px}
+.lx-four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.lx-date{display:inline-flex;align-items:center;gap:8px;margin:0;color:var(--mut);font-size:13px}
+.lx-date input{width:auto}
+.lx-time{display:inline-flex;align-items:center;gap:6px}
+.lx-time input{width:auto;padding:6px 6px}
+.lx-now{padding:5px 10px;border:1px solid var(--pu);border-radius:7px;background:transparent;color:var(--pu);font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.lx-now:hover{background:var(--pu);color:#fff}
+.lx-state{width:auto;padding:6px 6px}
+.lx-who small.lx-tel{display:block}
+@media(max-width:1100px){.lx-four{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .lx-kpi{display:flex;align-items:center;gap:14px;padding:16px 18px;background:var(--pn);border:1px solid var(--ln);border-radius:14px}
 .lx-kpi em{flex:0 0 46px;height:46px;display:grid;place-items:center;border-radius:12px;background:color-mix(in srgb,var(--c) 14%,transparent);color:var(--c)}
 .lx svg,.lx-out svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
