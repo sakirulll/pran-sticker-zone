@@ -434,6 +434,11 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const alertQty = (product: any) => (+product.lowAlert > 0 ? +product.lowAlert : 10);
     const isLowStock = (product: any) => (+product.stock || 0) <= alertQty(product);
     const lowStockProducts = () => D.products.filter(isLowStock);
+    // "14:05" as it is said: "2:05 PM".
+    const clock12 = (time: string) => {
+      const [hours, minutes] = String(time).split(":").map(Number);
+      return Number.isFinite(hours) && Number.isFinite(minutes) ? `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}` : String(time);
+    };
     // Quantities can be fractions (half a kg), kept to three decimal places.
     const q3 = (amount: number) => Math.round((+amount || 0) * 1000) / 1000;
 
@@ -1660,6 +1665,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         inv: invoiceNumber,
 
         date: $("#pd").value,
+        // When it was entered, for the invoice and receipt.
+        time: nowTime(),
 
         party: pid
           ? nm(
@@ -2112,6 +2119,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           <div class="rule"></div>
           <div class="row"><span>Invoice</span><b>${esc(sale.inv)}</b></div>
           <div class="row"><span>Date</span><span>${esc(sale.date)}</span></div>
+          ${sale.time ? `<div class="row"><span>Time</span><span>${esc(clock12(sale.time))}</span></div>` : ""}
           <div class="row"><span>Customer</span><span>${esc(sale.party || "Walk-in Customer")}</span></div>
           ${sale.phone ? `<div class="row"><span>Mobile</span><span>${esc(sale.phone)}</span></div>` : ""}
           <div class="row"><span>Payment</span><span>${esc(sale.pay || "Cash")}</span></div>
@@ -2167,6 +2175,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         details: [
           [said("Invoice"), String(sale.inv || "")],
           [said("Date"), String(sale.date || "")],
+          ...(sale.time ? [[said("Time"), clock12(sale.time)] as [string, string]] : []),
           [said("Customer"), String(sale.party || said("Walk-in Customer"))],
           ...(sale.phone ? [[said("Mobile"), String(sale.phone)] as [string, string]] : []),
           [said("Payment"), said(String(sale.pay || "Cash"))],

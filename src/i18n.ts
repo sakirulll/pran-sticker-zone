@@ -150,7 +150,7 @@ const words: Record<string, string> = {
   "View": "দেখুন", "Customer Details": "গ্রাহকের বিস্তারিত", "Supplier Details": "সরবরাহকারীর বিস্তারিত", "Edit Customer": "গ্রাহক এডিট", "Edit Supplier": "সরবরাহকারী এডিট",
   "Total Paid": "মোট পরিশোধ", "Enter the name": "নাম লিখুন", "Optional": "ঐচ্ছিক", "This phone number is already saved": "এই ফোন নম্বর আগে থেকেই সেভ আছে",
   "Collect the due before deleting this customer": "এই গ্রাহককে মোছার আগে বাকি আদায় করুন", "Pay the due before deleting this supplier": "এই সরবরাহকারীকে মোছার আগে দেনা পরিশোধ করুন",
-  "Total Employee": "মোট কর্মচারী", "Present": "উপস্থিত", "Absent": "অনুপস্থিত", "Leave": "ছুটি", "Not marked": "চিহ্নিত নয়", "Attendance for": "হাজিরার তারিখ", "Attendance": "হাজিরা",
+  "Time": "সময়", "Total Employee": "মোট কর্মচারী", "Present": "উপস্থিত", "Absent": "অনুপস্থিত", "Leave": "ছুটি", "Not marked": "চিহ্নিত নয়", "Attendance for": "হাজিরার তারিখ", "Attendance": "হাজিরা",
   "Mark the rest absent": "বাকিদের অনুপস্থিত করুন", "Time In": "আসার সময়", "Time Out": "যাওয়ার সময়", "Hours": "ঘণ্টা", "Now": "এখন",
   "Monthly Salary": "মাসিক বেতন", "Joining Date": "যোগদানের তারিখ", "Edit Employee": "কর্মচারী এডিট", "EX: Salesman": "যেমন: সেলসম্যান",
   "Cut for absence": "অনুপস্থিতির কর্তন", "Payable": "প্রদেয়",
