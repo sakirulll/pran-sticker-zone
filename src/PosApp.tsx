@@ -1021,7 +1021,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
             ${s && priceLevels.length > 1 ? `<label for="priceLevel">Price for this sale</label><select id="priceLevel" onchange="setPriceLevel(this.value)">${priceLevels.map(([level, label]) => `<option value="${level}">${label}</option>`).join("")}</select>` : ""}
 
-            ${s ? `<div class="serial-scan"><label for="serialScan">Scan a barcode, or type a product name, code or serial number, then press Enter</label><div style="display:flex;gap:8px"><input id="serialScan" autocomplete="off" placeholder="Barcode, product code or serial number" style="flex:1;min-width:0">${canScanWithCamera() ? `<button class="btn pu" id="scanCamera" type="button" aria-label="Scan with the camera" title="Scan with the camera" style="flex:0 0 auto;padding:0 14px"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg></button>` : ""}</div><div id="scanSuggest"></div>${KEYBOARD_DEVICE ? `<p class="scan-keys">F2 Product box · ↑ ↓ Choose · Enter Add · + − Quantity · Del Remove · F4 Receive amount · F9 Save</p>` : ""}<div id="scanPanel"></div></div>` : ""}
+            ${s ? `<div class="serial-scan"><label for="serialScan">Scan a barcode, or type a product name, code or serial number, then press Enter</label><div style="display:flex;gap:8px"><input id="serialScan" autocomplete="off" placeholder="Barcode, product code or serial number" style="flex:1;min-width:0">${canScanWithCamera() ? `<button class="btn pu" id="scanCamera" type="button" aria-label="Scan with the camera" title="Scan with the camera" style="flex:0 0 auto;padding:0 14px"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg></button>` : ""}</div><div id="scanSuggest"></div>${KEYBOARD_DEVICE ? `<p class="scan-keys">F1 Phone number · F2 Product box · ↑ ↓ Choose · Enter Add · + − Quantity · Del Remove · F4 Receive amount · F9 Save</p>` : ""}<div id="scanPanel"></div></div>` : ""}
 
             <div class="wrap">
               <table style="min-width:560px">
@@ -3210,6 +3210,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       ], ["Open Sale New", "sale-new"]],
       ["5. Work faster with the keyboard", [
         "F2 opens a new sale from any screen and puts the cursor in the product box.",
+        "F1 goes to the customer's phone number; type it and press Enter to go on to the products.",
         "Arrow keys choose from the list and Enter adds. With the box empty, + and − change the quantity of the last product and Delete removes it.",
         "F4 goes to Receive Amount; type the amount and press Enter to save. F9 saves from anywhere.",
       ], null],
@@ -5030,6 +5031,22 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       if (event.key === "F2") {
         event.preventDefault();
         if (scanBox) { scanBox.focus(); scanBox.select(); } else location.hash = "sale-new";
+      } else if (event.key === "F1" && scanBox) {
+        // The buyer's phone number. The box only shows for a walk-in, so a saved customer is let go of first.
+        const phone = document.getElementById("walkPhone") as HTMLInputElement | null;
+        const party = document.getElementById("pp") as HTMLSelectElement | null;
+        if (!phone) return;
+        event.preventDefault();
+        if (party?.value) {
+          party.value = "";
+          party.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        phone.focus();
+        phone.select();
+      } else if (event.key === "Enter" && scanBox && (event.target as HTMLElement).id === "walkPhone") {
+        // With the number typed, on to the products.
+        event.preventDefault();
+        scanBox.focus();
       } else if (event.key === "F4" && scanBox) {
         const receive = document.getElementById("rc") as HTMLInputElement | null;
         if (!receive) return;
