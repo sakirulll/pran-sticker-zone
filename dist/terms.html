@@ -271,9 +271,15 @@
       bn.querySelector("[data-prices]").textContent = " — বর্তমানে মাসে " + bangla(info.priceMonthly) + " টাকা অথবা বছরে " + bangla(info.priceYearly) + " টাকা";
       en.querySelector("[data-prices]").textContent = " — at present " + info.priceMonthly + " Taka a month or " + info.priceYearly + " Taka a year";
     }
-    if (info.supportPhone) {
-      bn.querySelector("[data-contact]").textContent = info.supportPhone + " নম্বরে কল বা মেসেজ করুন।";
-      en.querySelector("[data-contact]").textContent = "call or message " + info.supportPhone + ".";
+    // Every way the admin has given to get in touch, in one sentence.
+    var waysBn = [], waysEn = [];
+    if (info.supportPhone) { waysBn.push("ফোন " + info.supportPhone); waysEn.push("phone " + info.supportPhone); }
+    if (info.supportWhatsapp) { waysBn.push("WhatsApp " + info.supportWhatsapp); waysEn.push("WhatsApp " + info.supportWhatsapp); }
+    if (info.supportEmail) { waysBn.push("ইমেইল " + info.supportEmail); waysEn.push("email " + info.supportEmail); }
+    if (info.supportFacebook) { waysBn.push("Facebook: " + info.supportFacebook); waysEn.push("Facebook: " + info.supportFacebook); }
+    if (waysBn.length) {
+      bn.querySelector("[data-contact]").textContent = waysBn.join(", ") + (info.supportHours ? " (" + info.supportHours + ")" : "") + "।";
+      en.querySelector("[data-contact]").textContent = waysEn.join(", ") + (info.supportHours ? " (" + info.supportHours + ")" : "") + ".";
     }
   }).catch(function () {});
 </script>

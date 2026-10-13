@@ -24,6 +24,10 @@ export type BillingSettings = {
   bkashNumber: string;
   nagadNumber: string;
   supportPhone: string;
+  supportWhatsapp: string;
+  supportEmail: string;
+  supportFacebook: string;
+  supportHours: string;
   verifyGraceDays: number;
 };
 

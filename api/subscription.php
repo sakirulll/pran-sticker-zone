@@ -12,6 +12,11 @@ const BILLING_DEFAULTS = [
     'bkash_number' => '',
     'nagad_number' => '',
     'support_phone' => '',
+    // The other ways to reach whoever runs the software; the admin can change them on the Pricing page.
+    'support_whatsapp' => '01717593637',
+    'support_email' => 'sakirul2005@gmail.com',
+    'support_facebook' => 'https://www.facebook.com/sakirulHasanPranX/',
+    'support_hours' => '',
     // How long a new owner may use the shop before the email address must be confirmed.
     'verify_grace_days' => '3',
 ];

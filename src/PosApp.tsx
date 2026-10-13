@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { ORIGINAL_APP } from "./appShell";
 import { canEncode, code128Svg, fitModule } from "./barcode";
 import { canScanWithCamera, startScanner } from "./cameraScanner";
+import { contactHtml, loadContact } from "./contact";
 import { canUseBluetooth, canUseSerial, connectBluetooth, connectSerial, drawLabel, tsplJob, type LabelSpec, type PrinterLink } from "./labelPrinter";
 import { hostingApi, type HostingUser, type ShopBackup, type Subscription } from "./hostingApi";
 import { currentLanguage, switchLanguage, translate } from "./i18n";
@@ -3012,12 +3013,13 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         }));
       } else {
         const s = overview.settings;
-        body.innerHTML = `<form id="adminSettingsForm" style="padding:0 18px 18px"><div class="settings-form-grid"><label>Monthly price (Taka)<input id="adminMonthly" type="number" min="0" step="1" value="${s.priceMonthly}" required></label><label>Yearly price (Taka)<input id="adminYearly" type="number" min="0" step="1" value="${s.priceYearly}" required></label><label>Free trial (days)<input id="adminTrial" type="number" min="0" max="365" step="1" value="${s.trialDays}" required></label><label>Days allowed before email must be confirmed<input id="adminGrace" type="number" min="0" max="365" step="1" value="${s.verifyGraceDays}" required></label><label>Support phone<input id="adminSupport" type="tel" value="${esc(s.supportPhone)}"></label><label>bKash number (customers send money here)<input id="adminBkash" type="tel" value="${esc(s.bkashNumber)}" placeholder="01XXXXXXXXX"></label><label>Nagad number<input id="adminNagad" type="tel" value="${esc(s.nagadNumber)}" placeholder="01XXXXXXXXX"></label></div><button class="btn pu" type="submit">Save Changes</button></form>`;
+        body.innerHTML = `<form id="adminSettingsForm" style="padding:0 18px 18px"><div class="settings-form-grid"><label>Monthly price (Taka)<input id="adminMonthly" type="number" min="0" step="1" value="${s.priceMonthly}" required></label><label>Yearly price (Taka)<input id="adminYearly" type="number" min="0" step="1" value="${s.priceYearly}" required></label><label>Free trial (days)<input id="adminTrial" type="number" min="0" max="365" step="1" value="${s.trialDays}" required></label><label>Days allowed before email must be confirmed<input id="adminGrace" type="number" min="0" max="365" step="1" value="${s.verifyGraceDays}" required></label><label>Support phone<input id="adminSupport" type="tel" value="${esc(s.supportPhone)}"></label><label>Support WhatsApp number<input id="adminWhatsapp" type="tel" value="${esc(s.supportWhatsapp)}" placeholder="01XXXXXXXXX"></label><label>Support email<input id="adminEmail" type="email" value="${esc(s.supportEmail)}"></label><label>Facebook page (name or link)<input id="adminFacebook" value="${esc(s.supportFacebook)}" placeholder="https://facebook.com/yourpage"></label><label>Support hours<input id="adminHours" value="${esc(s.supportHours)}" placeholder="EX: 10 AM - 10 PM"></label><label>bKash number (customers send money here)<input id="adminBkash" type="tel" value="${esc(s.bkashNumber)}" placeholder="01XXXXXXXXX"></label><label>Nagad number<input id="adminNagad" type="tel" value="${esc(s.nagadNumber)}" placeholder="01XXXXXXXXX"></label></div><button class="btn pu" type="submit">Save Changes</button></form>`;
         $("#adminSettingsForm").addEventListener("submit", (event: Event) => {
           event.preventDefault();
           void run("settings", {
             price_monthly: +$("#adminMonthly").value, price_yearly: +$("#adminYearly").value, trial_days: +$("#adminTrial").value, verify_grace_days: +$("#adminGrace").value,
-            support_phone: $("#adminSupport").value, bkash_number: $("#adminBkash").value, nagad_number: $("#adminNagad").value,
+            support_phone: $("#adminSupport").value, support_whatsapp: $("#adminWhatsapp").value, support_email: $("#adminEmail").value, support_facebook: $("#adminFacebook").value, support_hours: $("#adminHours").value,
+            bkash_number: $("#adminBkash").value, nagad_number: $("#adminNagad").value,
           }, "Settings saved");
         });
       }
@@ -3100,7 +3102,15 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     ];
 
     const helpPage = () => {
-      $("#app").innerHTML = `<section class="card settings-card"><h2>How to use HishabPOS</h2><p class="settings-help">Follow these steps in order when you start. Each one has a button that takes you to the right screen.</p>${GUIDE_STEPS.map(([heading, lines, button]) => `<div class="guide-step"><h3>${heading}</h3><ul>${lines.map((line) => `<li>${line}</li>`).join("")}</ul>${button ? `<a class="btn pu" href="#${button[1]}">${button[0]}</a>` : ""}</div>`).join("")}</section>`;
+      $("#app").innerHTML = `<section class="card settings-card"><h2>How to use HishabPOS</h2><p class="settings-help">Follow these steps in order when you start. Each one has a button that takes you to the right screen.</p>${GUIDE_STEPS.map(([heading, lines, button]) => `<div class="guide-step"><h3>${heading}</h3><ul>${lines.map((line) => `<li>${line}</li>`).join("")}</ul>${button ? `<a class="btn pu" href="#${button[1]}">${button[0]}</a>` : ""}</div>`).join("")}<div class="guide-step" id="helpContact" hidden><h3>Need help? Contact us</h3></div></section>`;
+      // How to reach us is set by the admin, so it is fetched instead of written here.
+      void loadContact().then((info) => {
+        const box = $("#helpContact");
+        const links = contactHtml(info);
+        if (!box || !links) return;
+        box.insertAdjacentHTML("beforeend", links);
+        box.hidden = false;
+      });
     };
 
     // ---- Customers, suppliers and dues: one line per person with what is owing, and payments taken here.

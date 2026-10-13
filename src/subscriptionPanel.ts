@@ -1,3 +1,4 @@
+import { contactHtml } from "./contact";
 import { hostingApi, type Subscription } from "./hostingApi";
 
 export const escapeHtml = (value: unknown) =>
@@ -103,7 +104,7 @@ export async function mountSubscriptionPanel(container: HTMLElement, message?: {
     <p class="plan-status ${subscription.state === "expired" || subscription.state === "suspended" ? "bad" : subscription.state === "trial" ? "" : "ok"}">${escapeHtml(summary)}</p>
     ${message ? `<p class="plan-note ${message.ok ? "ok" : ""}" role="status">${escapeHtml(message.text)}</p>` : ""}
     <div class="plan-cards">${cards}</div>
-    ${pay}${history}${support && numbers ? `<p>${support}</p>` : ""}`;
+    ${pay}${history}${contactHtml(settings) ? `<h3>Need help? Contact us</h3>${contactHtml(settings)}` : ""}`;
 
   const paymentForm = container.querySelector<HTMLFormElement>(".plan-form");
   container.querySelectorAll<HTMLButtonElement>(".plan-buy").forEach((button) => button.addEventListener("click", () => {

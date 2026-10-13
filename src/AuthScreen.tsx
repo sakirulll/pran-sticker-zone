@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { CircleAlert, CircleCheck, Eye, EyeOff, LockKeyhole, Mail, Package, ShieldCheck, ShoppingCart, Store, UserRound } from "lucide-react";
+import { contactHtml, loadContact } from "./contact";
 import { hostingApi, type HostingUser } from "./hostingApi";
 import { currentLanguage, switchLanguage } from "./i18n";
 
@@ -18,6 +19,13 @@ export function AuthScreen({ onSignedIn, initialNotice = "" }: { onSignedIn: (us
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(initialNotice);
+  // How to reach us, for someone who cannot get in. Set by the admin, so it is fetched.
+  const [contact, setContact] = useState("");
+  useEffect(() => {
+    let wanted = true;
+    void loadContact().then((info) => { if (wanted) setContact(contactHtml(info)); });
+    return () => { wanted = false; };
+  }, []);
 
   const switchTo = (next: AuthMode) => {
     setMode(next);
@@ -120,6 +128,7 @@ export function AuthScreen({ onSignedIn, initialNotice = "" }: { onSignedIn: (us
             {(mode === "forgot" || mode === "reset") && <button type="button" onClick={() => switchTo("login")}>Back to log in</button>}
           </div>
           <p className="auth-legal"><a href="/terms.html" target="_blank" rel="noopener">{mode === "register" ? "By creating an account you agree to the Terms and Privacy Policy" : "Terms and Privacy Policy"}</a></p>
+          {contact && <div className="auth-contact"><p>Need help? Contact us</p><div dangerouslySetInnerHTML={{ __html: contact }} /></div>}
         </section>
       </div>
     </main>

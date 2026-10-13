@@ -21,6 +21,10 @@ function public_settings(array $settings): array
         'bkashNumber' => $settings['bkash_number'],
         'nagadNumber' => $settings['nagad_number'],
         'supportPhone' => $settings['support_phone'],
+        'supportWhatsapp' => $settings['support_whatsapp'],
+        'supportEmail' => $settings['support_email'],
+        'supportFacebook' => $settings['support_facebook'],
+        'supportHours' => $settings['support_hours'],
         'verifyGraceDays' => (int)$settings['verify_grace_days'],
     ];
 }
