@@ -1865,15 +1865,24 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     // The "stock by size" box: a quantity for each size, with the total written into the stock field.
-    const SIZE_PRESETS = ["S", "M", "L", "XL", "XXL"];
+    // The sizes offered depend on what is being sold: trousers go by waist, children's clothes by age.
+    // The category's name decides, in English or Bangla; anything else gets the letter sizes.
+    const SIZE_SETS: [RegExp, string[]][] = [
+      [/kid|baby|child|boys|girls|বাচ্চা|শিশু/i, ["1-2Y", "3-4Y", "5-6Y", "7-8Y", "9-10Y", "11-12Y"]],
+      [/pant|jeans|trouser|gabardine|প্যান্ট|জিন্স/i, ["28", "30", "32", "34", "36", "38", "40"]],
+      [/shoe|sandal|জুতা|স্যান্ডেল/i, ["38", "39", "40", "41", "42", "43", "44"]],
+      [/panjabi|punjabi|পাঞ্জাবি/i, ["38", "40", "42", "44", "46"]],
+      [/saree|sari|lungi|orna|শাড়ি|লুঙ্গি|ওড়না/i, ["Free Size"]],
+    ];
+    const sizesFor = (categoryName: string) => SIZE_SETS.find(([names]) => names.test(categoryName))?.[1] || ["S", "M", "L", "XL", "XXL"];
     const sizeEditorHtml = () => `
       <div class="size-stock" id="sizeStock">
-        <div class="size-stock-head"><b>Stock by Size</b><span class="size-chips">${SIZE_PRESETS.map((size) => `<button type="button" data-add-size="${size}" data-no-translate>${size}</button>`).join("")}<button type="button" data-add-size="">+ Other size</button></span></div>
+        <div class="size-stock-head"><b>Stock by Size</b><span class="size-chips" id="sizeChips"></span></div>
         <div class="size-rows" id="sizeRows"></div>
         <small class="size-stock-note">Leave this empty for a product that has no sizes.</small>
       </div>`;
     // Wires the box up and returns a function that reads the sizes back.
-    const sizeEditor = (initial: { size: string; qty: number }[], stockInput: HTMLInputElement) => {
+    const sizeEditor = (initial: { size: string; qty: number }[], stockInput: HTMLInputElement, category: HTMLSelectElement | null) => {
       let rows = initial.map((row) => ({ size: row.size, qty: +row.qty || 0 }));
       const box = $("#sizeRows");
       const showTotal = () => {
@@ -1897,14 +1906,23 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         rows.splice(+remove, 1);
         drawSizes();
       });
-      $("#sizeStock").querySelectorAll("[data-add-size]").forEach((button: Element) => button.addEventListener("click", () => {
-        const size = ((button as HTMLElement).dataset.addSize || window.prompt(said("Size name (EX: 32, 2-3Y)")) || "").trim();
+      // The buttons follow the category chosen above them.
+      const drawChips = () => {
+        const presets = sizesFor(category?.selectedOptions[0]?.textContent || "");
+        $("#sizeChips").innerHTML = presets.map((size) => `<button type="button" data-add-size="${esc(size)}" data-no-translate>${esc(size)}</button>`).join("") + `<button type="button" data-add-size="">+ Other size</button>`;
+      };
+      category?.addEventListener("change", drawChips);
+      drawChips();
+      $("#sizeChips").addEventListener("click", (event: Event) => {
+        const button = (event.target as HTMLElement).closest("[data-add-size]") as HTMLElement | null;
+        if (!button) return;
+        const size = (button.dataset.addSize || window.prompt(said("Size name (EX: 32, 2-3Y)")) || "").trim();
         if (!size) return;
         if (rows.some((row) => row.size.toLowerCase() === size.toLowerCase())) { toast("This size is already added"); return; }
         rows.push({ size, qty: 0 });
         drawSizes();
         (box.querySelector(`[data-row="${rows.length - 1}"]`) as HTMLInputElement | null)?.select();
-      }));
+      });
       drawSizes();
       return () => rows.map((row) => ({ size: row.size, qty: q3(row.qty) }));
     };
@@ -1953,7 +1971,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           </form>
         </section>`;
 
-      const readSizes = uses("sizeStock") ? sizeEditor([], $("#p_stock")) : () => [];
+      const readSizes = uses("sizeStock") ? sizeEditor([], $("#p_stock"), $("#p_category")) : () => [];
       // Reset empties the fields but not the size box, so start the form over.
       $("#productCreateForm")?.addEventListener("reset", () => window.setTimeout(productForm));
 
@@ -2364,7 +2382,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <label>Replace Image (optional, max ${MAX_IMAGE_FILE_KB} KB)</label><input id="ep_image" type="file" accept="image/*">
         <div class="two" style="margin-top:16px"><button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button><button class="btn pu" type="button" id="saveProductEdit">Save Changes</button></div>`;
       dialog.showModal();
-      const readSizes = bySize ? sizeEditor(sizeList(product), $("#ep_stock")) : () => [];
+      const readSizes = bySize ? sizeEditor(sizeList(product), $("#ep_stock"), $("#ep_category")) : () => [];
       const syncEditSerialField = () => { $("#editSerialInventoryField").hidden = $("#ep_serial").value !== "true"; };
       $("#ep_serial")?.addEventListener("change", syncEditSerialField);
       syncEditSerialField();
