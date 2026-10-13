@@ -434,6 +434,14 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const alertQty = (product: any) => (+product.lowAlert > 0 ? +product.lowAlert : 10);
     const isLowStock = (product: any) => (+product.stock || 0) <= alertQty(product);
     const lowStockProducts = () => D.products.filter(isLowStock);
+    // The time an invoice was made. Invoices from before the time was kept still tell it:
+    // a record's id is built from the clock at the moment it was created.
+    const invoiceTime = (entry: any) => {
+      if (entry.time) return String(entry.time);
+      const made = Math.floor(+entry.id / 1000);
+      if (!(made > Date.UTC(2020, 0, 1) && made < Date.now() + 864e5)) return "";
+      return new Date(made).toTimeString().slice(0, 5);
+    };
     // "14:05" as it is said: "2:05 PM".
     const clock12 = (time: string) => {
       const [hours, minutes] = String(time).split(":").map(Number);
@@ -2119,7 +2127,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           <div class="rule"></div>
           <div class="row"><span>Invoice</span><b>${esc(sale.inv)}</b></div>
           <div class="row"><span>Date</span><span>${esc(sale.date)}</span></div>
-          ${sale.time ? `<div class="row"><span>Time</span><span>${esc(clock12(sale.time))}</span></div>` : ""}
+          ${invoiceTime(sale) ? `<div class="row"><span>Time</span><span>${esc(clock12(invoiceTime(sale)))}</span></div>` : ""}
           <div class="row"><span>Customer</span><span>${esc(sale.party || "Walk-in Customer")}</span></div>
           ${sale.phone ? `<div class="row"><span>Mobile</span><span>${esc(sale.phone)}</span></div>` : ""}
           <div class="row"><span>Payment</span><span>${esc(sale.pay || "Cash")}</span></div>
@@ -2175,7 +2183,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         details: [
           [said("Invoice"), String(sale.inv || "")],
           [said("Date"), String(sale.date || "")],
-          ...(sale.time ? [[said("Time"), clock12(sale.time)] as [string, string]] : []),
+          ...(invoiceTime(sale) ? [[said("Time"), clock12(invoiceTime(sale))] as [string, string]] : []),
           [said("Customer"), String(sale.party || said("Walk-in Customer"))],
           ...(sale.phone ? [[said("Mobile"), String(sale.phone)] as [string, string]] : []),
           [said("Payment"), said(String(sale.pay || "Cash"))],
