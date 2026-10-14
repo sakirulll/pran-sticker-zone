@@ -786,6 +786,8 @@ dialog label{
 .side{background:#12141c;border-right:1px solid #1f2230}
 .brand{padding:18px 18px 14px;font:700 17px/1.25 Inter,"Segoe UI",system-ui,sans-serif;font-style:normal;border-bottom:1px solid #232634;text-align:left}
 .brand small{margin:4px 0 0;font:600 10px sans-serif;letter-spacing:2.5px;text-transform:uppercase;color:#8b90a0}
+.brand .brand-by{display:flex;align-items:center;gap:6px;margin-top:6px}
+.brand .brand-by img{width:18px;height:18px;max-height:none;margin:0;border-radius:0}
 #menu{padding:8px 0 16px}
 .side a,.gh{align-items:center;padding:9px 12px;margin:1px 10px;color:#c9cdd8;font-size:13.5px;font-weight:500;text-align:left}
 .side a:hover,.gh:hover{background:#1d2030;color:#fff}

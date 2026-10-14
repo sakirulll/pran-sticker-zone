@@ -93,7 +93,7 @@ export function AuthScreen({ onSignedIn, initialNotice = "" }: { onSignedIn: (us
   return (
     <main className="auth-page">
       <aside className="auth-brand">
-        <div className="auth-logo"><img src="/favicon.svg" alt="" width={58} height={58} />Hishab<span>POS</span></div>
+        <div className="auth-logo"><img src="/logo-mark.png" alt="" width={58} height={58} />Hishab<span>POS</span></div>
         <div className="auth-pitch">
           <h2>Run your whole shop from one place.</h2>
           <p>Sales, stock, customers and reports for your shop, ready on any device.</p>

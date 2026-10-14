@@ -115,7 +115,7 @@ code {
 
 .auth-brand { position:relative; overflow:hidden; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:26px; padding:40px 48px; background:radial-gradient(circle at 50% 38%,#1b1f2b 0%,#0e1017 62%); color:#fff; text-align:center; }
 .auth-logo { display:flex; align-items:center; gap:14px; color:#fff; font-size:34px; font-weight:800; letter-spacing:-.6px; }
-.auth-logo span { color:#ff7a4a; }
+.auth-logo span { color:#3cc04a; }
 .auth-logo img { width:58px; height:58px; }
 .auth-pitch { max-width:440px; }
 .auth-pitch h2 { margin:0 0 12px; color:#fff; font-size:32px; line-height:1.18; font-weight:700; letter-spacing:-.5px; }

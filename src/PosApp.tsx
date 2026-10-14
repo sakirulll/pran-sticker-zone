@@ -4805,7 +4805,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const brand = $("#shopBrand");
 
       if (brand) {
-        brand.innerHTML = `${D.user.logo ? `<img src="${esc(D.user.logo)}" alt="">` : ""}<span>${esc(D.user.shop || "My Shop")}</span><small>HishabPOS</small>`;
+        brand.innerHTML = `${D.user.logo ? `<img src="${esc(D.user.logo)}" alt="">` : ""}<span>${esc(D.user.shop || "My Shop")}</span><small class="brand-by"><img src="/logo-mark.png" alt="">HishabPOS</small>`;
       }
 
       if (un) {
