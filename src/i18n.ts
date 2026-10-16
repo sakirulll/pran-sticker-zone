@@ -275,6 +275,12 @@ const words: Record<string, string> = {
   "Scan a barcode, or type a product name, code or serial number, then press Enter": "বারকোড স্ক্যান করুন, অথবা পণ্যের নাম, কোড বা সিরিয়াল নম্বর লিখে Enter চাপুন",
   "Barcode, product code or serial number": "বারকোড, পণ্যের কোড বা সিরিয়াল নম্বর",
   "Money Receipt": "টাকার রসিদ", "Invoice Wise": "ইনভয়েস অনুযায়ী", "Product Wise": "পণ্য অনুযায়ী", "Gross Loss/Profit": "মোট লাভ/ক্ষতি",
+  "Today": "আজ", "Yesterday": "গতকাল", "Last 7 Days": "গত ৭ দিন", "Last Month": "গত মাস", "This Year": "এই বছর", "All Time": "শুরু থেকে",
+  "Profit & Loss": "লাভ-ক্ষতি", "Excel (CSV)": "এক্সেল (CSV)", "Print / PDF": "প্রিন্ট / PDF", "Cost of Goods": "মালের কেনা দাম", "What the sold goods cost you": "যে মাল বিক্রি হলো তা কিনতে যত খরচ",
+  "Net Loss": "নিট ক্ষতি", "Gross profit minus expenses": "মোট লাভ থেকে খরচ বাদে", "Summary": "হিসাবের সারাংশ", "Returned invoices are not counted": "ফেরত হওয়া ইনভয়েস হিসাবে ধরা হয়নি",
+  "Most Profitable Products": "সবচেয়ে বেশি লাভের পণ্য", "Sold": "বিক্রির পরিমাণ", "No sales in this period": "এই সময়ে কোনো বিক্রি নেই", "Day Wise": "দিন অনুযায়ী",
+  "Search by product or code": "পণ্যের নাম বা কোড দিয়ে খুঁজুন", "Search by date": "তারিখ দিয়ে খুঁজুন", "Search by invoice or customer": "ইনভয়েস বা ক্রেতা দিয়ে খুঁজুন",
+  "Profit": "লাভ", "Margin": "লাভের হার", "Qty Sold": "বিক্রির পরিমাণ", "Show": "দেখান",
   "Gross Loss Profit List": "মোট লাভ-ক্ষতির তালিকা",
 
   // ---- people, money, stock
@@ -411,6 +417,9 @@ const patterns: [RegExp, (match: RegExpMatchArray) => string][] = [
   [/^Low Stock \((\d+)\)$/, (m) => `কম স্টক (${m[1]})`],
   [/^(\d+) days$/, (m) => `${m[1]} দিন`],
   [/^(\d+) customers$/, (m) => `${m[1]} জন গ্রাহক`],
+  [/^(\d+) invoices$/, (m) => `${m[1]}টি ইনভয়েস`],
+  [/^(\d+) expenses$/, (m) => `${m[1]}টি খরচ`],
+  [/^(-?[\d.]+)% margin$/, (m) => `লাভের হার ${m[1]}%`],
   [/^(\d+) suppliers$/, (m) => `${m[1]} জন সরবরাহকারী`],
   [/^Invoice (\S+)$/, (m) => `ইনভয়েস ${m[1]}`],
   [/^Stock (-?[\d.]+)$/, (m) => `স্টক ${m[1]}`],

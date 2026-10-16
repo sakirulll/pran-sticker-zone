@@ -3264,6 +3264,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/>',
       print: '<path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v7H7z"/>',
       plus: '<path d="M12 5v14M5 12h14"/>',
+      download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/>',
+      box: '<path d="m12 3 9 5v8l-9 5-9-5V8z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
+      trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+      down: '<path d="m3 7 6 6 4-4 8 8"/><path d="M15 17h6v-6"/>',
     };
     const lxIcon = (name: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${LX_ICONS[name]}</svg>`;
     const lxKpi = (icon: string, label: string, value: string, note: string, color: string) =>
@@ -4451,62 +4455,196 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       suppliers: () => peoplePage("suppliers"),
 
       profit: () => {
-        let mode: "invoice" | "product" = "invoice";
+        // A profit and loss statement for a chosen period: what was sold, what those goods
+        // cost, the expenses, and what is left. Returned invoices earn nothing, so they are
+        // shown but kept out of every figure.
+        const iso = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+        const now = new Date();
+        const PERIODS: [string, string, () => [string, string]][] = [
+          ["today", "Today", () => [today(), today()]],
+          ["yesterday", "Yesterday", () => { const day = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)); return [day, day]; }],
+          ["week", "Last 7 Days", () => [iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)), today()]],
+          ["month", "This Month", () => [iso(new Date(now.getFullYear(), now.getMonth(), 1)), today()]],
+          ["last-month", "Last Month", () => [iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)), iso(new Date(now.getFullYear(), now.getMonth(), 0))]],
+          ["year", "This Year", () => [iso(new Date(now.getFullYear(), 0, 1)), today()]],
+          ["all", "All Time", () => ["", ""]],
+        ];
+        let period = "month";
+        let [from, to] = PERIODS[3][2]();
+        let view: "invoice" | "product" | "daily" = "invoice";
         let query = "";
-        let from = "";
-        let to = "";
         let pageSize = 10;
         let page = 1;
-        const profitRows = () => {
-          if (mode === "invoice") return D.sales.map((s: any) => ({
-            inv: s.inv, name: s.party || "-", total: +s.total || 0,
-            profit: +s.p || 0, date: s.date, status: s.ret ? "Returned" : (+s.due > 0 ? "Due" : "Paid"),
-          }));
-          return D.sales.flatMap((s: any) => (s.items || []).map((item: any) => {
-            const p = prod(item.id);
-            const qty = +item.qty || 0;
-            const gross = (+(item.price || 0) - +(p?.buy || 0)) * qty;
-            return { inv: s.inv, name: p?.name || item.name || "Product", total: (+(item.price || 0) * qty), profit: gross, date: s.date, status: s.ret ? "Returned" : (+s.due > 0 ? "Due" : "Paid") };
-          }));
-        };
-        const escHtml = (v: any) => esc(v);
-        const filtered = () => profitRows().filter((r: any) => {
-          const d = String(r.date || "");
-          const q = query.toLowerCase();
-          return (!q || `${r.inv} ${r.name} ${r.status}`.toLowerCase().includes(q)) && (!from || d >= from) && (!to || d <= to);
-        });
-        const stats = (rows: any[]) => ({
-          loss: sum(rows, (r) => r.profit < 0 ? -r.profit : 0),
-          gross: sum(rows, (r) => r.profit > 0 ? r.profit : 0),
-          net: sum(rows, (r) => r.profit),
-          sales: mode === "invoice" ? rows.length : new Set(rows.map((r) => r.inv)).size,
-        });
+
+        const inRange = (date: any) => { const day = String(date || "").slice(0, 10); return (!from || day >= from) && (!to || day <= to); };
+        const marginOf = (profit: number, sales: number) => (sales ? (profit / sales) * 100 : 0);
+        const signed = (amount: number) => `<b class="${amount < 0 ? "pl-neg" : "pl-pos"}">${tk(amount)}</b>`;
+        const marginPill = (profit: number, sales: number) => sales ? lxPill(`${marginOf(profit, sales).toFixed(1)}%`, profit < 0 ? "var(--rd)" : "var(--gr)") : `<span class="lx-none">-</span>`;
+
         const draw = () => {
-          const all = profitRows();
-          const rows = filtered();
+          const sales = D.sales.filter((sale: any) => inRange(sale.date))
+            .sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)) || String(b.inv).localeCompare(String(a.inv)));
+          const kept = sales.filter((sale: any) => !sale.ret);
+          const returned = sales.filter((sale: any) => sale.ret);
+          const expenses = D.expenses.filter((expense: any) => inRange(expense.date));
+          const revenue = sum(kept, (sale) => sale.total);
+          const gross = sum(kept, (sale) => sale.p);
+          const cost = revenue - gross;
+          const spent = sum(expenses, (expense) => expense.amount);
+          const net = gross - spent;
+
+          // Every item sold in the period, gathered by product.
+          const byProduct = new Map<string, AnyData>();
+          for (const sale of kept) for (const item of sale.items || []) {
+            const product = prod(item.id);
+            const qty = +item.qty || 0;
+            const price = +(item.price ?? product?.sell ?? 0);
+            const row = byProduct.get(String(item.id)) || { name: product?.name || String(item.name || "Product").replace(/ \([^)]*\)$/, ""), code: product?.code || "", qty: 0, sales: 0, profit: 0, invoices: new Set() };
+            row.qty += qty;
+            row.sales += price * qty;
+            row.profit += (price - (+product?.buy || 0)) * qty;
+            row.invoices.add(sale.inv);
+            byProduct.set(String(item.id), row);
+          }
+          const products = [...byProduct.values()].sort((a, b) => b.profit - a.profit);
+
+          const byDay = new Map<string, AnyData>();
+          const dayRow = (date: string) => byDay.get(date) || { date, invoices: 0, sales: 0, profit: 0, expenses: 0 };
+          for (const sale of kept) { const row = dayRow(sale.date); row.invoices++; row.sales += +sale.total || 0; row.profit += +sale.p || 0; byDay.set(sale.date, row); }
+          for (const expense of expenses) { const row = dayRow(expense.date); row.expenses += +expense.amount || 0; byDay.set(expense.date, row); }
+          const days = [...byDay.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+          const needle = query.trim().toLowerCase();
+          const rows: AnyData[] = view === "invoice"
+            ? sales.filter((sale: any) => !needle || `${sale.inv} ${sale.party || ""} ${sale.phone || ""}`.toLowerCase().includes(needle))
+            : view === "product"
+              ? products.filter((row) => !needle || `${row.name} ${row.code}`.toLowerCase().includes(needle))
+              : days.filter((row) => !needle || String(row.date).includes(needle));
           const pages = Math.max(1, Math.ceil(rows.length / pageSize));
           page = Math.min(page, pages);
           const visible = rows.slice((page - 1) * pageSize, page * pageSize);
-          const curr = stats(visible);
-          const total = stats(all);
-          const cards = (s: any, label: string) => [
-            ["Loss", tk(s.loss), "#d8effc"], ["Gross Profit", tk(s.gross), "#cef4e3"],
-            ["Net Profit", tk(s.net), "#cef4e3"], ["Total Sale", s.sales, "#ffe8cc"],
-          ].map((x: any) => `<div class="profit-stat" style="background:${x[2]}"><span>${x[0]}</span><b>${x[1]}</b><small>${label}</small></div>`).join("");
-          const heads = mode === "invoice" ? ["SL.", "Invoice", "Name", "Total", "Gross Loss/Profit", "Date", "Status"] : ["SL.", "Invoice", "Product", "Total", "Gross Loss/Profit", "Date", "Status"];
-          const body = visible.map((r: any, i: number) => `<tr><td>${(page-1)*pageSize+i+1}</td><td>${escHtml(r.inv)}</td><td>${escHtml(r.name)}</td><td>${tk(r.total)}</td><td style="color:${r.profit < 0 ? "#ef3340" : "#16a34a"}">${tk(r.profit)}</td><td>${escHtml(r.date || "-")}</td><td><span class="bd ${r.status === "Paid" ? "ok" : "dn"}">${r.status}</span></td></tr>`).join("") || `<tr><td class="mut" colspan="7">No data found</td></tr>`;
-          $("#app").innerHTML = `<div class="card profit-page"><div class="profit-heading"><h2>Gross Loss Profit List</h2><div><button class="btn ${mode === "invoice" ? "gn" : "ib"}" id="invoiceMode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18"/><path d="M6 16v-5h3v5M11 16V6h3v10M16 16v-7h3v7"/></svg> Invoice Wise</button><button class="ib ${mode === "product" ? "profit-selected" : ""}" id="productMode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/></svg> Product Wise</button></div></div><div class="profit-stats">${cards(curr,"Current Page")}${cards(total,"All Pages")}</div><div class="profit-filters"><select id="profitPageSize" aria-label="Rows per page"><option value="10" ${pageSize===10?"selected":""}>Show- 10</option><option value="25" ${pageSize===25?"selected":""}>Show- 25</option><option value="50" ${pageSize===50?"selected":""}>Show- 50</option></select><input id="profitSearch" placeholder="Search..." value="${escHtml(query)}"><label>Select Date Range<div class="profit-date-range"><input id="profitFrom" type="date" value="${from}"><span>to</span><input id="profitTo" type="date" value="${to}"></div></label></div><div class="profit-export"><button id="profitCsv" title="Export CSV"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13l5 5m0-5-5 5"/><path d="M3 6v16"/></svg></button><button id="profitPdf" title="Save PDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 17v-5h2a1.5 1.5 0 0 1 0 3H9m5 2v-5h1a2.5 2.5 0 0 1 0 5h-1"/></svg></button><button id="profitPrint" title="Print"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H4V9h16v8h-3"/><path d="M7 14h10v7H7zM17 11h.01"/></svg></button></div><div class="wrap"><table class="profit-table"><thead><tr>${heads.map((h:string)=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div><div class="product-page-footer"><span>Showing ${rows.length ? (page-1)*pageSize+1 : 0} to ${Math.min(page*pageSize,rows.length)} of ${rows.length} entries</span><div><button id="profitPrev" ${page<=1?"disabled":""}>Previous</button><span> ${page} / ${pages} </span><button id="profitNext" ${page>=pages?"disabled":""}>Next</button></div></div></div>`;
-          $("#invoiceMode").onclick = () => { mode="invoice"; page=1; draw(); };
-          $("#productMode").onclick = () => { mode="product"; page=1; draw(); };
-          $("#profitSearch").oninput = (e: any) => { query=e.target.value; page=1; draw(); const el=$("#profitSearch"); el.focus(); el.setSelectionRange(query.length,query.length); };
-          $("#profitFrom").onchange = (e: any) => { from=e.target.value; page=1; draw(); };
-          $("#profitTo").onchange = (e: any) => { to=e.target.value; page=1; draw(); };
-          $("#profitPageSize").onchange = (e: any) => { pageSize=+e.target.value; page=1; draw(); };
+          const status = (sale: any) => sale.ret ? lxPill("Returned", "var(--rd)") : +sale.due > 0 ? lxPill("Due", "var(--or)") : lxPill("Paid", "var(--gr)");
+
+          const table = view === "invoice" ? {
+            heads: ["Invoice", "Date", "Customer", "Sale", "Cost", "Profit", "Margin", "Status"],
+            body: visible.map((sale) => sale.ret
+              ? `<tr class="pl-ret"><td class="lx-main"><b data-no-translate>${esc(sale.inv)}</b></td><td ${lxLabel("Date")}>${esc(sale.date || "-")}</td><td ${lxLabel("Customer")}>${esc(sale.party || "-")}</td><td class="num" ${lxLabel("Sale")}><s>${tk(sale.total)}</s></td><td class="num lx-hide">-</td><td class="num" ${lxLabel("Profit")}><span class="lx-none">-</span></td><td class="num lx-hide">-</td><td ${lxLabel("Status")}>${status(sale)}</td></tr>`
+              : `<tr><td class="lx-main"><b data-no-translate>${esc(sale.inv)}</b></td><td ${lxLabel("Date")}>${esc(sale.date || "-")}</td><td ${lxLabel("Customer")}>${esc(sale.party || "-")}</td><td class="num" ${lxLabel("Sale")}>${tk(sale.total)}</td><td class="num" ${lxLabel("Cost")}>${tk((+sale.total || 0) - (+sale.p || 0))}</td><td class="num" ${lxLabel("Profit")}>${signed(+sale.p || 0)}</td><td class="num" ${lxLabel("Margin")}>${marginPill(+sale.p || 0, +sale.total || 0)}</td><td ${lxLabel("Status")}>${status(sale)}</td></tr>`).join(""),
+            foot: (() => { const counted = rows.filter((sale) => !sale.ret); const sold = sum(counted, (sale) => sale.total), made = sum(counted, (sale) => sale.p); return [sold, sold - made, made, marginOf(made, sold)]; })(),
+            csv: () => [["Invoice", "Date", "Customer", "Sale", "Cost", "Profit", "Margin %", "Status"], ...rows.map((sale) => [sale.inv, sale.date, sale.party || "", (+sale.total || 0).toFixed(2), sale.ret ? "" : ((+sale.total || 0) - (+sale.p || 0)).toFixed(2), sale.ret ? "" : (+sale.p || 0).toFixed(2), sale.ret ? "" : marginOf(+sale.p || 0, +sale.total || 0).toFixed(1), sale.ret ? "Returned" : +sale.due > 0 ? "Due" : "Paid"])],
+          } : view === "product" ? {
+            heads: ["Product", "Qty Sold", "Invoices", "Sale", "Cost", "Profit", "Margin"],
+            body: visible.map((row) => `<tr><td class="lx-main"><div class="lx-who"><div><b data-no-translate>${esc(row.name)}</b>${row.code ? `<small class="lx-tel" data-no-translate>${esc(row.code)}</small>` : ""}</div></div></td><td class="num" ${lxLabel("Qty Sold")}>${+row.qty.toFixed(3)}</td><td class="num" ${lxLabel("Invoices")}>${row.invoices.size}</td><td class="num" ${lxLabel("Sale")}>${tk(row.sales)}</td><td class="num" ${lxLabel("Cost")}>${tk(row.sales - row.profit)}</td><td class="num" ${lxLabel("Profit")}>${signed(row.profit)}</td><td class="num" ${lxLabel("Margin")}>${marginPill(row.profit, row.sales)}</td></tr>`).join(""),
+            foot: null,
+            csv: () => [["Product", "Code", "Qty Sold", "Invoices", "Sale", "Cost", "Profit", "Margin %"], ...rows.map((row) => [row.name, row.code, +row.qty.toFixed(3), row.invoices.size, row.sales.toFixed(2), (row.sales - row.profit).toFixed(2), row.profit.toFixed(2), marginOf(row.profit, row.sales).toFixed(1)])],
+          } : {
+            heads: ["Date", "Invoices", "Sale", "Gross Profit", "Expense", "Net Profit"],
+            body: visible.map((row) => `<tr><td class="lx-main"><b>${esc(row.date)}</b></td><td class="num" ${lxLabel("Invoices")}>${row.invoices}</td><td class="num" ${lxLabel("Sale")}>${tk(row.sales)}</td><td class="num" ${lxLabel("Gross Profit")}>${tk(row.profit)}</td><td class="num" ${lxLabel("Expense")}>${row.expenses ? `<span class="lx-due">${tk(row.expenses)}</span>` : tk(0)}</td><td class="num" ${lxLabel("Net Profit")}>${signed(row.profit - row.expenses)}</td></tr>`).join(""),
+            foot: null,
+            csv: () => [["Date", "Invoices", "Sale", "Gross Profit", "Expense", "Net Profit"], ...rows.map((row) => [row.date, row.invoices, row.sales.toFixed(2), row.profit.toFixed(2), row.expenses.toFixed(2), (row.profit - row.expenses).toFixed(2)])],
+          };
+          const columns = table.heads.length;
+          const rangeText = from || to ? `${from || "…"} — ${to || "…"}` : said("All Time");
+          const top = products.slice(0, 5);
+          const topMax = Math.max(1, ...top.map((row) => Math.abs(row.profit)));
+
+          $("#app").innerHTML = `
+            <div class="lx pl">
+              <section class="card pl-head">
+                <div class="hd">
+                  <div><h2>Profit &amp; Loss</h2><small class="pl-range" data-no-translate>${esc(rangeText)}</small></div>
+                  <div class="lx-acts lx-noprint">
+                    <button class="lx-out" type="button" id="profitCsv">${lxIcon("download")}<span>Excel (CSV)</span></button>
+                    <button class="lx-out" type="button" id="profitPrint">${lxIcon("print")}<span>Print / PDF</span></button>
+                  </div>
+                </div>
+                <div class="pl-periods lx-noprint">
+                  ${PERIODS.map(([key, label]) => `<button type="button" class="${period === key ? "on" : ""}" data-period="${key}">${label}</button>`).join("")}
+                  <span class="pl-custom"><input id="profitFrom" type="date" value="${from}" aria-label="From"><span>to</span><input id="profitTo" type="date" value="${to}" aria-label="To"></span>
+                </div>
+              </section>
+
+              <div class="lx-kpis pl-kpis">
+                ${lxKpi("cart", "Total Sale", tk(revenue), `${kept.length} invoices`, "var(--bl)")}
+                ${lxKpi("box", "Cost of Goods", tk(cost), "What the sold goods cost you", "var(--mut)")}
+                ${lxKpi("trend", "Gross Profit", tk(gross), `${marginOf(gross, revenue).toFixed(1)}% margin`, "var(--gr)")}
+                ${lxKpi("wallet", "Total Expense", tk(spent), `${expenses.length} expenses`, "var(--rd)")}
+                <div class="lx-kpi pl-net ${net < 0 ? "loss" : ""}"><em>${lxIcon(net < 0 ? "down" : "trend")}</em><div><span>${net < 0 ? "Net Loss" : "Net Profit"}</span><b>${tk(Math.abs(net))}</b><small>Gross profit minus expenses</small></div></div>
+              </div>
+
+              <div class="pl-grid">
+                <section class="card pl-statement">
+                  <div class="hd"><h2>Summary</h2></div>
+                  <div class="pl-line"><span>Total Sale</span><b>${tk(revenue)}</b></div>
+                  <div class="pl-line minus"><span>Cost of Goods</span><b>− ${tk(cost)}</b></div>
+                  <div class="pl-line pl-sub"><span>Gross Profit</span><b>${tk(gross)}</b></div>
+                  <div class="pl-line minus"><span>Total Expense</span><b>− ${tk(spent)}</b></div>
+                  <div class="pl-line total ${net < 0 ? "loss" : ""}"><span>${net < 0 ? "Net Loss" : "Net Profit"}</span><b>${tk(net)}</b></div>
+                  ${returned.length ? `<p class="pl-note">${said("Returned invoices are not counted")}: <b data-no-translate>${returned.length} · ${tk(sum(returned, (sale) => sale.total))}</b></p>` : ""}
+                </section>
+                <section class="card pl-top">
+                  <div class="hd"><h2>Most Profitable Products</h2></div>
+                  ${top.length ? top.map((row, index) => `<div class="pl-bar"><div><span class="pl-rank">${index + 1}</span><b data-no-translate>${esc(row.name)}</b><em>${signed(row.profit)}</em></div><i><u style="width:${Math.max(3, (Math.abs(row.profit) / topMax) * 100)}%;${row.profit < 0 ? "background:var(--rd)" : ""}"></u></i><small>${said("Sold")}: ${+row.qty.toFixed(3)} · ${said("Sale")}: ${tk(row.sales)}</small></div>`).join("") : `<p class="pl-empty">No sales in this period</p>`}
+                </section>
+              </div>
+
+              <section class="card">
+                <div class="lx-bar">
+                  <div class="lx-seg">
+                    <button type="button" class="${view === "invoice" ? "on" : ""}" data-view="invoice">Invoice Wise</button>
+                    <button type="button" class="${view === "product" ? "on" : ""}" data-view="product">Product Wise</button>
+                    <button type="button" class="${view === "daily" ? "on" : ""}" data-view="daily">Day Wise</button>
+                  </div>
+                  <span class="sp"></span>
+                  <input class="srch lx-noprint" id="profitSearch" value="${esc(query)}" placeholder="${view === "product" ? "Search by product or code" : view === "daily" ? "Search by date" : "Search by invoice or customer"}">
+                </div>
+                <div class="wrap"><table class="lx-table pl-table">
+                  <thead><tr>${table.heads.map((head, index) => `<th class="${index && head !== "Date" && head !== "Customer" && head !== "Status" ? "num" : ""}">${head}</th>`).join("")}</tr></thead>
+                  <tbody>${table.body || lxEmpty(columns, "No sales in this period")}</tbody>
+                  ${table.foot && rows.length ? `<tfoot><tr><th colspan="3">Total</th><th class="num">${tk(table.foot[0])}</th><th class="num">${tk(table.foot[1])}</th><th class="num">${tk(table.foot[2])}</th><th class="num">${table.foot[3].toFixed(1)}%</th><th></th></tr></tfoot>` : ""}
+                </table></div>
+                <div class="pl-pager lx-noprint">
+                  <label>Show <select id="profitPageSize">${[10, 25, 50, 100].map((size) => `<option ${pageSize === size ? "selected" : ""}>${size}</option>`).join("")}</select></label>
+                  <span>Showing ${rows.length ? (page - 1) * pageSize + 1 : 0} to ${Math.min(page * pageSize, rows.length)} of ${rows.length} entries</span>
+                  <div><button type="button" id="profitPrev" ${page <= 1 ? "disabled" : ""}>Previous</button><b>${page} / ${pages}</b><button type="button" id="profitNext" ${page >= pages ? "disabled" : ""}>Next</button></div>
+                </div>
+              </section>
+            </div>`;
+
+          document.querySelectorAll(".pl-periods [data-period]").forEach((button) => button.addEventListener("click", () => {
+            period = (button as HTMLElement).dataset.period!;
+            [from, to] = PERIODS.find(([key]) => key === period)![2]();
+            page = 1;
+            draw();
+          }));
+          $("#profitFrom").onchange = (event: any) => { from = event.target.value; period = ""; page = 1; draw(); };
+          $("#profitTo").onchange = (event: any) => { to = event.target.value; period = ""; page = 1; draw(); };
+          document.querySelectorAll(".lx-seg [data-view]").forEach((button) => button.addEventListener("click", () => {
+            view = (button as HTMLElement).dataset.view as typeof view;
+            query = "";
+            page = 1;
+            draw();
+          }));
+          $("#profitSearch").oninput = (event: any) => {
+            query = event.target.value;
+            page = 1;
+            draw();
+            const box = $("#profitSearch") as HTMLInputElement;
+            box.focus();
+            box.setSelectionRange(query.length, query.length);
+          };
+          $("#profitPageSize").onchange = (event: any) => { pageSize = +event.target.value; page = 1; draw(); };
           $("#profitPrev").onclick = () => { page--; draw(); };
           $("#profitNext").onclick = () => { page++; draw(); };
           $("#profitPrint").onclick = () => window.print();
-          $("#profitCsv").onclick = () => { const csv=[heads,...visible.map((r:any,i:number)=>[(page-1)*pageSize+i+1,r.inv,r.name,r.total.toFixed(2),r.profit.toFixed(2),r.date,r.status])].map((row:any[])=>row.map((v:any)=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n"); const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="gross-loss-profit.csv"; a.click(); URL.revokeObjectURL(a.href); };
-          $("#profitPdf").onclick = () => window.print();
+          $("#profitCsv").onclick = () => {
+            const csv = "﻿" + table.csv().map((row: any[]) => row.map((value: any) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+            link.download = `profit-loss-${view}-${from || "start"}-to-${to || today()}.csv`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+          };
         };
         draw();
       },
