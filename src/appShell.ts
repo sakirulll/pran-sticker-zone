@@ -822,6 +822,8 @@ tbody tr:hover{background:color-mix(in srgb,var(--bg) 60%,transparent)}
 .mini:hover{border-color:var(--pu);color:var(--pu)}
 .stats{gap:14px}
 .stats div{margin:0;padding:16px 18px;border-radius:14px;background:var(--pn)}
+.stats .stat-link{cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s}
+.stats .stat-link:hover,.stats .stat-link:focus-visible{transform:translateY(-2px);border-color:var(--pu);box-shadow:0 8px 20px rgba(234,88,12,.14);outline:none}
 .stats span{display:block;padding-right:44px}
 .stats b{font-size:21px}
 .stats em{width:36px;height:36px;border-radius:10px}

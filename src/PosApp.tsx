@@ -3972,6 +3972,19 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
         const low = lowStockProducts();
 
+        // Each card opens the list its number comes from.
+        const STAT_PAGES: Record<string, string> = {
+          "Total Sales": "sales",
+          "Total Purchase": "purchases",
+          "Total Expense": "expenses",
+          "Total Customer": "customers",
+          "Total Supplier": "suppliers",
+          "Sales Returns": "sale-returns",
+          "Net Profit": "profit",
+          "Purchase Returns": "purchase-returns",
+          "Today's Courier Orders": "sales",
+        };
+
         $("#app").innerHTML = `
           ${startCard()}
           <div class="stats">
@@ -3979,7 +3992,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             ${cs
               .map(
                 (c) => `
-                  <div>
+                  <div class="stat-link" role="link" tabindex="0" onclick="location.hash='${STAT_PAGES[c[0]]}'" onkeydown="if(event.key==='Enter')location.hash='${STAT_PAGES[c[0]]}'">
 
                     <span>${c[0]}</span>
 
