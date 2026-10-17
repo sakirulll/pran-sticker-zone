@@ -196,6 +196,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         employees: [],
         salary: [],
         attendance: [],
+        services: [],
         transfers: [],
 
         currencies: [
@@ -2071,8 +2072,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // The printer connected for printing straight to it (labels and receipts), kept while moving between screens.
     let PRINTER_LINK: PrinterLink | null = null;
 
+    const findInvoice = (id: number) => D.sales.find((item: any) => item.id == id) || D.services.find((item: any) => item.id == id);
     const openInvoice = (id: number, compact = false, autoPrint = false) => {
-      const sale = D.sales.find((item: any) => item.id == id);
+      const sale = findInvoice(id);
       if (!sale) {
         toast("Invoice not found");
         return;
@@ -2123,7 +2125,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         </style></head><body>
         <div class="toolbar"><button onclick="window.print()">Print</button><button onclick="window.print()">Save PDF</button></div>
         <main class="paper">
-          <header class="center">${shopLogo}<div class="brand">${shopName}</div><div class="sub">${esc(D.user.phone || "")}</div><div class="sub">${esc(D.user.address || "")}</div><div class="sub">Money Receipt</div></header>
+          <header class="center">${shopLogo}<div class="brand">${shopName}</div><div class="sub">${esc(D.user.phone || "")}</div><div class="sub">${esc(D.user.address || "")}</div><div class="sub">${sale.kind === "service" ? "Service Receipt" : "Money Receipt"}</div></header>
           <div class="rule"></div>
           <div class="row"><span>Invoice</span><b>${esc(sale.inv)}</b></div>
           <div class="row"><span>Date</span><span>${esc(sale.date)}</span></div>
@@ -2131,6 +2133,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           <div class="row"><span>Customer</span><span>${esc(sale.party || "Walk-in Customer")}</span></div>
           ${sale.phone ? `<div class="row"><span>Mobile</span><span>${esc(sale.phone)}</span></div>` : ""}
           <div class="row"><span>Payment</span><span>${esc(sale.pay || "Cash")}</span></div>
+          ${sale.note ? `<div class="row"><span>Note</span><span>${esc(sale.note)}</span></div>` : ""}
           <div class="rule"></div>
           <table><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
             <tbody>${items.map((item: AnyData) => `<tr><td>${item.name}${item.serials.length ? `<br><small>Serial: ${item.serials.map((value: string) => esc(value)).join(", ")}</small>` : ""}</td><td>${item.qty}</td><td>${tk(item.price)}</td><td>${tk(item.total)}</td></tr>`).join("") || `<tr><td colspan="4">No item details</td></tr>`}</tbody>
@@ -2179,7 +2182,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const extra = (label: string, amount: number) => (amount ? [{ label: said(label), value: tk(amount) }] : []);
       return {
         shop: String(D.user.shop || "My Shop"),
-        header: [D.user.phone, D.user.address, said("Money Receipt")].filter(Boolean).map(String),
+        header: [D.user.phone, D.user.address, said(sale.kind === "service" ? "Service Receipt" : "Money Receipt")].filter(Boolean).map(String),
         details: [
           [said("Invoice"), String(sale.inv || "")],
           [said("Date"), String(sale.date || "")],
@@ -2187,6 +2190,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           [said("Customer"), String(sale.party || said("Walk-in Customer"))],
           ...(sale.phone ? [[said("Mobile"), String(sale.phone)] as [string, string]] : []),
           [said("Payment"), said(String(sale.pay || "Cash"))],
+          ...(sale.note ? [[said("Note"), String(sale.note)] as [string, string]] : []),
         ],
         items,
         totals: [
@@ -2220,7 +2224,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       }
     };
     const receiptDialog = (id: number) => {
-      const sale = D.sales.find((item: any) => item.id == id);
+      const sale = findInvoice(id);
       if (!sale) { toast("Invoice not found"); return; }
       try { localStorage.setItem(RECEIPT_SAVED, JSON.stringify(RECEIPT_OPTIONS)); } catch { /* the choice then lasts only for this visit */ }
       const dialog = $("#dlg") as HTMLDialogElement;
@@ -2294,7 +2298,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
     // After a sale: print at once when a printer is connected, otherwise offer the ways to print.
     const quickReceipt = (id: number) => {
-      const sale = D.sales.find((item: any) => item.id == id);
+      const sale = findInvoice(id);
       if (sale && PRINTER_LINK) void sendReceipt(sale);
       else receiptDialog(id);
     };
@@ -2530,7 +2534,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       });
     };
 
-    const ROLE_PERMISSIONS = ["Dashboard", "Sales", "Purchases", "Products", "Stock List", "Employee", "Salary Slip", "Warehouse", "Customers", "Suppliers", "Expenses", "Due List", "Profit & Loss List", "Profile", "Settings"];
+    const ROLE_PERMISSIONS = ["Dashboard", "Sales", "Service Sale", "Purchases", "Products", "Stock List", "Employee", "Salary Slip", "Warehouse", "Customers", "Suppliers", "Expenses", "Due List", "Profit & Loss List", "Profile", "Settings"];
     const rolesPage = () => {
       const rows = D.roles.map((role: any, index: number) => `<tr><td>${index + 1}</td><td>${esc(role.name)}</td><td>${esc((role.permissions || []).join(", "))}</td><td><button class="mini edit-role" data-id="${role.id}">Edit</button><button class="mini delete-role" data-id="${role.id}">Delete</button></td></tr>`).join("");
       $("#app").innerHTML = `<section class="card"><div class="hd"><h2>User Roles</h2><button class="btn pu" id="addRole">+ Add Role</button></div><div class="wrap"><table><thead><tr><th>SL.</th><th>Role</th><th>Permissions</th><th>Action</th></tr></thead><tbody>${rows || empty(4)}</tbody></table></div></section>`;
@@ -3264,6 +3268,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/>',
       print: '<path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v7H7z"/>',
       plus: '<path d="M12 5v14M5 12h14"/>',
+      tool: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
       download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/>',
       box: '<path d="m12 3 9 5v8l-9 5-9-5V8z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
       trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
@@ -3283,7 +3288,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // The phone number tells people apart when there is one, otherwise the name does.
     const dueParties = (list: DueList): AnyData[] => {
       const parties = new Map<string, AnyData>();
-      for (const entry of D[list]) {
+      for (const entry of list === "sales" ? [...D.sales, ...D.services] : D[list]) {
         if (!(+entry.due > 0) || entry.ret) continue;
         const key = String(entry.phone || entry.party || "").trim().toLowerCase();
         const party = parties.get(key) || { name: entry.party || "-", phone: entry.phone || "", invoices: [], due: 0 };
@@ -3465,6 +3470,243 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       invoices: totals.invoices.filter((entry: any) => +entry.due > 0 && !entry.ret)
         .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date))),
     });
+
+    // ---- Service sales: work done for a customer (fitting a sticker, washing a bike) rather
+    // than goods from stock. The price is typed each time, no stock moves, and each one
+    // gets its own numbered receipt. They are kept apart from the shop's sales.
+    let SERVICE_QUERY = "";
+    let SERVICE_LIMIT = 25;
+    // Every service done before, with the price it was last done for, to offer again.
+    const pastServices = () => {
+      const seen = new Map<string, number>();
+      for (const entry of D.services) for (const item of entry.items || []) {
+        const name = String(item.name || "").trim();
+        if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), +item.price || 0);
+      }
+      return seen;
+    };
+    const serviceNames = () => {
+      const names = new Map<string, string>();
+      for (const entry of D.services) for (const item of entry.items || []) {
+        const name = String(item.name || "").trim();
+        if (name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+      }
+      return [...names.values()].slice(0, 200);
+    };
+
+    function servicesPage() {
+      const day = today();
+      const month = day.slice(0, 7);
+      const todays = D.services.filter((entry: any) => entry.date === day);
+      const months = D.services.filter((entry: any) => String(entry.date).startsWith(month));
+      const owing = D.services.filter((entry: any) => +entry.due > 0);
+
+      $("#app").innerHTML = `
+        <div class="lx">
+          <div class="lx-kpis">
+            ${lxKpi("tool", "Today's Service Income", tk(sum(todays, (entry) => entry.total)), `${todays.length} receipts`, "var(--pu)")}
+            ${lxKpi("trend", "This Month", tk(sum(months, (entry) => entry.total)), `${months.length} receipts`, "var(--gr)")}
+            ${lxKpi("clock", "Service Due", tk(sum(owing, (entry) => entry.due)), `${owing.length} receipts`, "var(--rd)")}
+          </div>
+          <section class="card">
+            <div class="hd">
+              <h2>Service Sale List</h2>
+              <button class="lx-add" type="button" id="newService">${lxIcon("plus")}<span>New Service Sale</span></button>
+            </div>
+            <div class="lx-bar">
+              <input class="srch" id="serviceSearch" value="${esc(SERVICE_QUERY)}" placeholder="Search by receipt, customer or service">
+            </div>
+            <div class="wrap"><table class="lx-table">
+              <thead><tr><th>Receipt</th><th>Customer</th><th>Service</th><th class="num">Total</th><th class="num">Paid</th><th>Status</th><th></th></tr></thead>
+              <tbody id="serviceRows"></tbody>
+            </table></div>
+            <div id="serviceMore" class="sv-more"></div>
+          </section>
+        </div>`;
+
+      const drawRows = () => {
+        const query = SERVICE_QUERY.trim().toLowerCase();
+        const found = D.services.filter((entry: any) => !query
+          || `${entry.inv} ${entry.party} ${entry.phone} ${(entry.items || []).map((item: any) => item.name).join(" ")}`.toLowerCase().includes(query));
+        $("#serviceRows").innerHTML = found.slice(0, SERVICE_LIMIT).map((entry: any) => `
+          <tr>
+            <td class="lx-main"><b data-no-translate>${esc(entry.inv)}</b><small class="lx-tel">${esc(entry.date)}${invoiceTime(entry) ? ` · ${esc(clock12(invoiceTime(entry)))}` : ""}</small></td>
+            <td ${lxLabel("Customer")}>${lxWho(entry.partyId ? entry.party : said(entry.party || "Walk-in Customer"), entry.phone || "")}</td>
+            <td ${lxLabel("Service")}><div class="sv-cell"><span class="sv-names" data-no-translate>${esc((entry.items || []).map((item: any) => +item.qty === 1 ? item.name : `${item.name} × ${+item.qty}`).join(", "))}</span>${entry.note ? `<small class="lx-tel" data-no-translate>${esc(entry.note)}</small>` : ""}</div></td>
+            <td class="num" ${lxLabel("Total")}><b>${tk(entry.total)}</b></td>
+            <td class="num" ${lxLabel("Paid")}>${tk(entry.paid)}</td>
+            <td ${lxLabel("Status")}>${+entry.due > 0 ? `${lxPill("Due", "var(--rd)")} <b class="lx-due">${tk(entry.due)}</b>` : lxPill("Paid", "var(--gr)")}</td>
+            <td><div class="lx-acts"><button class="lx-go sv-go" type="button" data-receipt="${entry.id}">${lxIcon("print")}<span>Receipt</span></button><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-delete="${entry.id}">${lxIcon("trash")}</button></div></td>
+          </tr>`).join("")
+          || lxEmpty(7, D.services.length ? "No service sale matches your search" : "No service sale yet. Press \"New Service Sale\" to add the first one.");
+        $("#serviceMore").innerHTML = found.length > SERVICE_LIMIT ? `<button class="lx-out" type="button" id="serviceShowMore">Show more</button>` : "";
+        $("#serviceShowMore")?.addEventListener("click", () => { SERVICE_LIMIT += 25; drawRows(); });
+      };
+      drawRows();
+
+      $("#newService").addEventListener("click", () => serviceForm());
+      $("#serviceSearch").addEventListener("input", (event: Event) => { SERVICE_QUERY = (event.currentTarget as HTMLInputElement).value; SERVICE_LIMIT = 25; drawRows(); });
+      $("#serviceRows").addEventListener("click", (event: Event) => {
+        const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
+        if (!button) return;
+        if (button.dataset.receipt) receiptDialog(+button.dataset.receipt);
+        if (button.dataset.delete && confirm("Delete this service receipt?")) {
+          D.services = D.services.filter((entry: any) => entry.id != button.dataset.delete);
+          save();
+          servicesPage();
+        }
+      });
+    }
+
+    const serviceForm = () => {
+      const dialog = $("#dlg") as HTMLDialogElement;
+      const prices = pastServices();
+      const line = () => `
+        <div class="sv-line">
+          <input class="sv-name" list="svNames" placeholder="Service, e.g. Bike wash" aria-label="Service">
+          <input class="sv-qty" type="number" inputmode="decimal" min="0.001" step="any" value="1" aria-label="Qty">
+          <input class="sv-price" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Price" aria-label="Price">
+          <b class="sv-amt">${tk(0)}</b>
+          <button class="lx-ic del" type="button" title="Remove" aria-label="Remove" data-remove>${lxIcon("trash")}</button>
+        </div>`;
+      dialog.innerHTML = `<div class="lx-dlg sv-dlg">
+        <h3>New Service Sale</h3>
+        <datalist id="svNames">${serviceNames().map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist>
+        <div class="two">
+          <div><label>Customer Mobile</label><input id="svPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="01XXXXXXXXX"></div>
+          <div><label>Customer Name</label><input id="svName" autocomplete="off" placeholder="Walk-in Customer"></div>
+        </div>
+        <div class="sv-head"><span>Service</span><span>Qty</span><span>Price</span><span>Amount</span><span></span></div>
+        <div id="svLines">${line()}</div>
+        <button class="lx-link" type="button" id="svAddLine">+ Add another service</button>
+        <div class="sv-sum">
+          <div><span>Subtotal</span><b id="svSubtotal"></b></div>
+          <div><span>Discount</span><input id="svDisc" type="number" inputmode="decimal" min="0" step="0.01" value="0"></div>
+          <div class="sv-total"><span>Total</span><b id="svTotal"></b></div>
+        </div>
+        <div class="two">
+          <div><label>Received</label><input id="svPaid" type="number" inputmode="decimal" min="0" step="0.01" value="0"></div>
+          <div><label>Payment Type</label><select id="svPay">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option>${type}</option>`).join("")}</select></div>
+        </div>
+        <div class="lx-quick"><span>Due</span><b id="svDue"></b></div>
+        <div class="two" style="margin-top:10px">
+          <div><label>Date</label><input id="svDate" type="date" value="${today()}"></div>
+          <div><label>Note</label><input id="svNote" autocomplete="off" placeholder="e.g. bike number"></div>
+        </div>
+        <div class="two" style="margin-top:16px">
+          <button class="btn or" type="button" id="svCancel">Cancel</button>
+          <button class="btn pu" type="button" id="svSave">Save and Receipt</button>
+        </div></div>`;
+      dialog.showModal();
+
+      // The amount received follows the total until it is typed in by hand.
+      let paidTyped = false;
+      const lines = () => [...dialog.querySelectorAll(".sv-line")].map((row) => ({
+        row,
+        name: (row.querySelector(".sv-name") as HTMLInputElement).value.trim(),
+        qty: q3(+(row.querySelector(".sv-qty") as HTMLInputElement).value || 0),
+        price: money2(+(row.querySelector(".sv-price") as HTMLInputElement).value || 0),
+      }));
+      const totals = () => {
+        const subtotal = money2(sum(lines(), (entry) => entry.qty * entry.price));
+        const disc = Math.min(subtotal, Math.max(0, money2(+$("#svDisc").value || 0)));
+        return { subtotal, disc, total: money2(subtotal - disc) };
+      };
+      const refresh = () => {
+        for (const entry of lines()) (entry.row.querySelector(".sv-amt") as HTMLElement).textContent = tk(entry.qty * entry.price);
+        const { subtotal, total } = totals();
+        if (!paidTyped) $("#svPaid").value = String(total);
+        $("#svSubtotal").textContent = tk(subtotal);
+        $("#svTotal").textContent = tk(total);
+        $("#svDue").textContent = tk(Math.max(0, money2(total - (+$("#svPaid").value || 0))));
+      };
+      refresh();
+      (dialog.querySelector(".sv-name") as HTMLInputElement).focus();
+
+      const linesBox = $("#svLines");
+      linesBox.addEventListener("input", (event: Event) => {
+        const box = event.target as HTMLInputElement;
+        // A service done before brings back the price it was done for.
+        if (box.classList.contains("sv-name")) {
+          const price = prices.get(box.value.trim().toLowerCase());
+          const priceBox = box.closest(".sv-line")!.querySelector(".sv-price") as HTMLInputElement;
+          if (price !== undefined && !priceBox.value) priceBox.value = String(price);
+        }
+        refresh();
+      });
+      linesBox.addEventListener("click", (event: Event) => {
+        const remove = (event.target as HTMLElement).closest("[data-remove]");
+        if (!remove) return;
+        if (dialog.querySelectorAll(".sv-line").length > 1) remove.closest(".sv-line")!.remove();
+        else dialog.querySelectorAll<HTMLInputElement>(".sv-line input").forEach((box) => { box.value = box.classList.contains("sv-qty") ? "1" : ""; });
+        refresh();
+      });
+      $("#svAddLine").addEventListener("click", () => {
+        linesBox.insertAdjacentHTML("beforeend", line());
+        (linesBox.lastElementChild!.querySelector(".sv-name") as HTMLInputElement).focus();
+      });
+      $("#svDisc").addEventListener("input", refresh);
+      $("#svPaid").addEventListener("input", () => { paidTyped = true; refresh(); });
+      // A known mobile number fills in the customer's name.
+      $("#svPhone").addEventListener("input", () => {
+        const phone = $("#svPhone").value.trim();
+        const known = phone && D.customers.find((person: any) => String(person.phone || "").trim() === phone);
+        if (known && !$("#svName").value.trim()) $("#svName").value = known.name || "";
+      });
+      $("#svCancel").addEventListener("click", () => dialog.close());
+
+      $("#svSave").addEventListener("click", () => {
+        const filled = lines().filter((entry) => entry.name || entry.price);
+        if (!filled.length) { toast("Write the service and its price"); return; }
+        if (filled.some((entry) => !entry.name)) { toast("Write the name of each service"); return; }
+        if (filled.some((entry) => !(entry.qty > 0))) { toast("Enter a quantity for each service"); return; }
+        const { subtotal, disc, total } = totals();
+        if (!(total > 0)) { toast("Enter the price of the service"); return; }
+        const paid = Math.min(total, Math.max(0, money2(+$("#svPaid").value || 0)));
+
+        // The customer is kept like a sale's buyer: the mobile number says who they are.
+        const name = $("#svName").value.trim();
+        const phone = $("#svPhone").value.trim();
+        let customer: any = null;
+        if (name || phone) {
+          customer = D.customers.find((person: any) => phone
+            ? String(person.phone || "").trim() === phone
+            : !person.phone && String(person.name || "").trim().toLowerCase() === name.toLowerCase());
+          if (!customer) {
+            customer = { id: uid(), status: "Active", name: name || phone, phone, address: "" };
+            D.customers.push(customer);
+          }
+        }
+
+        const used = new Set(D.services.map((entry: any) => entry.inv));
+        let number = "";
+        do { D.seq++; number = `SV-${String(D.seq).padStart(5, "0")}`; } while (used.has(number));
+        const id = uid();
+        D.services.unshift({
+          id,
+          inv: number,
+          kind: "service",
+          date: $("#svDate").value || today(),
+          time: nowTime(),
+          party: customer ? customer.name : "Walk-in Customer",
+          phone: customer ? customer.phone || "" : "",
+          partyId: customer ? customer.id : 0,
+          items: filled.map((entry) => ({ name: entry.name, qty: entry.qty, price: entry.price })),
+          subtotal,
+          disc,
+          total,
+          paid,
+          due: money2(total - paid),
+          pay: $("#svPay").value,
+          note: $("#svNote").value.trim(),
+        });
+        save();
+        dialog.close();
+        toast("Service sale saved");
+        servicesPage();
+        quickReceipt(id);
+      });
+    };
 
     function peoplePage(k: PeopleList) {
       const forCustomers = k === "customers";
@@ -3853,7 +4095,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           sum(
             ms(D.sales),
             (s) => s.p,
-          ) - E;
+          ) - E + sum(ms(D.services), (s) => s.total);
 
         const cs = [
           [
@@ -3913,6 +4155,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             ),
             "#d946ef",
             "↩",
+          ],
+          [
+            "Service Income",
+            tk(sum(ms(D.services), (s) => s.total)),
+            "#0ea5e9",
+            "🧰",
           ],
           [
             "Today's Courier Orders",
@@ -3986,6 +4234,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           "Sales Returns": "sale-returns",
           "Net Profit": "profit",
           "Purchase Returns": "purchase-returns",
+          "Service Income": "services",
           "Today's Courier Orders": "sales",
         };
 
@@ -4012,7 +4261,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                         color:#fff
                       "
                     >
-                      ${c[0] === "Total Sales" ? '<svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M8 13h8"/><path d="M9 16h.01M15 16h.01"/></svg>' : c[0] === "Total Purchase" ? '<svg viewBox="0 0 24 24"><path d="M3 4h2l2.2 11.5a2 2 0 0 0 2 1.5h8.9a2 2 0 0 0 2-1.6L22 8H6"/><circle cx="10" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>' : c[0] === "Total Expense" ? '<svg viewBox="0 0 24 24"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' : c[0] === "Total Customer" || c[0] === "Total Supplier" ? '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 5"/></svg>' : c[0] === "Sales Returns" || c[0] === "Purchase Returns" ? '<svg viewBox="0 0 24 24"><path d="M3 10V5h5M4 5a9 9 0 1 1-1 9"/><path d="m8 12 4-4 4 4M12 8v9"/></svg>' : c[0] === "Net Profit" ? '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M7 15h4M16 13v4M14 15h4"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M3 7h12v11H3zM15 11h4l3 3v4h-7z"/><circle cx="7" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></svg>'}
+                      ${c[0] === "Total Sales" ? '<svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M8 13h8"/><path d="M9 16h.01M15 16h.01"/></svg>' : c[0] === "Total Purchase" ? '<svg viewBox="0 0 24 24"><path d="M3 4h2l2.2 11.5a2 2 0 0 0 2 1.5h8.9a2 2 0 0 0 2-1.6L22 8H6"/><circle cx="10" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>' : c[0] === "Total Expense" ? '<svg viewBox="0 0 24 24"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' : c[0] === "Total Customer" || c[0] === "Total Supplier" ? '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 5"/></svg>' : c[0] === "Sales Returns" || c[0] === "Purchase Returns" ? '<svg viewBox="0 0 24 24"><path d="M3 10V5h5M4 5a9 9 0 1 1-1 9"/><path d="m8 12 4-4 4 4M12 8v9"/></svg>' : c[0] === "Service Income" ? '<svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>' : c[0] === "Net Profit" ? '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M7 15h4M16 13v4M14 15h4"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M3 7h12v11H3zM15 11h4l3 3v4h-7z"/><circle cx="7" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></svg>'}
                     </em>
 
                   </div>
@@ -4450,6 +4699,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       },
 
       dues: duesPage,
+      services: servicesPage,
       employees: employeesPage,
       customers: () => peoplePage("customers"),
       suppliers: () => peoplePage("suppliers"),
@@ -4491,7 +4741,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           const gross = sum(kept, (sale) => sale.p);
           const cost = revenue - gross;
           const spent = sum(expenses, (expense) => expense.amount);
-          const net = gross - spent;
+          const services = D.services.filter((entry: any) => inRange(entry.date));
+          const serviceIncome = sum(services, (entry) => entry.total);
+          const net = gross + serviceIncome - spent;
 
           // Every item sold in the period, gathered by product.
           const byProduct = new Map<string, AnyData>();
@@ -4509,7 +4761,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           const products = [...byProduct.values()].sort((a, b) => b.profit - a.profit);
 
           const byDay = new Map<string, AnyData>();
-          const dayRow = (date: string) => byDay.get(date) || { date, invoices: 0, sales: 0, profit: 0, expenses: 0 };
+          const dayRow = (date: string) => byDay.get(date) || { date, invoices: 0, sales: 0, profit: 0, services: 0, expenses: 0 };
+          for (const entry of services) { const row = dayRow(entry.date); row.services += +entry.total || 0; byDay.set(entry.date, row); }
           for (const sale of kept) { const row = dayRow(sale.date); row.invoices++; row.sales += +sale.total || 0; row.profit += +sale.p || 0; byDay.set(sale.date, row); }
           for (const expense of expenses) { const row = dayRow(expense.date); row.expenses += +expense.amount || 0; byDay.set(expense.date, row); }
           const days = [...byDay.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -4538,10 +4791,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             foot: null,
             csv: () => [["Product", "Code", "Qty Sold", "Invoices", "Sale", "Cost", "Profit", "Margin %"], ...rows.map((row) => [row.name, row.code, +row.qty.toFixed(3), row.invoices.size, row.sales.toFixed(2), (row.sales - row.profit).toFixed(2), row.profit.toFixed(2), marginOf(row.profit, row.sales).toFixed(1)])],
           } : {
-            heads: ["Date", "Invoices", "Sale", "Gross Profit", "Expense", "Net Profit"],
-            body: visible.map((row) => `<tr><td class="lx-main"><b>${esc(row.date)}</b></td><td class="num" ${lxLabel("Invoices")}>${row.invoices}</td><td class="num" ${lxLabel("Sale")}>${tk(row.sales)}</td><td class="num" ${lxLabel("Gross Profit")}>${tk(row.profit)}</td><td class="num" ${lxLabel("Expense")}>${row.expenses ? `<span class="lx-due">${tk(row.expenses)}</span>` : tk(0)}</td><td class="num" ${lxLabel("Net Profit")}>${signed(row.profit - row.expenses)}</td></tr>`).join(""),
+            heads: ["Date", "Invoices", "Sale", "Gross Profit", "Service Income", "Expense", "Net Profit"],
+            body: visible.map((row) => `<tr><td class="lx-main"><b>${esc(row.date)}</b></td><td class="num" ${lxLabel("Invoices")}>${row.invoices}</td><td class="num" ${lxLabel("Sale")}>${tk(row.sales)}</td><td class="num" ${lxLabel("Gross Profit")}>${tk(row.profit)}</td><td class="num" ${lxLabel("Service Income")}>${tk(row.services)}</td><td class="num" ${lxLabel("Expense")}>${row.expenses ? `<span class="lx-due">${tk(row.expenses)}</span>` : tk(0)}</td><td class="num" ${lxLabel("Net Profit")}>${signed(row.profit + row.services - row.expenses)}</td></tr>`).join(""),
             foot: null,
-            csv: () => [["Date", "Invoices", "Sale", "Gross Profit", "Expense", "Net Profit"], ...rows.map((row) => [row.date, row.invoices, row.sales.toFixed(2), row.profit.toFixed(2), row.expenses.toFixed(2), (row.profit - row.expenses).toFixed(2)])],
+            csv: () => [["Date", "Invoices", "Sale", "Gross Profit", "Service Income", "Expense", "Net Profit"], ...rows.map((row) => [row.date, row.invoices, row.sales.toFixed(2), row.profit.toFixed(2), row.services.toFixed(2), row.expenses.toFixed(2), (row.profit + row.services - row.expenses).toFixed(2)])],
           };
           const columns = table.heads.length;
           const rangeText = from || to ? `${from || "…"} — ${to || "…"}` : said("All Time");
@@ -4569,7 +4822,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                 ${lxKpi("box", "Cost of Goods", tk(cost), "What the sold goods cost you", "var(--mut)")}
                 ${lxKpi("trend", "Gross Profit", tk(gross), `${marginOf(gross, revenue).toFixed(1)}% margin`, "var(--gr)")}
                 ${lxKpi("wallet", "Total Expense", tk(spent), `${expenses.length} expenses`, "var(--rd)")}
-                <div class="lx-kpi pl-net ${net < 0 ? "loss" : ""}"><em>${lxIcon(net < 0 ? "down" : "trend")}</em><div><span>${net < 0 ? "Net Loss" : "Net Profit"}</span><b>${tk(Math.abs(net))}</b><small>Gross profit minus expenses</small></div></div>
+                <div class="lx-kpi pl-net ${net < 0 ? "loss" : ""}"><em>${lxIcon(net < 0 ? "down" : "trend")}</em><div><span>${net < 0 ? "Net Loss" : "Net Profit"}</span><b>${tk(Math.abs(net))}</b><small>${D.services.length ? "Gross profit + service income − expenses" : "Gross profit minus expenses"}</small></div></div>
               </div>
 
               <div class="pl-grid">
@@ -4578,6 +4831,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                   <div class="pl-line"><span>Total Sale</span><b>${tk(revenue)}</b></div>
                   <div class="pl-line minus"><span>Cost of Goods</span><b>− ${tk(cost)}</b></div>
                   <div class="pl-line pl-sub"><span>Gross Profit</span><b>${tk(gross)}</b></div>
+                  ${D.services.length ? `<div class="pl-line plus"><span>Service Income</span><b>+ ${tk(serviceIncome)}</b></div>` : ""}
                   <div class="pl-line minus"><span>Total Expense</span><b>− ${tk(spent)}</b></div>
                   <div class="pl-line total ${net < 0 ? "loss" : ""}"><span>${net < 0 ? "Net Loss" : "Net Profit"}</span><b>${tk(net)}</b></div>
                   ${returned.length ? `<p class="pl-note">${said("Returned invoices are not counted")}: <b data-no-translate>${returned.length} · ${tk(sum(returned, (sale) => sale.total))}</b></p>` : ""}
@@ -4774,6 +5028,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       ],
 
       [
+        "Service Sale",
+        "🧰",
+        "services",
+      ],
+
+      [
         "Purchases",
         "🧾",
         [
@@ -4929,6 +5189,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const MENU_ICONS: Record<string, string> = {
       Dashboard: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
       Sales: LX_ICONS.cart,
+      "Service Sale": LX_ICONS.tool,
       Purchases: '<path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
       Products: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>',
       "Stock List": '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
