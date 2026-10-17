@@ -644,6 +644,10 @@ td.mut{
 .pl-scope svg{width:17px;height:17px}
 .sv-more{margin-top:12px;text-align:center}
 a.lx-out{text-decoration:none}
+/* A staff login does not see the buttons that change or delete what is saved. */
+body.staff-mode .owner-only,body.staff-mode [data-edit],body.staff-mode [data-delete],body.staff-mode #personEdit,
+body.staff-mode [onclick*="del('"],body.staff-mode [onclick*="editSale("],body.staff-mode [onclick*="editProduct("],body.staff-mode [onclick*="ret('"]{display:none!important}
+input[readonly][title]{background:var(--bg);color:var(--mut);cursor:not-allowed}
 .known-customer{border-color:var(--gr)!important;background:color-mix(in srgb,var(--gr) 7%,var(--pn))!important;font-weight:600}
 .sv-pos{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(340px,1fr);gap:16px;align-items:start}
 .sv-pos .card{margin:0}

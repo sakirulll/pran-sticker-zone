@@ -218,6 +218,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           // What a sale may not be saved without; each shop chooses.
           requirePhone: false,
           requireReceived: false,
+          staffCanChangePrice: false,
           notifications: { lowStock: true, expiry: true, dueReminders: true, sales: true, purchases: true, expenses: true },
         },
 
@@ -885,7 +886,19 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       toast(k === "expenses" && D.settings.notifications.expenses ? "Expense added" : C[k][0] + " saved");
     };
 
+    // Only the owner changes or deletes what is saved. Staff sell, take payments and add new
+    // records; the buttons for the rest are hidden from them, and refused here as well.
+    const ownerOnly = () => {
+      if (isWorkspaceOwner) return true;
+      toast("Only the shop owner can edit or delete this");
+      return false;
+    };
+    // Staff sell at the listed prices unless the owner lets them change prices and give discounts.
+    const priceLocked = () => !isWorkspaceOwner && !D.settings.staffCanChangePrice;
+    const lockAttr = () => (priceLocked() ? 'readonly title="Only the shop owner can change this"' : "");
+
     const del = (k: string, id: number) => {
+      if (!ownerOnly()) return;
       if (confirm("Delete this record?")) {
         const record = D[k].find((x: any) => x.id === id);
         const productImagePath = k === "products" ? (record?.imagePath || record?.image) : "";
@@ -908,6 +921,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const ret = (k: string, id: number) => {
+      if (!ownerOnly()) return;
       const s = D[k].find((x: any) => x.id == id);
 
       if (!s) return;
@@ -957,6 +971,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const editSale = (id: number) => {
+      if (!ownerOnly()) return;
       const sale = D.sales.find((item: any) => item.id == id);
       if (!sale) return;
       const dialog = $("#dlg") as HTMLDialogElement;
@@ -1174,6 +1189,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                     type="number"
                     min="0"
                     value="0"
+                    ${lockAttr()}
                     oninput="calc()"
                   >
                 </div>
@@ -1484,6 +1500,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const setCartPrice = (index: number, value: string) => {
+      if (priceLocked()) return;
       if (!CART[index]) return;
       CART[index].price = +value || 0;
       calc();
@@ -1539,6 +1556,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                   type="number"
                   style="width:80px"
                   value="${c.price}"
+                  ${lockAttr()}
                   oninput="setCartPrice(${i},this.value)"
                 >
               </td>
@@ -2440,6 +2458,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const editProduct = (id: number) => {
+      if (!ownerOnly()) return;
       const product = prod(id);
       if (!product) return;
       // The fields this kind of shop uses, and any the product already has from before the kind was changed.
@@ -2551,7 +2570,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const generalSettingsPage = () => {
-      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Business Type<select id="settingBusinessType">${Object.entries(BUSINESS_TYPES).map(([id, kind]) => `<option value="${id}" ${id === (D.settings.businessType || "general") ? "selected" : ""}>${kind.label}</option>`).join("")}</select></label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedPhone" type="checkbox" style="width:auto" ${D.settings.requirePhone ? "checked" : ""}> Every sale and service bill needs the customer's phone number</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedReceived" type="checkbox" style="width:auto" ${D.settings.requireReceived ? "checked" : ""}> The amount received has to be typed on every sale</label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
+      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Business Type<select id="settingBusinessType">${Object.entries(BUSINESS_TYPES).map(([id, kind]) => `<option value="${id}" ${id === (D.settings.businessType || "general") ? "selected" : ""}>${kind.label}</option>`).join("")}</select></label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedPhone" type="checkbox" style="width:auto" ${D.settings.requirePhone ? "checked" : ""}> Every sale and service bill needs the customer's phone number</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingStaffPrice" type="checkbox" style="width:auto" ${D.settings.staffCanChangePrice ? "checked" : ""}> Staff can change prices and give discounts while selling</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedReceived" type="checkbox" style="width:auto" ${D.settings.requireReceived ? "checked" : ""}> The amount received has to be typed on every sale</label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
       $("#generalSettingsForm").addEventListener("submit", async (event: Event) => {
         event.preventDefault();
         const logoFile = $("#settingLogo")?.files?.[0] as File | undefined;
@@ -2576,6 +2595,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         D.settings.invoiceFooter = $("#settingFooter").value.trim();
         D.settings.requirePhone = $("#settingNeedPhone").checked;
         D.settings.requireReceived = $("#settingNeedReceived").checked;
+        D.settings.staffCanChangePrice = $("#settingStaffPrice").checked;
         D.settings.businessType = $("#settingBusinessType").value;
         // Give the shop the units and categories its kind of business usually needs.
         for (const list of ["units", "categories"] as const) {
@@ -3627,7 +3647,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
         if (!button) return;
         if (button.dataset.receipt) receiptDialog(+button.dataset.receipt);
-        if (button.dataset.delete && confirm("Delete this service receipt?")) {
+        if (button.dataset.delete && ownerOnly() && confirm("Delete this service receipt?")) {
           D.services = D.services.filter((entry: any) => entry.id != button.dataset.delete);
           save();
           servicesPage();
@@ -3638,6 +3658,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const serviceCategories = () => [...new Set(D.serviceItems.map((item: any) => String(item.category || "Other")))];
 
     const serviceItemDialog = (item: any, done: () => void) => {
+      if (!ownerOnly()) return;
       const dialog = $("#dlg") as HTMLDialogElement;
       dialog.innerHTML = `<div class="lx-dlg">
         <h3>${item ? "Edit Service" : "New Service"}</h3>
@@ -3686,8 +3707,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             <div class="hd">
               <h2><span>${esc(serviceLabel())}</span> · <span>Price List</span></h2>
               <div class="lx-acts">
-                <button class="lx-out" type="button" id="siStarter">${lxIcon("box")}<span>Add ready-made list</span></button>
-                <button class="lx-add" type="button" id="siNew">${lxIcon("plus")}<span>New Service</span></button>
+                <button class="lx-out owner-only" type="button" id="siStarter">${lxIcon("box")}<span>Add ready-made list</span></button>
+                <button class="lx-add owner-only" type="button" id="siNew">${lxIcon("plus")}<span>New Service</span></button>
               </div>
             </div>
             <p class="settings-help" style="margin-top:0">These show as buttons on the New Bill screen. Change a price here and the next bill uses it.</p>
@@ -3706,7 +3727,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           </section>
         </div>`;
       $("#siNew").addEventListener("click", () => serviceItemDialog(null, serviceItemsPage));
-      $("#siStarter").addEventListener("click", () => { addStarterServices(); serviceItemsPage(); });
+      $("#siStarter").addEventListener("click", () => { if (!ownerOnly()) return; addStarterServices(); serviceItemsPage(); });
       $("#app").querySelector("tbody")!.addEventListener("click", (event: Event) => {
         const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
         if (!button) return;
@@ -3737,7 +3758,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             <div class="hd">
               <h2>${esc(serviceLabel())}</h2>
               <div class="lx-acts">
-                <a class="lx-out" href="#service-items">${lxIcon("edit")}<span>Price List</span></a>
+                <a class="lx-out owner-only" href="#service-items">${lxIcon("edit")}<span>Price List</span></a>
                 <a class="lx-out" href="#service-list">${lxIcon("clock")}<span>Bill List</span></a>
               </div>
             </div>
@@ -3762,10 +3783,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             </div>
             <datalist id="svNames">${[...new Set([...D.serviceItems.map((item: any) => item.name), ...serviceNames()])].map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist>
             <div id="svLines" class="sv-lines"></div>
-            <button class="lx-link" type="button" id="svCustom">+ A service not in the list</button>
+            ${priceLocked() ? "" : `<button class="lx-link" type="button" id="svCustom">+ A service not in the list</button>`}
             <div class="sv-sum">
               <div><span>Subtotal</span><b id="svSubtotal"></b></div>
-              <div><span>Discount</span><input id="svDisc" type="number" inputmode="decimal" min="0" step="0.01" value="0"></div>
+              <div><span>Discount</span><input id="svDisc" type="number" inputmode="decimal" min="0" step="0.01" value="0" ${lockAttr()}></div>
               <div class="sv-total"><span>Total</span><b id="svTotal"></b></div>
             </div>
             <div class="two">
@@ -3790,7 +3811,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         box.innerHTML = shown.map((item: any) => {
           const inBill = sum(SV_CART.filter((line) => line.itemId == item.id), (line) => line.qty);
           return `<button type="button" class="sv-tile ${inBill ? "in" : ""}" data-item="${item.id}">${inBill ? `<i>${+inBill.toFixed(3)}</i>` : ""}<b data-no-translate>${esc(item.name)}</b><span>${tk(item.price)}</span></button>`;
-        }).join("") + `<button type="button" class="sv-tile sv-new" id="svNewTile">${lxIcon("plus")}<b>New Service</b></button>`
+        }).join("") + `<button type="button" class="sv-tile sv-new owner-only" id="svNewTile">${lxIcon("plus")}<b>New Service</b></button>`
           + (shown.length ? "" : `<p class="sv-none">No service matches your search</p>`);
       };
 
@@ -3819,7 +3840,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           <div class="sv-row" data-line="${line.key}">
             ${line.itemId ? `<b class="sv-row-name" data-no-translate>${esc(line.name)}</b>` : `<input class="sv-row-name" data-field="name" list="svNames" value="${esc(line.name)}" placeholder="Service name" aria-label="Service">`}
             <div class="sv-step"><button type="button" data-step="-1" aria-label="Less">−</button><input data-field="qty" type="number" inputmode="decimal" min="0.001" step="any" value="${line.qty}" aria-label="Qty"><button type="button" data-step="1" aria-label="More">+</button></div>
-            <input class="sv-row-price" data-field="price" type="number" inputmode="decimal" min="0" step="0.01" value="${line.price}" aria-label="Price">
+            <input class="sv-row-price" data-field="price" type="number" inputmode="decimal" min="0" step="0.01" value="${line.price}" aria-label="Price" ${lockAttr()}>
             <b class="sv-amt"></b>
             <button class="lx-ic del" type="button" title="Remove" aria-label="Remove" data-remove>${lxIcon("trash")}</button>
           </div>`).join("") || `<p class="sv-empty">Tap a service on the left to add it to the bill.</p>`;
@@ -3849,9 +3870,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         document.querySelectorAll(".sv-cats button").forEach((other) => other.classList.toggle("on", other === button));
         drawTiles();
       }));
-      $("#svStarter")?.addEventListener("click", () => { addStarterServices(); servicePosPage(); });
+      $("#svStarter")?.addEventListener("click", () => { if (!ownerOnly()) return; addStarterServices(); servicePosPage(); });
       $("#svFirst")?.addEventListener("click", () => serviceItemDialog(null, servicePosPage));
-      $("#svCustom").addEventListener("click", () => {
+      $("#svCustom")?.addEventListener("click", () => {
         SV_CART.push({ key: uid(), itemId: 0, name: "", qty: 1, price: 0, cost: 0 });
         redraw();
         (document.querySelector(`[data-line="${SV_CART[SV_CART.length - 1].key}"] .sv-row-name`) as HTMLInputElement)?.focus();
@@ -4020,6 +4041,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     }
 
     const personForm = (k: PeopleList, person?: any) => {
+      if (person && !ownerOnly()) return;
       const title = C[k][0];
       const dialog = $("#dlg") as HTMLDialogElement;
       dialog.innerHTML = `<div class="lx-dlg">
@@ -4212,6 +4234,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     }
 
     const employeeForm = (employee?: any) => {
+      if (employee && !ownerOnly()) return;
       const dialog = $("#dlg") as HTMLDialogElement;
       dialog.innerHTML = `<div class="lx-dlg">
         <h3>${employee ? "Edit Employee" : "Add new Employee"}</h3>
@@ -5640,6 +5663,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     const render = () => {
       updateBell();
+      document.body.classList.toggle("staff-mode", !isWorkspaceOwner);
+      document.body.classList.toggle("price-locked", priceLocked());
       const r =
         location.hash.slice(1) ||
         "dashboard";
