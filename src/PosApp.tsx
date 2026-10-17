@@ -197,6 +197,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         salary: [],
         attendance: [],
         services: [],
+        serviceItems: [],
         transfers: [],
 
         currencies: [
@@ -3476,15 +3477,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // gets its own numbered receipt. They are kept apart from the shop's sales.
     let SERVICE_QUERY = "";
     let SERVICE_LIMIT = 25;
-    // Every service done before, with the price it was last done for, to offer again.
-    const pastServices = () => {
-      const seen = new Map<string, number>();
-      for (const entry of D.services) for (const item of entry.items || []) {
-        const name = String(item.name || "").trim();
-        if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), +item.price || 0);
-      }
-      return seen;
-    };
     const serviceNames = () => {
       const names = new Map<string, string>();
       for (const entry of D.services) for (const item of entry.items || []) {
@@ -3544,7 +3536,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       };
       drawRows();
 
-      $("#newService").addEventListener("click", () => serviceForm());
+      $("#newService").addEventListener("click", () => { location.hash = "services"; });
       $("#serviceSearch").addEventListener("input", (event: Event) => { SERVICE_QUERY = (event.currentTarget as HTMLInputElement).value; SERVICE_LIMIT = 25; drawRows(); });
       $("#serviceRows").addEventListener("click", (event: Event) => {
         const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
@@ -3558,108 +3550,285 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       });
     }
 
-    const serviceForm = () => {
+    // A ready list for a sticker and wash shop, added in one go and then priced as the shop likes.
+    const SERVICE_STARTER: [string, [string, number][]][] = [
+      ["Sticker", [
+        ["Bike Full Sticker", 1500], ["Bike Half Sticker", 800], ["Bike Tank Sticker", 300], ["Bike Name Sticker", 150],
+        ["Number Plate Sticker", 200], ["Helmet Sticker", 150], ["Bike Reflective Sticker", 250], ["Car Full Wrap", 15000],
+        ["Car Side Sticker", 1200], ["Car Name Sticker", 300], ["Windshield Sticker", 400], ["Laptop Skin", 350],
+        ["Mobile Skin", 200], ["Custom Name Sticker", 100], ["Sticker Remove", 300],
+      ]],
+      ["Wash", [
+        ["Bike Wash", 150], ["Bike Foam Wash", 250], ["Bike Polish", 300], ["Bike Full Wash & Polish", 400],
+        ["Car Wash", 500], ["Car Foam Wash", 800], ["Car Interior Cleaning", 1000], ["Car Polish", 1500], ["Engine Wash", 300],
+      ]],
+      ["Other", [
+        ["Chain Lubrication", 100], ["Number Plate Fitting", 200], ["Lamination", 50], ["Fitting Charge", 100], ["Delivery Charge", 60],
+      ]],
+    ];
+    const serviceCategories = () => [...new Set(D.serviceItems.map((item: any) => String(item.category || "Other")))];
+
+    const serviceItemDialog = (item: any, done: () => void) => {
       const dialog = $("#dlg") as HTMLDialogElement;
-      const prices = pastServices();
-      const line = () => `
-        <div class="sv-line">
-          <input class="sv-name" list="svNames" placeholder="Service, e.g. Bike wash" aria-label="Service">
-          <input class="sv-qty" type="number" inputmode="decimal" min="0.001" step="any" value="1" aria-label="Qty">
-          <input class="sv-price" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Price" aria-label="Price">
-          <b class="sv-amt">${tk(0)}</b>
-          <button class="lx-ic del" type="button" title="Remove" aria-label="Remove" data-remove>${lxIcon("trash")}</button>
-        </div>`;
-      dialog.innerHTML = `<div class="lx-dlg sv-dlg">
-        <h3>New Service Sale</h3>
-        <datalist id="svNames">${serviceNames().map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist>
-        <div class="two">
-          <div><label>Customer Mobile</label><input id="svPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="01XXXXXXXXX"></div>
-          <div><label>Customer Name</label><input id="svName" autocomplete="off" placeholder="Walk-in Customer"></div>
-        </div>
-        <div class="sv-head"><span>Service</span><span>Qty</span><span>Price</span><span>Amount</span><span></span></div>
-        <div id="svLines">${line()}</div>
-        <button class="lx-link" type="button" id="svAddLine">+ Add another service</button>
-        <div class="sv-sum">
-          <div><span>Subtotal</span><b id="svSubtotal"></b></div>
-          <div><span>Discount</span><input id="svDisc" type="number" inputmode="decimal" min="0" step="0.01" value="0"></div>
-          <div class="sv-total"><span>Total</span><b id="svTotal"></b></div>
-        </div>
-        <div class="two">
-          <div><label>Received</label><input id="svPaid" type="number" inputmode="decimal" min="0" step="0.01" value="0"></div>
-          <div><label>Payment Type</label><select id="svPay">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option>${type}</option>`).join("")}</select></div>
-        </div>
-        <div class="lx-quick"><span>Due</span><b id="svDue"></b></div>
+      dialog.innerHTML = `<div class="lx-dlg">
+        <h3>${item ? "Edit Service" : "New Service"}</h3>
+        <label>Service Name</label><input id="siName" value="${esc(item?.name || "")}" placeholder="e.g. Bike Wash" autocomplete="off">
         <div class="two" style="margin-top:10px">
-          <div><label>Date</label><input id="svDate" type="date" value="${today()}"></div>
-          <div><label>Note</label><input id="svNote" autocomplete="off" placeholder="e.g. bike number"></div>
+          <div><label>Category</label><input id="siCategory" list="siCategories" value="${esc(item?.category || "")}" placeholder="e.g. Wash" autocomplete="off">
+            <datalist id="siCategories">${serviceCategories().map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist></div>
+          <div><label>Price</label><input id="siPrice" type="number" inputmode="decimal" min="0" step="0.01" value="${item ? +item.price || 0 : ""}"></div>
         </div>
         <div class="two" style="margin-top:16px">
-          <button class="btn or" type="button" id="svCancel">Cancel</button>
-          <button class="btn pu" type="button" id="svSave">Save and Receipt</button>
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
+          <button class="btn pu" type="button" id="siSave">Save</button>
         </div></div>`;
       dialog.showModal();
+      ($("#siName") as HTMLInputElement).focus();
+      $("#siSave").addEventListener("click", () => {
+        const name = $("#siName").value.trim();
+        if (!name) { toast("Write the name of the service"); return; }
+        const values = { name, category: $("#siCategory").value.trim() || "Other", price: Math.max(0, money2(+$("#siPrice").value || 0)) };
+        if (item) Object.assign(item, values);
+        else D.serviceItems.push({ id: uid(), ...values });
+        save();
+        dialog.close();
+        done();
+      });
+    };
+    const addStarterServices = () => {
+      const have = new Set(D.serviceItems.map((item: any) => String(item.name).toLowerCase()));
+      let added = 0;
+      for (const [category, list] of SERVICE_STARTER) for (const [name, price] of list) {
+        if (have.has(name.toLowerCase())) continue;
+        D.serviceItems.push({ id: uid(), name, category, price });
+        added++;
+      }
+      save();
+      toast(added ? `${added} services added` : "These services are already in your list");
+    };
 
-      // The amount received follows the total until it is typed in by hand.
-      let paidTyped = false;
-      const lines = () => [...dialog.querySelectorAll(".sv-line")].map((row) => ({
-        row,
-        name: (row.querySelector(".sv-name") as HTMLInputElement).value.trim(),
-        qty: q3(+(row.querySelector(".sv-qty") as HTMLInputElement).value || 0),
-        price: money2(+(row.querySelector(".sv-price") as HTMLInputElement).value || 0),
-      }));
+    // The services the shop offers, each with its usual price.
+    function serviceItemsPage() {
+      $("#app").innerHTML = `
+        <div class="lx">
+          <section class="card">
+            <div class="hd">
+              <h2>Service List</h2>
+              <div class="lx-acts">
+                <button class="lx-out" type="button" id="siStarter">${lxIcon("box")}<span>Add ready-made list</span></button>
+                <button class="lx-add" type="button" id="siNew">${lxIcon("plus")}<span>New Service</span></button>
+              </div>
+            </div>
+            <p class="settings-help" style="margin-top:0">These show as buttons on the service sale screen. Change a price here and the next sale uses it.</p>
+            <div class="wrap"><table class="lx-table">
+              <thead><tr><th>Service</th><th>Category</th><th class="num">Price</th><th></th></tr></thead>
+              <tbody>${D.serviceItems.map((item: any) => `
+                <tr>
+                  <td class="lx-main"><b data-no-translate>${esc(item.name)}</b></td>
+                  <td ${lxLabel("Category")}><span>${esc(item.category || "Other")}</span></td>
+                  <td class="num" ${lxLabel("Price")}><b>${tk(item.price)}</b></td>
+                  <td><div class="lx-acts"><button class="lx-ic" type="button" title="Edit" aria-label="Edit" data-edit="${item.id}">${lxIcon("edit")}</button><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-delete="${item.id}">${lxIcon("trash")}</button></div></td>
+                </tr>`).join("") || lxEmpty(4, "No service yet. Add your own, or press \"Add ready-made list\".")}</tbody>
+            </table></div>
+          </section>
+        </div>`;
+      $("#siNew").addEventListener("click", () => serviceItemDialog(null, serviceItemsPage));
+      $("#siStarter").addEventListener("click", () => { addStarterServices(); serviceItemsPage(); });
+      $("#app").querySelector("tbody")!.addEventListener("click", (event: Event) => {
+        const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
+        if (!button) return;
+        const item = D.serviceItems.find((entry: any) => entry.id == (button.dataset.edit || button.dataset.delete));
+        if (!item) return;
+        if (button.dataset.edit) serviceItemDialog(item, serviceItemsPage);
+        if (button.dataset.delete && confirm("Delete this service from the list? Receipts already made keep it.")) {
+          D.serviceItems = D.serviceItems.filter((entry: any) => entry !== item);
+          save();
+          serviceItemsPage();
+        }
+      });
+    }
+
+    // ---- The service sale screen: tap services to bill them, then one press for the receipt.
+    // The bill stays while moving between screens, like an unfinished sale.
+    let SV_CART: { key: number; itemId: any; name: string; qty: number; price: number }[] = [];
+    let SV_CATEGORY = "";
+    let SV_QUERY = "";
+    let SV_PAID_TYPED = false;
+
+    function servicePosPage() {
+      const categories = serviceCategories();
+      if (SV_CATEGORY && !categories.includes(SV_CATEGORY)) SV_CATEGORY = "";
+      $("#app").innerHTML = `
+        <div class="lx sv-pos">
+          <section class="card sv-items">
+            <div class="hd">
+              <h2>Services</h2>
+              <div class="lx-acts">
+                <a class="lx-out" href="#service-items">${lxIcon("edit")}<span>Edit Services</span></a>
+                <a class="lx-out" href="#service-list">${lxIcon("clock")}<span>Service Sale List</span></a>
+              </div>
+            </div>
+            ${D.serviceItems.length ? `
+              <div class="lx-bar">
+                <input class="srch" id="svSearch" value="${esc(SV_QUERY)}" placeholder="Search service" autocomplete="off">
+              </div>
+              <div class="sv-cats">${["", ...categories].map((name) => `<button type="button" class="${SV_CATEGORY === name ? "on" : ""}" data-category="${esc(name)}">${name ? esc(name) : "All"}</button>`).join("")}</div>
+              <div class="sv-tiles" id="svTiles"></div>`
+            : `<div class="sv-start">
+                <p>No service yet. Add the services you do once, then each sale is a tap.</p>
+                <div class="lx-acts"><button class="lx-add" type="button" id="svStarter">${lxIcon("box")}<span>Add ready-made list</span></button><button class="lx-out" type="button" id="svFirst">${lxIcon("plus")}<span>New Service</span></button></div>
+                <small>Ready-made list: bike and car stickers, bike and car wash, and more. Change any price after.</small>
+              </div>`}
+          </section>
+
+          <section class="card sv-bill">
+            <div class="hd"><h2>Bill</h2><button class="lx-link" type="button" id="svClear" ${SV_CART.length ? "" : "hidden"}>Clear</button></div>
+            <div class="two">
+              <div><label>Customer Mobile <kbd>F1</kbd></label><input id="svPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="01XXXXXXXXX"></div>
+              <div><label>Customer Name</label><input id="svName" autocomplete="off" placeholder="Walk-in Customer"></div>
+            </div>
+            <datalist id="svNames">${[...new Set([...D.serviceItems.map((item: any) => item.name), ...serviceNames()])].map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist>
+            <div id="svLines" class="sv-lines"></div>
+            <button class="lx-link" type="button" id="svCustom">+ A service not in the list</button>
+            <div class="sv-sum">
+              <div><span>Subtotal</span><b id="svSubtotal"></b></div>
+              <div><span>Discount</span><input id="svDisc" type="number" inputmode="decimal" min="0" step="0.01" value="0"></div>
+              <div class="sv-total"><span>Total</span><b id="svTotal"></b></div>
+            </div>
+            <div class="two">
+              <div><label>Received <kbd>F4</kbd></label><input id="svPaid" type="number" inputmode="decimal" min="0" step="0.01" value="0"></div>
+              <div><label>Payment Type</label><select id="svPay">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option>${type}</option>`).join("")}</select></div>
+            </div>
+            <div class="lx-quick"><span>Due</span><b id="svDue"></b></div>
+            <div class="two" style="margin-top:10px">
+              <div><label>Date</label><input id="svDate" type="date" value="${today()}"></div>
+              <div><label>Note</label><input id="svNote" autocomplete="off" placeholder="e.g. bike number"></div>
+            </div>
+            <button class="btn pu sv-save" type="button" id="svSave">${lxIcon("print")}<span>Save and Receipt</span><kbd>F9</kbd></button>
+          </section>
+          <button class="sv-jump" type="button" id="svJump" hidden><span id="svJumpText"></span><b>Bill</b></button>
+        </div>`;
+
+      const drawTiles = () => {
+        const box = $("#svTiles");
+        if (!box) return;
+        const query = SV_QUERY.trim().toLowerCase();
+        const shown = D.serviceItems.filter((item: any) => (!SV_CATEGORY || (item.category || "Other") === SV_CATEGORY) && (!query || String(item.name).toLowerCase().includes(query)));
+        box.innerHTML = shown.map((item: any) => {
+          const inBill = sum(SV_CART.filter((line) => line.itemId == item.id), (line) => line.qty);
+          return `<button type="button" class="sv-tile ${inBill ? "in" : ""}" data-item="${item.id}">${inBill ? `<i>${+inBill.toFixed(3)}</i>` : ""}<b data-no-translate>${esc(item.name)}</b><span>${tk(item.price)}</span></button>`;
+        }).join("") + `<button type="button" class="sv-tile sv-new" id="svNewTile">${lxIcon("plus")}<b>New Service</b></button>`
+          + (shown.length ? "" : `<p class="sv-none">No service matches your search</p>`);
+      };
+
       const totals = () => {
-        const subtotal = money2(sum(lines(), (entry) => entry.qty * entry.price));
+        const subtotal = money2(sum(SV_CART, (line) => line.qty * line.price));
         const disc = Math.min(subtotal, Math.max(0, money2(+$("#svDisc").value || 0)));
         return { subtotal, disc, total: money2(subtotal - disc) };
       };
       const refresh = () => {
-        for (const entry of lines()) (entry.row.querySelector(".sv-amt") as HTMLElement).textContent = tk(entry.qty * entry.price);
         const { subtotal, total } = totals();
-        if (!paidTyped) $("#svPaid").value = String(total);
+        if (!SV_PAID_TYPED) $("#svPaid").value = String(total);
         $("#svSubtotal").textContent = tk(subtotal);
         $("#svTotal").textContent = tk(total);
         $("#svDue").textContent = tk(Math.max(0, money2(total - (+$("#svPaid").value || 0))));
+        // On a phone the bill is below the services: a bar at the bottom says what is in it and goes there.
+        const count = sum(SV_CART, (line) => line.qty);
+        $("#svJump").hidden = !SV_CART.length;
+        $("#svJumpText").textContent = `${+count.toFixed(3)} · ${tk(total)}`;
+        for (const line of SV_CART) {
+          const amount = document.querySelector(`[data-line="${line.key}"] .sv-amt`);
+          if (amount) amount.textContent = tk(line.qty * line.price);
+        }
       };
-      refresh();
-      (dialog.querySelector(".sv-name") as HTMLInputElement).focus();
+      const drawLines = () => {
+        $("#svLines").innerHTML = SV_CART.map((line) => `
+          <div class="sv-row" data-line="${line.key}">
+            ${line.itemId ? `<b class="sv-row-name" data-no-translate>${esc(line.name)}</b>` : `<input class="sv-row-name" data-field="name" list="svNames" value="${esc(line.name)}" placeholder="Service name" aria-label="Service">`}
+            <div class="sv-step"><button type="button" data-step="-1" aria-label="Less">−</button><input data-field="qty" type="number" inputmode="decimal" min="0.001" step="any" value="${line.qty}" aria-label="Qty"><button type="button" data-step="1" aria-label="More">+</button></div>
+            <input class="sv-row-price" data-field="price" type="number" inputmode="decimal" min="0" step="0.01" value="${line.price}" aria-label="Price">
+            <b class="sv-amt"></b>
+            <button class="lx-ic del" type="button" title="Remove" aria-label="Remove" data-remove>${lxIcon("trash")}</button>
+          </div>`).join("") || `<p class="sv-empty">Tap a service on the left to add it to the bill.</p>`;
+        refresh();
+      };
+      const redraw = () => { drawLines(); drawTiles(); const clear = $("#svClear"); if (clear) clear.hidden = !SV_CART.length; };
+
+      drawTiles();
+      drawLines();
+
+      const add = (item: any) => {
+        const line = SV_CART.find((entry) => entry.itemId == item.id && entry.price === +item.price);
+        if (line) line.qty = q3(line.qty + 1);
+        else SV_CART.push({ key: uid(), itemId: item.id, name: item.name, qty: 1, price: +item.price || 0 });
+        redraw();
+      };
+      $("#svTiles")?.addEventListener("click", (event: Event) => {
+        const tile = (event.target as HTMLElement).closest(".sv-tile") as HTMLElement | null;
+        if (!tile) return;
+        if (tile.id === "svNewTile") { serviceItemDialog(null, servicePosPage); return; }
+        const item = D.serviceItems.find((entry: any) => entry.id == tile.dataset.item);
+        if (item) add(item);
+      });
+      $("#svSearch")?.addEventListener("input", (event: Event) => { SV_QUERY = (event.currentTarget as HTMLInputElement).value; drawTiles(); });
+      document.querySelectorAll(".sv-cats [data-category]").forEach((button) => button.addEventListener("click", () => {
+        SV_CATEGORY = (button as HTMLElement).dataset.category || "";
+        document.querySelectorAll(".sv-cats button").forEach((other) => other.classList.toggle("on", other === button));
+        drawTiles();
+      }));
+      $("#svStarter")?.addEventListener("click", () => { addStarterServices(); servicePosPage(); });
+      $("#svFirst")?.addEventListener("click", () => serviceItemDialog(null, servicePosPage));
+      $("#svCustom").addEventListener("click", () => {
+        SV_CART.push({ key: uid(), itemId: 0, name: "", qty: 1, price: 0 });
+        redraw();
+        (document.querySelector(`[data-line="${SV_CART[SV_CART.length - 1].key}"] .sv-row-name`) as HTMLInputElement)?.focus();
+      });
+      $("#svClear")?.addEventListener("click", () => { SV_CART = []; SV_PAID_TYPED = false; redraw(); });
 
       const linesBox = $("#svLines");
       linesBox.addEventListener("input", (event: Event) => {
         const box = event.target as HTMLInputElement;
-        // A service done before brings back the price it was done for.
-        if (box.classList.contains("sv-name")) {
-          const price = prices.get(box.value.trim().toLowerCase());
-          const priceBox = box.closest(".sv-line")!.querySelector(".sv-price") as HTMLInputElement;
-          if (price !== undefined && !priceBox.value) priceBox.value = String(price);
+        const line = SV_CART.find((entry) => entry.key == +(box.closest("[data-line]") as HTMLElement).dataset.line!);
+        if (!line) return;
+        if (box.dataset.field === "name") {
+          line.name = box.value;
+          // A service from the list, typed by name, brings its price.
+          const known = D.serviceItems.find((item: any) => String(item.name).toLowerCase() === box.value.trim().toLowerCase());
+          if (known && !line.price) { line.price = +known.price || 0; (box.closest("[data-line]")!.querySelector(".sv-row-price") as HTMLInputElement).value = String(line.price); }
         }
+        if (box.dataset.field === "qty") line.qty = q3(+box.value || 0);
+        if (box.dataset.field === "price") line.price = money2(+box.value || 0);
         refresh();
+        if (box.dataset.field !== "name") drawTiles();
       });
       linesBox.addEventListener("click", (event: Event) => {
-        const remove = (event.target as HTMLElement).closest("[data-remove]");
-        if (!remove) return;
-        if (dialog.querySelectorAll(".sv-line").length > 1) remove.closest(".sv-line")!.remove();
-        else dialog.querySelectorAll<HTMLInputElement>(".sv-line input").forEach((box) => { box.value = box.classList.contains("sv-qty") ? "1" : ""; });
-        refresh();
-      });
-      $("#svAddLine").addEventListener("click", () => {
-        linesBox.insertAdjacentHTML("beforeend", line());
-        (linesBox.lastElementChild!.querySelector(".sv-name") as HTMLInputElement).focus();
+        const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
+        if (!button) return;
+        const key = +(button.closest("[data-line]") as HTMLElement).dataset.line!;
+        const line = SV_CART.find((entry) => entry.key === key);
+        if (!line) return;
+        if (button.dataset.remove !== undefined) SV_CART = SV_CART.filter((entry) => entry !== line);
+        if (button.dataset.step) {
+          line.qty = q3(line.qty + +button.dataset.step);
+          if (line.qty <= 0) SV_CART = SV_CART.filter((entry) => entry !== line);
+        }
+        redraw();
       });
       $("#svDisc").addEventListener("input", refresh);
-      $("#svPaid").addEventListener("input", () => { paidTyped = true; refresh(); });
+      $("#svJump").addEventListener("click", () => $(".sv-bill").scrollIntoView({ behavior: "smooth", block: "start" }));
+      $("#svPaid").addEventListener("input", () => { SV_PAID_TYPED = true; refresh(); });
       // A known mobile number fills in the customer's name.
       $("#svPhone").addEventListener("input", () => {
         const phone = $("#svPhone").value.trim();
         const known = phone && D.customers.find((person: any) => String(person.phone || "").trim() === phone);
         if (known && !$("#svName").value.trim()) $("#svName").value = known.name || "";
       });
-      $("#svCancel").addEventListener("click", () => dialog.close());
 
       $("#svSave").addEventListener("click", () => {
-        const filled = lines().filter((entry) => entry.name || entry.price);
-        if (!filled.length) { toast("Write the service and its price"); return; }
-        if (filled.some((entry) => !entry.name)) { toast("Write the name of each service"); return; }
-        if (filled.some((entry) => !(entry.qty > 0))) { toast("Enter a quantity for each service"); return; }
+        const filled = SV_CART.filter((line) => line.name.trim() || line.price);
+        if (!filled.length) { toast("Tap a service to add it to the bill"); return; }
+        if (filled.some((line) => !line.name.trim())) { toast("Write the name of each service"); return; }
+        if (filled.some((line) => !(line.qty > 0))) { toast("Enter a quantity for each service"); return; }
         const { subtotal, disc, total } = totals();
         if (!(total > 0)) { toast("Enter the price of the service"); return; }
         const paid = Math.min(total, Math.max(0, money2(+$("#svPaid").value || 0)));
@@ -3691,7 +3860,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           party: customer ? customer.name : "Walk-in Customer",
           phone: customer ? customer.phone || "" : "",
           partyId: customer ? customer.id : 0,
-          items: filled.map((entry) => ({ name: entry.name, qty: entry.qty, price: entry.price })),
+          items: filled.map((line) => ({ name: line.name.trim(), qty: line.qty, price: line.price })),
           subtotal,
           disc,
           total,
@@ -3701,12 +3870,13 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           note: $("#svNote").value.trim(),
         });
         save();
-        dialog.close();
+        SV_CART = [];
+        SV_PAID_TYPED = false;
         toast("Service sale saved");
-        servicesPage();
+        servicePosPage();
         quickReceipt(id);
       });
-    };
+    }
 
     function peoplePage(k: PeopleList) {
       const forCustomers = k === "customers";
@@ -4234,7 +4404,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           "Sales Returns": "sale-returns",
           "Net Profit": "profit",
           "Purchase Returns": "purchase-returns",
-          "Service Income": "services",
+          "Service Income": "service-list",
           "Today's Courier Orders": "sales",
         };
 
@@ -4699,7 +4869,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       },
 
       dues: duesPage,
-      services: servicesPage,
+      services: servicePosPage,
+      "service-list": servicesPage,
+      "service-items": serviceItemsPage,
       employees: employeesPage,
       customers: () => peoplePage("customers"),
       suppliers: () => peoplePage("suppliers"),
@@ -5030,7 +5202,11 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       [
         "Service Sale",
         "🧰",
-        "services",
+        [
+          ["New Service Sale", "services"],
+          ["Service Sale List", "service-list"],
+          ["Service List", "service-items"],
+        ],
       ],
 
       [
@@ -5440,6 +5616,15 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const onShortcut = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.altKey || event.metaKey || document.querySelector("dialog[open]")) return;
       const scanBox = document.getElementById("serialScan") as HTMLInputElement | null;
+      // The service sale screen: F1 the mobile number, F4 the amount received, F9 save.
+      const serviceBox = { F1: "svPhone", F4: "svPaid", F9: "svSave" }[event.key as "F1" | "F4" | "F9"];
+      if (serviceBox && document.getElementById("svSave")) {
+        event.preventDefault();
+        const target = document.getElementById(serviceBox) as HTMLInputElement;
+        if (event.key === "F9") target.click();
+        else { target.focus(); target.select(); }
+        return;
+      }
       if (event.key === "F2") {
         event.preventDefault();
         if (scanBox) { scanBox.focus(); scanBox.select(); } else location.hash = "sale-new";
