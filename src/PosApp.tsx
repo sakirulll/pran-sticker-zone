@@ -418,6 +418,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // and categories are added to the shop's lists when the kind is chosen.
     const BUSINESS_TYPES: Record<string, { label: string; show: string[]; extra: string[]; units: string[]; categories: string[] }> = {
       general: { label: "General Store", show: ["brand", "lowAlert", "wholesale", "dealer", "manufacturer", "manufactureDate", "expireDate", "serial"], extra: [], units: [], categories: [] },
+      sticker: { label: "Sticker & Wash Shop", show: ["brand", "lowAlert", "wholesale"], extra: [], units: ["Feet", "Inch", "Sq Ft"], categories: ["Bike Sticker", "Car Sticker", "Helmet Sticker", "Vinyl Roll", "Accessories"] },
       clothing: { label: "Clothing Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "fabric"], units: ["Dozen", "Yard", "Meter"], categories: ["Shirt", "Pant", "Panjabi", "Saree", "Three Piece", "Kids Wear"] },
       grocery: { label: "Grocery Shop", show: ["brand", "lowAlert", "wholesale", "dealer", "expireDate"], extra: [], units: ["Gram", "Liter", "Ml", "Dozen", "Hali", "Packet", "Bag", "Carton"], categories: ["Rice", "Lentils", "Flour", "Oil", "Spices", "Sugar & Salt", "Eggs", "Milk & Dairy", "Tea & Coffee", "Biscuits", "Snacks", "Beverages", "Soap & Detergent", "Baby Food"] },
       pharmacy: { label: "Pharmacy", show: ["brand", "lowAlert", "manufacturer", "manufactureDate", "expireDate"], extra: ["genericName", "strength", "batchNo", "rack"], units: ["Strip", "Bottle", "Tube", "Vial"], categories: ["Tablet", "Capsule", "Syrup", "Injection", "Ointment", "Drops"] },
@@ -428,6 +429,56 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       stationery: { label: "Books & Stationery", show: ["brand", "lowAlert", "wholesale"], extra: ["author", "publisher"], units: ["Dozen", "Packet", "Ream"], categories: ["Books", "Notebooks", "Pens", "Paper", "School Supplies"] },
     };
     const businessType = () => BUSINESS_TYPES[D.settings.businessType] || BUSINESS_TYPES.general;
+
+    // What a shop sells besides its goods depends on the business: a tailor stitches, a mobile
+    // shop repairs, a pharmacy checks blood pressure. The service screens take their name and
+    // the ready-made list of services from the shop's business type.
+    type ServiceGroup = [category: string, services: [name: string, price: number][]];
+    const SERVICE_KINDS: Record<string, { label: string; starter: ServiceGroup[] }> = {
+      general: { label: "Service Sale", starter: [
+        ["Service", [["Home Delivery", 60], ["Installation", 300], ["Repair", 200], ["Fitting Charge", 100], ["Packing Charge", 20], ["Gift Wrapping", 50], ["Service Charge", 50]]],
+      ] },
+      sticker: { label: "Sticker & Wash", starter: [
+        ["Sticker", [["Bike Full Sticker", 1500], ["Bike Half Sticker", 800], ["Bike Tank Sticker", 300], ["Bike Name Sticker", 150], ["Number Plate Sticker", 200], ["Helmet Sticker", 150], ["Bike Reflective Sticker", 250], ["Car Full Wrap", 15000], ["Car Side Sticker", 1200], ["Car Name Sticker", 300], ["Windshield Sticker", 400], ["Laptop Skin", 350], ["Mobile Skin", 200], ["Custom Name Sticker", 100], ["Sticker Remove", 300]]],
+        ["Wash", [["Bike Wash", 150], ["Bike Foam Wash", 250], ["Bike Polish", 300], ["Bike Full Wash & Polish", 400], ["Car Wash", 500], ["Car Foam Wash", 800], ["Car Interior Cleaning", 1000], ["Car Polish", 1500], ["Engine Wash", 300]]],
+        ["Other", [["Chain Lubrication", 100], ["Number Plate Fitting", 200], ["Lamination", 50], ["Fitting Charge", 100], ["Delivery Charge", 60]]],
+      ] },
+      clothing: { label: "Tailoring", starter: [
+        ["Stitching", [["Shirt Stitching", 450], ["Pant Stitching", 450], ["Panjabi Stitching", 650], ["Blouse Stitching", 350], ["Three Piece Stitching", 600], ["Salwar Kameez Stitching", 550], ["Kids Dress Stitching", 300]]],
+        ["Alteration", [["Alteration", 100], ["Length Cut", 60], ["Fall & Pico", 80], ["Button Change", 30], ["Zipper Change", 60], ["Embroidery", 300], ["Ironing", 20]]],
+      ] },
+      grocery: { label: "Delivery & Service", starter: [
+        ["Delivery", [["Home Delivery", 50], ["Express Delivery", 100], ["Bulk Delivery", 200], ["Gas Cylinder Delivery", 100]]],
+        ["Other", [["Packing Charge", 20], ["Gift Packing", 50], ["Spice Grinding", 30], ["Rice Cleaning", 20]]],
+      ] },
+      pharmacy: { label: "Health Service", starter: [
+        ["Check-up", [["Blood Pressure Check", 20], ["Sugar Test", 50], ["Weight Check", 10], ["Doctor Consultation", 300]]],
+        ["Care", [["Injection Push", 30], ["Saline Push", 100], ["Nebulizer", 50], ["Dressing", 100], ["Home Delivery", 50]]],
+      ] },
+      restaurant: { label: "Catering & Event", starter: [
+        ["Catering", [["Catering (per person)", 350], ["Party Hall Rent", 3000], ["Birthday Decoration", 2000], ["Event Service Charge", 1000]]],
+        ["Delivery", [["Home Delivery", 50], ["Parcel Packing", 20], ["Service Charge", 50]]],
+      ] },
+      electronics: { label: "Repair Service", starter: [
+        ["Mobile", [["Screen Change", 1500], ["Battery Change", 800], ["Charging Port Repair", 400], ["Software Flash", 300], ["Water Damage Repair", 600], ["Speaker Repair", 300], ["Screen Protector Fitting", 50]]],
+        ["Computer & TV", [["Laptop Servicing", 800], ["Windows Installation", 300], ["Data Recovery", 500], ["TV Repair", 1000], ["Home Service Visit", 300]]],
+      ] },
+      cosmetics: { label: "Beauty Service", starter: [
+        ["Hair", [["Hair Cut", 300], ["Hair Spa", 1000], ["Hair Color", 1500], ["Hair Treatment", 2000]]],
+        ["Skin & Makeup", [["Facial", 800], ["Threading", 50], ["Waxing", 600], ["Manicure", 400], ["Pedicure", 500], ["Party Makeup", 2000], ["Bridal Makeup", 8000], ["Mehendi", 500]]],
+      ] },
+      hardware: { label: "Fitting & Repair", starter: [
+        ["Fitting", [["Pipe Fitting", 300], ["Tap Change", 150], ["Fan Fitting", 200], ["Light Fitting", 100], ["Lock Fitting", 200], ["Tile Fitting (per sq ft)", 40]]],
+        ["Work", [["Electric Wiring", 500], ["Paint Labour (per sq ft)", 15], ["Welding", 300], ["Home Delivery", 100]]],
+      ] },
+      stationery: { label: "Print & Photocopy", starter: [
+        ["Print", [["Photocopy", 2], ["Color Photocopy", 10], ["Print (B/W)", 5], ["Color Print", 15], ["Scan", 10]]],
+        ["Other", [["Lamination", 30], ["Spiral Binding", 40], ["Passport Size Photo", 100], ["Typing (per page)", 30], ["Online Application", 100]]],
+      ] },
+    };
+    const serviceKind = () => SERVICE_KINDS[D.settings.businessType] || SERVICE_KINDS.general;
+    const serviceLabel = () => serviceKind().label;
+    const menuLabel = (name: string) => (name === "Service Sale" ? serviceLabel() : name);
     // The extra details a product has, for showing beside its name.
     const productDetails = (product: any) => [sizeSummary(product), ...Object.keys(EXTRA_FIELDS).map((id) => String(product[id] || "").trim())].filter(Boolean).join(" · ");
 
@@ -2126,7 +2177,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         </style></head><body>
         <div class="toolbar"><button onclick="window.print()">Print</button><button onclick="window.print()">Save PDF</button></div>
         <main class="paper">
-          <header class="center">${shopLogo}<div class="brand">${shopName}</div><div class="sub">${esc(D.user.phone || "")}</div><div class="sub">${esc(D.user.address || "")}</div><div class="sub">${sale.kind === "service" ? "Service Receipt" : "Money Receipt"}</div></header>
+          <header class="center">${shopLogo}<div class="brand">${shopName}</div><div class="sub">${esc(D.user.phone || "")}</div><div class="sub">${esc(D.user.address || "")}</div><div class="sub">${sale.kind === "service" ? `${esc(serviceLabel())} Receipt` : "Money Receipt"}</div></header>
           <div class="rule"></div>
           <div class="row"><span>Invoice</span><b>${esc(sale.inv)}</b></div>
           <div class="row"><span>Date</span><span>${esc(sale.date)}</span></div>
@@ -2183,7 +2234,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const extra = (label: string, amount: number) => (amount ? [{ label: said(label), value: tk(amount) }] : []);
       return {
         shop: String(D.user.shop || "My Shop"),
-        header: [D.user.phone, D.user.address, said(sale.kind === "service" ? "Service Receipt" : "Money Receipt")].filter(Boolean).map(String),
+        header: [D.user.phone, D.user.address, (sale.kind === "service" ? `${said(serviceLabel())} ${said("Receipt")}` : said("Money Receipt"))].filter(Boolean).map(String),
         details: [
           [said("Invoice"), String(sale.inv || "")],
           [said("Date"), String(sale.date || "")],
@@ -2498,7 +2549,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const generalSettingsPage = () => {
-      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Business Type<select id="settingBusinessType">${Object.entries(BUSINESS_TYPES).map(([id, kind]) => `<option value="${id}" ${id === (D.settings.businessType || "general") ? "selected" : ""}>${kind.label}</option>`).join("")}</select></label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedPhone" type="checkbox" style="width:auto" ${D.settings.requirePhone ? "checked" : ""}> A walk-in sale needs the customer's phone number</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedReceived" type="checkbox" style="width:auto" ${D.settings.requireReceived ? "checked" : ""}> The amount received has to be typed on every sale</label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
+      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Business Type<select id="settingBusinessType">${Object.entries(BUSINESS_TYPES).map(([id, kind]) => `<option value="${id}" ${id === (D.settings.businessType || "general") ? "selected" : ""}>${kind.label}</option>`).join("")}</select></label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedPhone" type="checkbox" style="width:auto" ${D.settings.requirePhone ? "checked" : ""}> Every sale and service bill needs the customer's phone number</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedReceived" type="checkbox" style="width:auto" ${D.settings.requireReceived ? "checked" : ""}> The amount received has to be typed on every sale</label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
       $("#generalSettingsForm").addEventListener("submit", async (event: Event) => {
         event.preventDefault();
         const logoFile = $("#settingLogo")?.files?.[0] as File | undefined;
@@ -3448,7 +3499,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const personInvoices = (k: PeopleList, person: any) => {
       const phone = String(person.phone || "").trim();
       const name = String(person.name || "").trim().toLowerCase();
-      return D[k === "customers" ? "sales" : "purchases"].filter((entry: any) =>
+      return (k === "customers" ? [...D.sales, ...D.services] : D.purchases).filter((entry: any) =>
         entry.partyId ? entry.partyId == person.id
           : phone && entry.phone ? String(entry.phone).trim() === phone
             : String(entry.party || "").trim().toLowerCase() === name);
@@ -3496,14 +3547,14 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#app").innerHTML = `
         <div class="lx">
           <div class="lx-kpis">
-            ${lxKpi("tool", "Today's Service Income", tk(sum(todays, (entry) => entry.total)), `${todays.length} receipts`, "var(--pu)")}
+            ${lxKpi("tool", "Today's Income", tk(sum(todays, (entry) => entry.total)), `${todays.length} receipts`, "var(--pu)")}
             ${lxKpi("trend", "This Month", tk(sum(months, (entry) => entry.total)), `${months.length} receipts`, "var(--gr)")}
-            ${lxKpi("clock", "Service Due", tk(sum(owing, (entry) => entry.due)), `${owing.length} receipts`, "var(--rd)")}
+            ${lxKpi("clock", "Due Amount", tk(sum(owing, (entry) => entry.due)), `${owing.length} receipts`, "var(--rd)")}
           </div>
           <section class="card">
             <div class="hd">
-              <h2>Service Sale List</h2>
-              <button class="lx-add" type="button" id="newService">${lxIcon("plus")}<span>New Service Sale</span></button>
+              <h2><span>${esc(serviceLabel())}</span> · <span>Bill List</span></h2>
+              <button class="lx-add" type="button" id="newService">${lxIcon("plus")}<span>New Bill</span></button>
             </div>
             <div class="lx-bar">
               <input class="srch" id="serviceSearch" value="${esc(SERVICE_QUERY)}" placeholder="Search by receipt, customer or service">
@@ -3530,7 +3581,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             <td ${lxLabel("Status")}>${+entry.due > 0 ? `${lxPill("Due", "var(--rd)")} <b class="lx-due">${tk(entry.due)}</b>` : lxPill("Paid", "var(--gr)")}</td>
             <td><div class="lx-acts"><button class="lx-go sv-go" type="button" data-receipt="${entry.id}">${lxIcon("print")}<span>Receipt</span></button><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-delete="${entry.id}">${lxIcon("trash")}</button></div></td>
           </tr>`).join("")
-          || lxEmpty(7, D.services.length ? "No service sale matches your search" : "No service sale yet. Press \"New Service Sale\" to add the first one.");
+          || lxEmpty(7, D.services.length ? "No bill matches your search" : "No bill yet. Press \"New Bill\" to add the first one.");
         $("#serviceMore").innerHTML = found.length > SERVICE_LIMIT ? `<button class="lx-out" type="button" id="serviceShowMore">Show more</button>` : "";
         $("#serviceShowMore")?.addEventListener("click", () => { SERVICE_LIMIT += 25; drawRows(); });
       };
@@ -3550,22 +3601,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       });
     }
 
-    // A ready list for a sticker and wash shop, added in one go and then priced as the shop likes.
-    const SERVICE_STARTER: [string, [string, number][]][] = [
-      ["Sticker", [
-        ["Bike Full Sticker", 1500], ["Bike Half Sticker", 800], ["Bike Tank Sticker", 300], ["Bike Name Sticker", 150],
-        ["Number Plate Sticker", 200], ["Helmet Sticker", 150], ["Bike Reflective Sticker", 250], ["Car Full Wrap", 15000],
-        ["Car Side Sticker", 1200], ["Car Name Sticker", 300], ["Windshield Sticker", 400], ["Laptop Skin", 350],
-        ["Mobile Skin", 200], ["Custom Name Sticker", 100], ["Sticker Remove", 300],
-      ]],
-      ["Wash", [
-        ["Bike Wash", 150], ["Bike Foam Wash", 250], ["Bike Polish", 300], ["Bike Full Wash & Polish", 400],
-        ["Car Wash", 500], ["Car Foam Wash", 800], ["Car Interior Cleaning", 1000], ["Car Polish", 1500], ["Engine Wash", 300],
-      ]],
-      ["Other", [
-        ["Chain Lubrication", 100], ["Number Plate Fitting", 200], ["Lamination", 50], ["Fitting Charge", 100], ["Delivery Charge", 60],
-      ]],
-    ];
     const serviceCategories = () => [...new Set(D.serviceItems.map((item: any) => String(item.category || "Other")))];
 
     const serviceItemDialog = (item: any, done: () => void) => {
@@ -3598,7 +3633,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const addStarterServices = () => {
       const have = new Set(D.serviceItems.map((item: any) => String(item.name).toLowerCase()));
       let added = 0;
-      for (const [category, list] of SERVICE_STARTER) for (const [name, price] of list) {
+      for (const [category, list] of serviceKind().starter) for (const [name, price] of list) {
         if (have.has(name.toLowerCase())) continue;
         D.serviceItems.push({ id: uid(), name, category, price });
         added++;
@@ -3613,13 +3648,13 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <div class="lx">
           <section class="card">
             <div class="hd">
-              <h2>Service List</h2>
+              <h2><span>${esc(serviceLabel())}</span> · <span>Price List</span></h2>
               <div class="lx-acts">
                 <button class="lx-out" type="button" id="siStarter">${lxIcon("box")}<span>Add ready-made list</span></button>
                 <button class="lx-add" type="button" id="siNew">${lxIcon("plus")}<span>New Service</span></button>
               </div>
             </div>
-            <p class="settings-help" style="margin-top:0">These show as buttons on the service sale screen. Change a price here and the next sale uses it.</p>
+            <p class="settings-help" style="margin-top:0">These show as buttons on the New Bill screen. Change a price here and the next bill uses it.</p>
             <div class="wrap"><table class="lx-table">
               <thead><tr><th>Service</th><th>Category</th><th class="num">Price</th><th></th></tr></thead>
               <tbody>${D.serviceItems.map((item: any) => `
@@ -3662,10 +3697,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <div class="lx sv-pos">
           <section class="card sv-items">
             <div class="hd">
-              <h2>Services</h2>
+              <h2>${esc(serviceLabel())}</h2>
               <div class="lx-acts">
-                <a class="lx-out" href="#service-items">${lxIcon("edit")}<span>Edit Services</span></a>
-                <a class="lx-out" href="#service-list">${lxIcon("clock")}<span>Service Sale List</span></a>
+                <a class="lx-out" href="#service-items">${lxIcon("edit")}<span>Price List</span></a>
+                <a class="lx-out" href="#service-list">${lxIcon("clock")}<span>Bill List</span></a>
               </div>
             </div>
             ${D.serviceItems.length ? `
@@ -3677,14 +3712,14 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             : `<div class="sv-start">
                 <p>No service yet. Add the services you do once, then each sale is a tap.</p>
                 <div class="lx-acts"><button class="lx-add" type="button" id="svStarter">${lxIcon("box")}<span>Add ready-made list</span></button><button class="lx-out" type="button" id="svFirst">${lxIcon("plus")}<span>New Service</span></button></div>
-                <small>Ready-made list: bike and car stickers, bike and car wash, and more. Change any price after.</small>
+                <small><span>Ready-made list</span>: <span data-no-translate>${esc(serviceKind().starter.flatMap(([, list]) => list.map(([name]) => name)).slice(0, 5).join(", "))}</span>…</small>
               </div>`}
           </section>
 
           <section class="card sv-bill">
             <div class="hd"><h2>Bill</h2><button class="lx-link" type="button" id="svClear" ${SV_CART.length ? "" : "hidden"}>Clear</button></div>
             <div class="two">
-              <div><label>Customer Mobile <kbd>F1</kbd></label><input id="svPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="01XXXXXXXXX"></div>
+              <div><label>Customer Mobile${D.settings.requirePhone ? " *" : ""} <kbd>F1</kbd></label><input id="svPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="01XXXXXXXXX" ${D.settings.requirePhone ? "required" : ""}></div>
               <div><label>Customer Name</label><input id="svName" autocomplete="off" placeholder="Walk-in Customer"></div>
             </div>
             <datalist id="svNames">${[...new Set([...D.serviceItems.map((item: any) => item.name), ...serviceNames()])].map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist>
@@ -3836,6 +3871,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         // The customer is kept like a sale's buyer: the mobile number says who they are.
         const name = $("#svName").value.trim();
         const phone = $("#svPhone").value.trim();
+        if (D.settings.requirePhone && !phone) { toast("Enter the customer's phone number"); $("#svPhone").focus(); return; }
         let customer: any = null;
         if (name || phone) {
           customer = D.customers.find((person: any) => phone
@@ -4417,7 +4453,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                 (c) => `
                   <div class="stat-link" role="link" tabindex="0" onclick="location.hash='${STAT_PAGES[c[0]]}'" onkeydown="if(event.key==='Enter')location.hash='${STAT_PAGES[c[0]]}'">
 
-                    <span>${c[0]}</span>
+                    <span>${c[0] === "Service Income" ? esc(serviceLabel()) : c[0]}</span>
 
                     <b>${c[1]}</b>
 
@@ -4963,10 +4999,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             foot: null,
             csv: () => [["Product", "Code", "Qty Sold", "Invoices", "Sale", "Cost", "Profit", "Margin %"], ...rows.map((row) => [row.name, row.code, +row.qty.toFixed(3), row.invoices.size, row.sales.toFixed(2), (row.sales - row.profit).toFixed(2), row.profit.toFixed(2), marginOf(row.profit, row.sales).toFixed(1)])],
           } : {
-            heads: ["Date", "Invoices", "Sale", "Gross Profit", "Service Income", "Expense", "Net Profit"],
-            body: visible.map((row) => `<tr><td class="lx-main"><b>${esc(row.date)}</b></td><td class="num" ${lxLabel("Invoices")}>${row.invoices}</td><td class="num" ${lxLabel("Sale")}>${tk(row.sales)}</td><td class="num" ${lxLabel("Gross Profit")}>${tk(row.profit)}</td><td class="num" ${lxLabel("Service Income")}>${tk(row.services)}</td><td class="num" ${lxLabel("Expense")}>${row.expenses ? `<span class="lx-due">${tk(row.expenses)}</span>` : tk(0)}</td><td class="num" ${lxLabel("Net Profit")}>${signed(row.profit + row.services - row.expenses)}</td></tr>`).join(""),
+            heads: ["Date", "Invoices", "Sale", "Gross Profit", serviceLabel(), "Expense", "Net Profit"],
+            body: visible.map((row) => `<tr><td class="lx-main"><b>${esc(row.date)}</b></td><td class="num" ${lxLabel("Invoices")}>${row.invoices}</td><td class="num" ${lxLabel("Sale")}>${tk(row.sales)}</td><td class="num" ${lxLabel("Gross Profit")}>${tk(row.profit)}</td><td class="num" ${lxLabel(serviceLabel())}>${tk(row.services)}</td><td class="num" ${lxLabel("Expense")}>${row.expenses ? `<span class="lx-due">${tk(row.expenses)}</span>` : tk(0)}</td><td class="num" ${lxLabel("Net Profit")}>${signed(row.profit + row.services - row.expenses)}</td></tr>`).join(""),
             foot: null,
-            csv: () => [["Date", "Invoices", "Sale", "Gross Profit", "Service Income", "Expense", "Net Profit"], ...rows.map((row) => [row.date, row.invoices, row.sales.toFixed(2), row.profit.toFixed(2), row.services.toFixed(2), row.expenses.toFixed(2), (row.profit + row.services - row.expenses).toFixed(2)])],
+            csv: () => [["Date", "Invoices", "Sale", "Gross Profit", serviceLabel(), "Expense", "Net Profit"], ...rows.map((row) => [row.date, row.invoices, row.sales.toFixed(2), row.profit.toFixed(2), row.services.toFixed(2), row.expenses.toFixed(2), (row.profit + row.services - row.expenses).toFixed(2)])],
           };
           const columns = table.heads.length;
           const rangeText = from || to ? `${from || "…"} — ${to || "…"}` : said("All Time");
@@ -4994,7 +5030,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                 ${lxKpi("box", "Cost of Goods", tk(cost), "What the sold goods cost you", "var(--mut)")}
                 ${lxKpi("trend", "Gross Profit", tk(gross), `${marginOf(gross, revenue).toFixed(1)}% margin`, "var(--gr)")}
                 ${lxKpi("wallet", "Total Expense", tk(spent), `${expenses.length} expenses`, "var(--rd)")}
-                <div class="lx-kpi pl-net ${net < 0 ? "loss" : ""}"><em>${lxIcon(net < 0 ? "down" : "trend")}</em><div><span>${net < 0 ? "Net Loss" : "Net Profit"}</span><b>${tk(Math.abs(net))}</b><small>${D.services.length ? "Gross profit + service income − expenses" : "Gross profit minus expenses"}</small></div></div>
+                <div class="lx-kpi pl-net ${net < 0 ? "loss" : ""}"><em>${lxIcon(net < 0 ? "down" : "trend")}</em><div><span>${net < 0 ? "Net Loss" : "Net Profit"}</span><b>${tk(Math.abs(net))}</b><small>${D.services.length ? "Gross profit + other income − expenses" : "Gross profit minus expenses"}</small></div></div>
               </div>
 
               <div class="pl-grid">
@@ -5003,7 +5039,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                   <div class="pl-line"><span>Total Sale</span><b>${tk(revenue)}</b></div>
                   <div class="pl-line minus"><span>Cost of Goods</span><b>− ${tk(cost)}</b></div>
                   <div class="pl-line pl-sub"><span>Gross Profit</span><b>${tk(gross)}</b></div>
-                  ${D.services.length ? `<div class="pl-line plus"><span>Service Income</span><b>+ ${tk(serviceIncome)}</b></div>` : ""}
+                  ${D.services.length ? `<div class="pl-line plus"><span>${esc(serviceLabel())}</span><b>+ ${tk(serviceIncome)}</b></div>` : ""}
                   <div class="pl-line minus"><span>Total Expense</span><b>− ${tk(spent)}</b></div>
                   <div class="pl-line total ${net < 0 ? "loss" : ""}"><span>${net < 0 ? "Net Loss" : "Net Profit"}</span><b>${tk(net)}</b></div>
                   ${returned.length ? `<p class="pl-note">${said("Returned invoices are not counted")}: <b data-no-translate>${returned.length} · ${tk(sum(returned, (sale) => sale.total))}</b></p>` : ""}
@@ -5203,9 +5239,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         "Service Sale",
         "🧰",
         [
-          ["New Service Sale", "services"],
-          ["Service Sale List", "service-list"],
-          ["Service List", "service-items"],
+          ["New Bill", "services"],
+          ["Bill List", "service-list"],
+          ["Price List", "service-items"],
         ],
       ],
 
@@ -5476,7 +5512,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                 >
 
                   <span class="mi">
-                    ${menuIcon(m[0])}<span>${m[0]}</span>
+                    ${menuIcon(m[0])}<span>${menuLabel(m[0])}</span>
                   </span>
 
                   <span class="chev">›</span>
@@ -5517,7 +5553,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                 }"
               >
                 <span class="mi">
-                  ${menuIcon(m[0])}<span>${m[0]}</span>
+                  ${menuIcon(m[0])}<span>${menuLabel(m[0])}</span>
                 </span>
               </a>
             `,
