@@ -639,8 +639,12 @@ td.mut{
 .pl-pager button:hover:not(:disabled){border-color:var(--pu);color:var(--pu)}
 .pl-pager button:disabled{opacity:.45;cursor:default}
 .pl-line.plus b{color:var(--gr)}
+.pl-scope{margin-bottom:12px}
+.pl-scope button{display:inline-flex;align-items:center;gap:7px;padding:8px 16px}
+.pl-scope svg{width:17px;height:17px}
 .sv-more{margin-top:12px;text-align:center}
 a.lx-out{text-decoration:none}
+.known-customer{border-color:var(--gr)!important;background:color-mix(in srgb,var(--gr) 7%,var(--pn))!important;font-weight:600}
 .sv-pos{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(340px,1fr);gap:16px;align-items:start}
 .sv-pos .card{margin:0}
 .sv-pos h2{margin:0}

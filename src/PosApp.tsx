@@ -479,6 +479,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const serviceKind = () => SERVICE_KINDS[D.settings.businessType] || SERVICE_KINDS.general;
     const serviceLabel = () => serviceKind().label;
     const menuLabel = (name: string) => (name === "Service Sale" ? serviceLabel() : name);
+    const serviceCost = (entry: any) => sum(entry.items || [], (item) => (+item.cost || 0) * (+item.qty || 0));
     // The extra details a product has, for showing beside its name.
     const productDetails = (product: any) => [sizeSummary(product), ...Object.keys(EXTRA_FIELDS).map((id) => String(product[id] || "").trim())].filter(Boolean).join(" · ");
 
@@ -1251,6 +1252,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         };
         partySelect?.addEventListener("change", syncWalkinFields);
         syncWalkinFields();
+        linkCustomerPhone($("#walkPhone"), $("#walkName"));
         // The camera sits on the page and stays on, so products are added one after
         // another just by holding it over their barcodes. Once switched on it comes
         // on by itself each time this screen opens, until it is closed.
@@ -1700,7 +1702,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const typedPhone = s && !pid ? $("#walkPhone")?.value.trim() || "" : "";
       if (typedName || typedPhone) {
         const known = D.customers.find((person: any) => typedPhone
-          ? String(person.phone || "").trim() === typedPhone
+          ? phoneKey(person.phone) === phoneKey(typedPhone)
           : !person.phone && String(person.name || "").trim().toLowerCase() === typedName.toLowerCase());
         if (known) {
           pid = String(known.id);
@@ -3307,6 +3309,38 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     let DUE_QUERY = "";
     let PEOPLE_QUERY = "";
     const money2 = (amount: number) => Math.round(amount * 100) / 100;
+    // A phone number however it was typed (+880, spaces, dashes) comes down to its last 11 digits.
+    const phoneKey = (value: any) => {
+      const digits = String(value || "").replace(/\D/g, "");
+      return digits.length > 11 ? digits.slice(-11) : digits;
+    };
+    const customerByPhone = (phone: any) => {
+      const key = phoneKey(phone);
+      return key ? D.customers.find((person: any) => phoneKey(person.phone) === key) : undefined;
+    };
+    // Once a customer is saved, typing their number fills in their name. The saved numbers
+    // are offered while typing. A name typed by hand is left alone.
+    const linkCustomerPhone = (phoneBox: HTMLInputElement | null, nameBox: HTMLInputElement | null) => {
+      if (!phoneBox || !nameBox) return;
+      const listId = `${phoneBox.id}Known`;
+      phoneBox.setAttribute("list", listId);
+      phoneBox.insertAdjacentHTML("afterend", `<datalist id="${listId}">${D.customers.filter((person: any) => person.phone).map((person: any) => `<option value="${esc(person.phone)}">${esc(person.name)}</option>`).join("")}</datalist>`);
+      phoneBox.addEventListener("input", () => {
+        const known = customerByPhone(phoneBox.value);
+        if (known && (!nameBox.value.trim() || nameBox.dataset.auto === "1")) {
+          nameBox.value = known.name || "";
+          nameBox.dataset.auto = "1";
+        } else if (!known && nameBox.dataset.auto === "1") {
+          nameBox.value = "";
+          nameBox.dataset.auto = "";
+        }
+        nameBox.classList.toggle("known-customer", Boolean(known) && nameBox.dataset.auto === "1");
+      });
+      nameBox.addEventListener("input", () => {
+        nameBox.dataset.auto = "";
+        nameBox.classList.remove("known-customer");
+      });
+    };
     const daysSince = (date: string) => Math.max(0, Math.round((Date.parse(today()) - Date.parse(date)) / 864e5) || 0);
 
     const LX_ICONS: Record<string, string> = {
@@ -3613,6 +3647,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             <datalist id="siCategories">${serviceCategories().map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist></div>
           <div><label>Price</label><input id="siPrice" type="number" inputmode="decimal" min="0" step="0.01" value="${item ? +item.price || 0 : ""}"></div>
         </div>
+        <label style="margin-top:10px">Cost (material and labour)</label><input id="siCost" type="number" inputmode="decimal" min="0" step="0.01" value="${item ? +item.cost || 0 : ""}" placeholder="0">
+        <p class="settings-help" style="margin:6px 0 0">What doing it once costs you. The profit and loss page takes it off the price.</p>
         <div class="two" style="margin-top:16px">
           <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
           <button class="btn pu" type="button" id="siSave">Save</button>
@@ -3622,7 +3658,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#siSave").addEventListener("click", () => {
         const name = $("#siName").value.trim();
         if (!name) { toast("Write the name of the service"); return; }
-        const values = { name, category: $("#siCategory").value.trim() || "Other", price: Math.max(0, money2(+$("#siPrice").value || 0)) };
+        const values = { name, category: $("#siCategory").value.trim() || "Other", price: Math.max(0, money2(+$("#siPrice").value || 0)), cost: Math.max(0, money2(+$("#siCost").value || 0)) };
         if (item) Object.assign(item, values);
         else D.serviceItems.push({ id: uid(), ...values });
         save();
@@ -3656,14 +3692,16 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             </div>
             <p class="settings-help" style="margin-top:0">These show as buttons on the New Bill screen. Change a price here and the next bill uses it.</p>
             <div class="wrap"><table class="lx-table">
-              <thead><tr><th>Service</th><th>Category</th><th class="num">Price</th><th></th></tr></thead>
+              <thead><tr><th>Service</th><th>Category</th><th class="num">Price</th><th class="num">Cost</th><th class="num">Profit</th><th></th></tr></thead>
               <tbody>${D.serviceItems.map((item: any) => `
                 <tr>
                   <td class="lx-main"><b data-no-translate>${esc(item.name)}</b></td>
                   <td ${lxLabel("Category")}><span>${esc(item.category || "Other")}</span></td>
                   <td class="num" ${lxLabel("Price")}><b>${tk(item.price)}</b></td>
+                  <td class="num" ${lxLabel("Cost")}>${tk(item.cost)}</td>
+                  <td class="num" ${lxLabel("Profit")}><b class="${(+item.price || 0) - (+item.cost || 0) < 0 ? "pl-neg" : "pl-pos"}">${tk((+item.price || 0) - (+item.cost || 0))}</b></td>
                   <td><div class="lx-acts"><button class="lx-ic" type="button" title="Edit" aria-label="Edit" data-edit="${item.id}">${lxIcon("edit")}</button><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-delete="${item.id}">${lxIcon("trash")}</button></div></td>
-                </tr>`).join("") || lxEmpty(4, "No service yet. Add your own, or press \"Add ready-made list\".")}</tbody>
+                </tr>`).join("") || lxEmpty(6, "No service yet. Add your own, or press \"Add ready-made list\".")}</tbody>
             </table></div>
           </section>
         </div>`;
@@ -3685,7 +3723,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     // ---- The service sale screen: tap services to bill them, then one press for the receipt.
     // The bill stays while moving between screens, like an unfinished sale.
-    let SV_CART: { key: number; itemId: any; name: string; qty: number; price: number }[] = [];
+    let SV_CART: { key: number; itemId: any; name: string; qty: number; price: number; cost: number }[] = [];
     let SV_CATEGORY = "";
     let SV_QUERY = "";
     let SV_PAID_TYPED = false;
@@ -3795,7 +3833,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const add = (item: any) => {
         const line = SV_CART.find((entry) => entry.itemId == item.id && entry.price === +item.price);
         if (line) line.qty = q3(line.qty + 1);
-        else SV_CART.push({ key: uid(), itemId: item.id, name: item.name, qty: 1, price: +item.price || 0 });
+        else SV_CART.push({ key: uid(), itemId: item.id, name: item.name, qty: 1, price: +item.price || 0, cost: +item.cost || 0 });
         redraw();
       };
       $("#svTiles")?.addEventListener("click", (event: Event) => {
@@ -3814,7 +3852,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#svStarter")?.addEventListener("click", () => { addStarterServices(); servicePosPage(); });
       $("#svFirst")?.addEventListener("click", () => serviceItemDialog(null, servicePosPage));
       $("#svCustom").addEventListener("click", () => {
-        SV_CART.push({ key: uid(), itemId: 0, name: "", qty: 1, price: 0 });
+        SV_CART.push({ key: uid(), itemId: 0, name: "", qty: 1, price: 0, cost: 0 });
         redraw();
         (document.querySelector(`[data-line="${SV_CART[SV_CART.length - 1].key}"] .sv-row-name`) as HTMLInputElement)?.focus();
       });
@@ -3829,6 +3867,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           line.name = box.value;
           // A service from the list, typed by name, brings its price.
           const known = D.serviceItems.find((item: any) => String(item.name).toLowerCase() === box.value.trim().toLowerCase());
+          line.cost = known ? +known.cost || 0 : 0;
           if (known && !line.price) { line.price = +known.price || 0; (box.closest("[data-line]")!.querySelector(".sv-row-price") as HTMLInputElement).value = String(line.price); }
         }
         if (box.dataset.field === "qty") line.qty = q3(+box.value || 0);
@@ -3852,12 +3891,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#svDisc").addEventListener("input", refresh);
       $("#svJump").addEventListener("click", () => $(".sv-bill").scrollIntoView({ behavior: "smooth", block: "start" }));
       $("#svPaid").addEventListener("input", () => { SV_PAID_TYPED = true; refresh(); });
-      // A known mobile number fills in the customer's name.
-      $("#svPhone").addEventListener("input", () => {
-        const phone = $("#svPhone").value.trim();
-        const known = phone && D.customers.find((person: any) => String(person.phone || "").trim() === phone);
-        if (known && !$("#svName").value.trim()) $("#svName").value = known.name || "";
-      });
+      linkCustomerPhone($("#svPhone"), $("#svName"));
 
       $("#svSave").addEventListener("click", () => {
         const filled = SV_CART.filter((line) => line.name.trim() || line.price);
@@ -3875,7 +3909,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         let customer: any = null;
         if (name || phone) {
           customer = D.customers.find((person: any) => phone
-            ? String(person.phone || "").trim() === phone
+            ? phoneKey(person.phone) === phoneKey(phone)
             : !person.phone && String(person.name || "").trim().toLowerCase() === name.toLowerCase());
           if (!customer) {
             customer = { id: uid(), status: "Active", name: name || phone, phone, address: "" };
@@ -3896,7 +3930,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           party: customer ? customer.name : "Walk-in Customer",
           phone: customer ? customer.phone || "" : "",
           partyId: customer ? customer.id : 0,
-          items: filled.map((line) => ({ name: line.name.trim(), qty: line.qty, price: line.price })),
+          items: filled.map((line) => ({ name: line.name.trim(), qty: line.qty, price: line.price, cost: line.cost || 0 })),
           subtotal,
           disc,
           total,
@@ -4301,7 +4335,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           sum(
             ms(D.sales),
             (s) => s.p,
-          ) - E + sum(ms(D.services), (s) => s.total);
+          ) - E + sum(ms(D.services), (s) => s.total - serviceCost(s));
 
         const cs = [
           [
@@ -4938,8 +4972,208 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         const marginOf = (profit: number, sales: number) => (sales ? (profit / sales) * 100 : 0);
         const signed = (amount: number) => `<b class="${amount < 0 ? "pl-neg" : "pl-pos"}">${tk(amount)}</b>`;
         const marginPill = (profit: number, sales: number) => sales ? lxPill(`${marginOf(profit, sales).toFixed(1)}%`, profit < 0 ? "var(--rd)" : "var(--gr)") : `<span class="lx-none">-</span>`;
+        let scope: "shop" | "service" = "shop";
+        let sview: "bill" | "service" | "daily" | "customer" = "bill";
+
+        // ---- The service side of the business on its own: what the bills brought in, what the
+        // work cost (material, labour), what is left, and who still owes.
+        const drawServices = () => {
+          const bills = D.services.filter((entry: any) => inRange(entry.date))
+            .sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)) || String(b.inv).localeCompare(String(a.inv)));
+          const billed = sum(bills, (entry) => +(entry.subtotal ?? entry.total) || 0);
+          const discount = sum(bills, (entry) => entry.disc);
+          const income = sum(bills, (entry) => entry.total);
+          const costs = sum(bills, serviceCost);
+          const profit = income - costs;
+          const received = sum(bills, (entry) => entry.paid);
+          const owed = sum(bills, (entry) => entry.due);
+          const uncosted = bills.some((entry: any) => (entry.items || []).some((item: any) => !(+item.cost > 0)));
+
+          const byService = new Map<string, AnyData>();
+          for (const entry of bills) for (const item of entry.items || []) {
+            const key = String(item.name || "").trim().toLowerCase();
+            const row = byService.get(key) || { name: String(item.name || "").trim(), qty: 0, income: 0, cost: 0, bills: new Set() };
+            row.qty += +item.qty || 0;
+            row.income += (+item.price || 0) * (+item.qty || 0);
+            row.cost += (+item.cost || 0) * (+item.qty || 0);
+            row.bills.add(entry.inv);
+            byService.set(key, row);
+          }
+          const services = [...byService.values()].sort((a, b) => (b.income - b.cost) - (a.income - a.cost));
+          const byDay = new Map<string, AnyData>();
+          for (const entry of bills) {
+            const row = byDay.get(entry.date) || { date: entry.date, bills: 0, income: 0, cost: 0, paid: 0, due: 0 };
+            row.bills++; row.income += +entry.total || 0; row.cost += serviceCost(entry); row.paid += +entry.paid || 0; row.due += +entry.due || 0;
+            byDay.set(entry.date, row);
+          }
+          const days = [...byDay.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+          const byCustomer = new Map<string, AnyData>();
+          for (const entry of bills) {
+            const key = entry.partyId ? `id:${entry.partyId}` : `walk-in`;
+            const row = byCustomer.get(key) || { name: entry.partyId ? entry.party : said("Walk-in Customer"), phone: entry.partyId ? entry.phone || "" : "", bills: 0, income: 0, paid: 0, due: 0 };
+            row.bills++; row.income += +entry.total || 0; row.paid += +entry.paid || 0; row.due += +entry.due || 0;
+            byCustomer.set(key, row);
+          }
+          const customers = [...byCustomer.values()].sort((a, b) => b.income - a.income);
+
+          const needle = query.trim().toLowerCase();
+          const rows: AnyData[] = sview === "bill"
+            ? bills.filter((entry: any) => !needle || `${entry.inv} ${entry.party} ${entry.phone} ${(entry.items || []).map((item: any) => item.name).join(" ")}`.toLowerCase().includes(needle))
+            : sview === "service" ? services.filter((row) => !needle || row.name.toLowerCase().includes(needle))
+              : sview === "daily" ? days.filter((row) => !needle || String(row.date).includes(needle))
+                : customers.filter((row) => !needle || `${row.name} ${row.phone}`.toLowerCase().includes(needle));
+          const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+          page = Math.min(page, pages);
+          const visible = rows.slice((page - 1) * pageSize, page * pageSize);
+          const status = (entry: any) => +entry.due > 0 ? lxPill("Due", "var(--rd)") : lxPill("Paid", "var(--gr)");
+          const money = (amount: number, red = false) => red && amount > 0 ? `<b class="lx-due">${tk(amount)}</b>` : tk(amount);
+
+          const table = sview === "bill" ? {
+            heads: ["Receipt", "Date", "Customer", "Service", "Income", "Cost", "Profit", "Status"],
+            body: visible.map((entry) => `<tr><td class="lx-main"><b data-no-translate>${esc(entry.inv)}</b></td><td ${lxLabel("Date")}>${esc(entry.date)}</td><td ${lxLabel("Customer")}><span data-no-translate>${esc(entry.partyId ? entry.party : said("Walk-in Customer"))}</span></td><td ${lxLabel("Service")}><span class="sv-names" data-no-translate>${esc((entry.items || []).map((item: any) => +item.qty === 1 ? item.name : `${item.name} × ${+item.qty}`).join(", "))}</span></td><td class="num" ${lxLabel("Income")}>${tk(entry.total)}</td><td class="num" ${lxLabel("Cost")}>${tk(serviceCost(entry))}</td><td class="num" ${lxLabel("Profit")}>${signed((+entry.total || 0) - serviceCost(entry))}</td><td ${lxLabel("Status")}>${status(entry)}</td></tr>`).join(""),
+            foot: `<th colspan="4">Total</th><th class="num">${tk(sum(rows, (entry) => entry.total))}</th><th class="num">${tk(sum(rows, serviceCost))}</th><th class="num">${tk(sum(rows, (entry) => (+entry.total || 0) - serviceCost(entry)))}</th><th></th>`,
+            csv: () => [["Receipt", "Date", "Customer", "Phone", "Service", "Income", "Cost", "Profit", "Paid", "Due"], ...rows.map((entry) => [entry.inv, entry.date, entry.partyId ? entry.party : "Walk-in Customer", entry.phone || "", (entry.items || []).map((item: any) => `${item.name} x ${item.qty}`).join("; "), (+entry.total || 0).toFixed(2), serviceCost(entry).toFixed(2), ((+entry.total || 0) - serviceCost(entry)).toFixed(2), (+entry.paid || 0).toFixed(2), (+entry.due || 0).toFixed(2)])],
+          } : sview === "service" ? {
+            heads: ["Service", "Qty", "Bills", "Income", "Cost", "Profit", "Margin"],
+            body: visible.map((row) => `<tr><td class="lx-main"><b data-no-translate>${esc(row.name)}</b></td><td class="num" ${lxLabel("Qty")}>${+row.qty.toFixed(3)}</td><td class="num" ${lxLabel("Bills")}>${row.bills.size}</td><td class="num" ${lxLabel("Income")}>${tk(row.income)}</td><td class="num" ${lxLabel("Cost")}>${tk(row.cost)}</td><td class="num" ${lxLabel("Profit")}>${signed(row.income - row.cost)}</td><td class="num" ${lxLabel("Margin")}>${marginPill(row.income - row.cost, row.income)}</td></tr>`).join(""),
+            foot: "",
+            csv: () => [["Service", "Qty", "Bills", "Income", "Cost", "Profit", "Margin %"], ...rows.map((row) => [row.name, +row.qty.toFixed(3), row.bills.size, row.income.toFixed(2), row.cost.toFixed(2), (row.income - row.cost).toFixed(2), marginOf(row.income - row.cost, row.income).toFixed(1)])],
+          } : sview === "daily" ? {
+            heads: ["Date", "Bills", "Income", "Cost", "Profit", "Received", "Due"],
+            body: visible.map((row) => `<tr><td class="lx-main"><b>${esc(row.date)}</b></td><td class="num" ${lxLabel("Bills")}>${row.bills}</td><td class="num" ${lxLabel("Income")}>${tk(row.income)}</td><td class="num" ${lxLabel("Cost")}>${tk(row.cost)}</td><td class="num" ${lxLabel("Profit")}>${signed(row.income - row.cost)}</td><td class="num" ${lxLabel("Received")}>${tk(row.paid)}</td><td class="num" ${lxLabel("Due")}>${money(row.due, true)}</td></tr>`).join(""),
+            foot: "",
+            csv: () => [["Date", "Bills", "Income", "Cost", "Profit", "Received", "Due"], ...rows.map((row) => [row.date, row.bills, row.income.toFixed(2), row.cost.toFixed(2), (row.income - row.cost).toFixed(2), row.paid.toFixed(2), row.due.toFixed(2)])],
+          } : {
+            heads: ["Customer", "Bills", "Income", "Paid", "Due"],
+            body: visible.map((row) => `<tr><td class="lx-main">${lxWho(row.name, row.phone)}</td><td class="num" ${lxLabel("Bills")}>${row.bills}</td><td class="num" ${lxLabel("Income")}>${tk(row.income)}</td><td class="num" ${lxLabel("Paid")}>${tk(row.paid)}</td><td class="num" ${lxLabel("Due")}>${money(row.due, true)}</td></tr>`).join(""),
+            foot: "",
+            csv: () => [["Customer", "Phone", "Bills", "Income", "Paid", "Due"], ...rows.map((row) => [row.name, row.phone, row.bills, row.income.toFixed(2), row.paid.toFixed(2), row.due.toFixed(2)])],
+          };
+          const top = services.slice(0, 5);
+          const topMax = Math.max(1, ...top.map((row) => Math.abs(row.income)));
+
+          $("#app").innerHTML = `
+            <div class="lx pl">
+              ${head()}
+              <div class="lx-kpis pl-kpis">
+                ${lxKpi("tool", "Total Income", tk(income), `${bills.length} bills`, "var(--bl)")}
+                ${lxKpi("box", "Service Cost", tk(costs), "Material and labour", "var(--mut)")}
+                ${lxKpi("wallet", "Received", tk(received), "Money in hand", "var(--gr)")}
+                ${lxKpi("clock", "Due Amount", tk(owed), `${bills.filter((entry: any) => +entry.due > 0).length} bills`, "var(--rd)")}
+                <div class="lx-kpi pl-net ${profit < 0 ? "loss" : ""}"><em>${lxIcon(profit < 0 ? "down" : "trend")}</em><div><span>${profit < 0 ? "Loss" : "Profit"}</span><b>${tk(Math.abs(profit))}</b><small>${marginOf(profit, income).toFixed(1)}% margin</small></div></div>
+              </div>
+
+              <div class="pl-grid">
+                <section class="card pl-statement">
+                  <div class="hd"><h2>Summary</h2></div>
+                  <div class="pl-line"><span>Billed</span><b>${tk(billed)}</b></div>
+                  <div class="pl-line minus"><span>Discount</span><b>− ${tk(discount)}</b></div>
+                  <div class="pl-line pl-sub"><span>Total Income</span><b>${tk(income)}</b></div>
+                  <div class="pl-line minus"><span>Service Cost</span><b>− ${tk(costs)}</b></div>
+                  <div class="pl-line total ${profit < 0 ? "loss" : ""}"><span>${profit < 0 ? "Loss" : "Profit"}</span><b>${tk(profit)}</b></div>
+                  <div class="pl-line"><span>Received</span><b class="pl-pos">${tk(received)}</b></div>
+                  <div class="pl-line"><span>Due Amount</span><b class="${owed > 0 ? "pl-neg" : ""}">${tk(owed)}</b></div>
+                  ${uncosted ? `<p class="pl-note">Services with no cost set count as full profit. Set costs in the Price List.</p>` : ""}
+                </section>
+                <section class="card pl-top">
+                  <div class="hd"><h2>Top Services</h2></div>
+                  ${top.length ? top.map((row, index) => `<div class="pl-bar"><div><span class="pl-rank">${index + 1}</span><b data-no-translate>${esc(row.name)}</b><em>${tk(row.income)}</em></div><i><u style="width:${Math.max(3, (Math.abs(row.income) / topMax) * 100)}%"></u></i><small>${said("Qty")}: ${+row.qty.toFixed(3)} · ${said("Profit")}: ${tk(row.income - row.cost)}</small></div>`).join("") : `<p class="pl-empty">No bill in this period</p>`}
+                </section>
+              </div>
+
+              <section class="card">
+                <div class="lx-bar">
+                  <div class="lx-seg">
+                    <button type="button" class="${sview === "bill" ? "on" : ""}" data-sview="bill">Bill Wise</button>
+                    <button type="button" class="${sview === "service" ? "on" : ""}" data-sview="service">Service Wise</button>
+                    <button type="button" class="${sview === "daily" ? "on" : ""}" data-sview="daily">Day Wise</button>
+                    <button type="button" class="${sview === "customer" ? "on" : ""}" data-sview="customer">Customer Wise</button>
+                  </div>
+                  <span class="sp"></span>
+                  <input class="srch lx-noprint" id="profitSearch" value="${esc(query)}" placeholder="Search">
+                </div>
+                <div class="wrap"><table class="lx-table pl-table">
+                  <thead><tr>${table.heads.map((name, index) => `<th class="${index && !["Date", "Customer", "Service", "Status"].includes(name) ? "num" : ""}">${name}</th>`).join("")}</tr></thead>
+                  <tbody>${table.body || lxEmpty(table.heads.length, "No bill in this period")}</tbody>
+                  ${table.foot && rows.length ? `<tfoot><tr>${table.foot}</tr></tfoot>` : ""}
+                </table></div>
+                <div class="pl-pager lx-noprint">
+                  <label>Show <select id="profitPageSize">${[10, 25, 50, 100].map((size) => `<option ${pageSize === size ? "selected" : ""}>${size}</option>`).join("")}</select></label>
+                  <span>Showing ${rows.length ? (page - 1) * pageSize + 1 : 0} to ${Math.min(page * pageSize, rows.length)} of ${rows.length} entries</span>
+                  <div><button type="button" id="profitPrev" ${page <= 1 ? "disabled" : ""}>Previous</button><b>${page} / ${pages}</b><button type="button" id="profitNext" ${page >= pages ? "disabled" : ""}>Next</button></div>
+                </div>
+              </section>
+            </div>`;
+
+          bindHead(table.csv, `service-${sview}`);
+          document.querySelectorAll(".lx-seg [data-sview]").forEach((button) => button.addEventListener("click", () => {
+            sview = (button as HTMLElement).dataset.sview as typeof sview;
+            query = "";
+            page = 1;
+            draw();
+          }));
+          bindTable();
+        };
+
+        // The heading, the period and the switch between the shop's sales and its services.
+        const head = () => `
+              <section class="card pl-head">
+                <div class="hd">
+                  <div><h2>Profit &amp; Loss</h2><small class="pl-range" data-no-translate>${esc(from || to ? `${from || "…"} — ${to || "…"}` : said("All Time"))}</small></div>
+                  <div class="lx-acts lx-noprint">
+                    <button class="lx-out" type="button" id="profitCsv">${lxIcon("download")}<span>Excel (CSV)</span></button>
+                    <button class="lx-out" type="button" id="profitPrint">${lxIcon("print")}<span>Print / PDF</span></button>
+                  </div>
+                </div>
+                ${D.services.length || D.serviceItems.length ? `<div class="lx-seg pl-scope lx-noprint"><button type="button" class="${scope === "shop" ? "on" : ""}" data-scope="shop">${lxIcon("cart")}<span>Shop Sales</span></button><button type="button" class="${scope === "service" ? "on" : ""}" data-scope="service">${lxIcon("tool")}<span>${esc(serviceLabel())}</span></button></div>` : ""}
+                <div class="pl-periods lx-noprint">
+                  ${PERIODS.map(([key, label]) => `<button type="button" class="${period === key ? "on" : ""}" data-period="${key}">${label}</button>`).join("")}
+                  <span class="pl-custom"><input id="profitFrom" type="date" value="${from}" aria-label="From"><span>to</span><input id="profitTo" type="date" value="${to}" aria-label="To"></span>
+                </div>
+              </section>`;
+        const bindHead = (csvRows: () => any[][], name: string) => {
+          document.querySelectorAll(".pl-periods [data-period]").forEach((button) => button.addEventListener("click", () => {
+            period = (button as HTMLElement).dataset.period!;
+            [from, to] = PERIODS.find(([key]) => key === period)![2]();
+            page = 1;
+            draw();
+          }));
+          document.querySelectorAll(".pl-scope [data-scope]").forEach((button) => button.addEventListener("click", () => {
+            scope = (button as HTMLElement).dataset.scope as typeof scope;
+            query = "";
+            page = 1;
+            draw();
+          }));
+          $("#profitFrom").onchange = (event: any) => { from = event.target.value; period = ""; page = 1; draw(); };
+          $("#profitTo").onchange = (event: any) => { to = event.target.value; period = ""; page = 1; draw(); };
+          $("#profitPrint").onclick = () => window.print();
+          $("#profitCsv").onclick = () => {
+            const csv = "﻿" + csvRows().map((row: any[]) => row.map((value: any) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+            link.download = `profit-loss-${name}-${from || "start"}-to-${to || today()}.csv`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+          };
+        };
+        // Search, rows per page and paging, the same on both sides.
+        const bindTable = () => {
+          $("#profitSearch").oninput = (event: any) => {
+            query = event.target.value;
+            page = 1;
+            draw();
+            const box = $("#profitSearch") as HTMLInputElement;
+            box.focus();
+            box.setSelectionRange(query.length, query.length);
+          };
+          $("#profitPageSize").onchange = (event: any) => { pageSize = +event.target.value; page = 1; draw(); };
+          $("#profitPrev").onclick = () => { page--; draw(); };
+          $("#profitNext").onclick = () => { page++; draw(); };
+        };
+
 
         const draw = () => {
+          if (scope === "service") { drawServices(); return; }
           const sales = D.sales.filter((sale: any) => inRange(sale.date))
             .sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)) || String(b.inv).localeCompare(String(a.inv)));
           const kept = sales.filter((sale: any) => !sale.ret);
@@ -4950,7 +5184,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           const cost = revenue - gross;
           const spent = sum(expenses, (expense) => expense.amount);
           const services = D.services.filter((entry: any) => inRange(entry.date));
-          const serviceIncome = sum(services, (entry) => entry.total);
+          const serviceIncome = sum(services, (entry) => (+entry.total || 0) - serviceCost(entry));
           const net = gross + serviceIncome - spent;
 
           // Every item sold in the period, gathered by product.
@@ -4970,7 +5204,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
           const byDay = new Map<string, AnyData>();
           const dayRow = (date: string) => byDay.get(date) || { date, invoices: 0, sales: 0, profit: 0, services: 0, expenses: 0 };
-          for (const entry of services) { const row = dayRow(entry.date); row.services += +entry.total || 0; byDay.set(entry.date, row); }
+          for (const entry of services) { const row = dayRow(entry.date); row.services += (+entry.total || 0) - serviceCost(entry); byDay.set(entry.date, row); }
           for (const sale of kept) { const row = dayRow(sale.date); row.invoices++; row.sales += +sale.total || 0; row.profit += +sale.p || 0; byDay.set(sale.date, row); }
           for (const expense of expenses) { const row = dayRow(expense.date); row.expenses += +expense.amount || 0; byDay.set(expense.date, row); }
           const days = [...byDay.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -5005,25 +5239,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             csv: () => [["Date", "Invoices", "Sale", "Gross Profit", serviceLabel(), "Expense", "Net Profit"], ...rows.map((row) => [row.date, row.invoices, row.sales.toFixed(2), row.profit.toFixed(2), row.services.toFixed(2), row.expenses.toFixed(2), (row.profit + row.services - row.expenses).toFixed(2)])],
           };
           const columns = table.heads.length;
-          const rangeText = from || to ? `${from || "…"} — ${to || "…"}` : said("All Time");
           const top = products.slice(0, 5);
           const topMax = Math.max(1, ...top.map((row) => Math.abs(row.profit)));
 
           $("#app").innerHTML = `
             <div class="lx pl">
-              <section class="card pl-head">
-                <div class="hd">
-                  <div><h2>Profit &amp; Loss</h2><small class="pl-range" data-no-translate>${esc(rangeText)}</small></div>
-                  <div class="lx-acts lx-noprint">
-                    <button class="lx-out" type="button" id="profitCsv">${lxIcon("download")}<span>Excel (CSV)</span></button>
-                    <button class="lx-out" type="button" id="profitPrint">${lxIcon("print")}<span>Print / PDF</span></button>
-                  </div>
-                </div>
-                <div class="pl-periods lx-noprint">
-                  ${PERIODS.map(([key, label]) => `<button type="button" class="${period === key ? "on" : ""}" data-period="${key}">${label}</button>`).join("")}
-                  <span class="pl-custom"><input id="profitFrom" type="date" value="${from}" aria-label="From"><span>to</span><input id="profitTo" type="date" value="${to}" aria-label="To"></span>
-                </div>
-              </section>
+              ${head()}
 
               <div class="lx-kpis pl-kpis">
                 ${lxKpi("cart", "Total Sale", tk(revenue), `${kept.length} invoices`, "var(--bl)")}
@@ -5073,40 +5294,14 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
               </section>
             </div>`;
 
-          document.querySelectorAll(".pl-periods [data-period]").forEach((button) => button.addEventListener("click", () => {
-            period = (button as HTMLElement).dataset.period!;
-            [from, to] = PERIODS.find(([key]) => key === period)![2]();
-            page = 1;
-            draw();
-          }));
-          $("#profitFrom").onchange = (event: any) => { from = event.target.value; period = ""; page = 1; draw(); };
-          $("#profitTo").onchange = (event: any) => { to = event.target.value; period = ""; page = 1; draw(); };
+          bindHead(table.csv, view);
           document.querySelectorAll(".lx-seg [data-view]").forEach((button) => button.addEventListener("click", () => {
             view = (button as HTMLElement).dataset.view as typeof view;
             query = "";
             page = 1;
             draw();
           }));
-          $("#profitSearch").oninput = (event: any) => {
-            query = event.target.value;
-            page = 1;
-            draw();
-            const box = $("#profitSearch") as HTMLInputElement;
-            box.focus();
-            box.setSelectionRange(query.length, query.length);
-          };
-          $("#profitPageSize").onchange = (event: any) => { pageSize = +event.target.value; page = 1; draw(); };
-          $("#profitPrev").onclick = () => { page--; draw(); };
-          $("#profitNext").onclick = () => { page++; draw(); };
-          $("#profitPrint").onclick = () => window.print();
-          $("#profitCsv").onclick = () => {
-            const csv = "﻿" + table.csv().map((row: any[]) => row.map((value: any) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-            link.download = `profit-loss-${view}-${from || "start"}-to-${to || today()}.csv`;
-            link.click();
-            URL.revokeObjectURL(link.href);
-          };
+          bindTable();
         };
         draw();
       },
