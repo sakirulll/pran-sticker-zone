@@ -672,7 +672,9 @@ a.lx-out{text-decoration:none}
 .sv-bill .hd{margin-bottom:12px}
 .sv-bill kbd,.sv-save kbd{padding:0 5px;border:1px solid var(--ln);border-radius:4px;background:var(--bg);color:var(--mut);font:600 10px/16px inherit}
 .sv-lines{margin:6px 0 4px}
-.sv-row{display:grid;grid-template-columns:minmax(0,1fr) 104px 76px 74px 30px;gap:6px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--ln)}
+/* The name has the whole first line, so a long one never squeezes; the figures sit under it. */
+.sv-row{display:grid;grid-template-columns:104px minmax(64px,90px) minmax(0,1fr) 30px;gap:6px 8px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--ln)}
+.sv-row .sv-row-name{grid-column:1/-1}
 .sv-row input{margin:0;padding:6px 7px}
 .sv-row-name{overflow-wrap:anywhere;font-size:14px}
 .sv-row .sv-amt{text-align:right;white-space:nowrap;font-size:13px}
@@ -692,11 +694,6 @@ a.lx-out{text-decoration:none}
 @media(max-width:600px){
   .sv-tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .sv-tile{min-height:72px;padding:10px}
-  .sv-row{grid-template-columns:1fr 104px 30px}
-  .sv-row-name{grid-column:1/-1}
-  .sv-row .sv-row-price{grid-column:1}
-  .sv-row .sv-amt{grid-column:2;grid-row:3}
-  .sv-row .lx-ic{grid-row:2;grid-column:3}
   .sv-pos .hd{flex-wrap:wrap}
   .sv-pos .hd .lx-acts{width:100%}
   .sv-pos .hd .lx-out{flex:1;min-width:0;justify-content:center;padding:8px 6px;font-size:13px;white-space:normal}
