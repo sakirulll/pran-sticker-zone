@@ -1968,11 +1968,14 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       [/socks|মোজা/i, ["Free Size"]],
       [/kid|baby|child|boys|girls|বাচ্চা|শিশু/i, ["1-2Y", "3-4Y", "5-6Y", "7-8Y", "9-10Y", "11-12Y"]],
       [/pant|jeans|trouser|gabardine|প্যান্ট|জিন্স/i, ["28", "30", "32", "34", "36", "38", "40"]],
-      [/shoe|sandal|slipper|sneaker|boot|loafer|জুতা|স্যান্ডেল|চপ্পল|বুট/i, ["38", "39", "40", "41", "42", "43", "44", "45"]],
+      [/shoe|sandal|slipper|sneaker|boot|loafer|জুতা|স্যান্ডেল|চপ্পল|বুট|স্নিকার|লোফার|কেডস/i, ["38", "39", "40", "41", "42", "43", "44", "45"]],
       [/panjabi|punjabi|পাঞ্জাবি/i, ["38", "40", "42", "44", "46"]],
       [/saree|sari|lungi|orna|শাড়ি|লুঙ্গি|ওড়না/i, ["Free Size"]],
     ];
-    const sizesFor = (categoryName: string) => SIZE_SETS.find(([names]) => names.test(categoryName))?.[1] || ["S", "M", "L", "XL", "XXL"];
+    // A category the list does not know gets the shop's usual sizes: shoe numbers in a shoe shop,
+    // letter sizes anywhere else.
+    const sizesFor = (categoryName: string) => SIZE_SETS.find(([names]) => names.test(categoryName))?.[1]
+      || (D.settings.businessType === "shoes" ? ["38", "39", "40", "41", "42", "43", "44", "45"] : ["S", "M", "L", "XL", "XXL"]);
     const sizeEditorHtml = () => `
       <div class="size-stock" id="sizeStock">
         <div class="size-stock-head"><b>Stock by Size</b><span class="size-chips" id="sizeChips"></span></div>
@@ -2006,7 +2009,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       });
       // The buttons follow the category chosen above them.
       const drawChips = () => {
-        const presets = sizesFor(category?.selectedOptions[0]?.textContent || "");
+        // The saved name as well as the one on screen, which may be in Bangla.
+        const presets = sizesFor(`${category?.value ? nm("categories", category.value) : ""} ${category?.selectedOptions[0]?.textContent || ""}`);
         $("#sizeChips").innerHTML = presets.map((size) => `<button type="button" data-add-size="${esc(size)}" data-no-translate>${esc(size)}</button>`).join("") + `<button type="button" data-add-size="">+ Other size</button>`;
       };
       category?.addEventListener("change", drawChips);
