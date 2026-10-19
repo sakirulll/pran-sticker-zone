@@ -404,6 +404,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       size: ["Size", "EX: M, XL, 32"],
       color: ["Color", "EX: Black"],
       fabric: ["Fabric", "EX: Cotton"],
+      material: ["Material", "EX: Leather"],
       genericName: ["Generic Name", "EX: Paracetamol"],
       strength: ["Strength", "EX: 500 mg"],
       batchNo: ["Batch No", "Enter batch number"],
@@ -420,6 +421,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const BUSINESS_TYPES: Record<string, { label: string; show: string[]; extra: string[]; units: string[]; categories: string[] }> = {
       general: { label: "General Store", show: ["brand", "lowAlert", "wholesale", "dealer", "manufacturer", "manufactureDate", "expireDate", "serial"], extra: [], units: [], categories: [] },
       sticker: { label: "Sticker & Wash Shop", show: ["brand", "lowAlert", "wholesale"], extra: [], units: ["Feet", "Inch", "Sq Ft"], categories: ["Bike Sticker", "Car Sticker", "Helmet Sticker", "Vinyl Roll", "Accessories"] },
+      shoes: { label: "Shoe Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "material"], units: ["Pair", "Box"], categories: ["Men's Shoe", "Women's Shoe", "Kids Shoe", "Sandal", "Sneaker", "Slipper", "Formal Shoe", "Boot", "Socks"] },
       clothing: { label: "Clothing Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "fabric"], units: ["Dozen", "Yard", "Meter"], categories: ["Shirt", "Pant", "Panjabi", "Saree", "Three Piece", "Kids Wear"] },
       grocery: { label: "Grocery Shop", show: ["brand", "lowAlert", "wholesale", "dealer", "expireDate"], extra: [], units: ["Gram", "Liter", "Ml", "Dozen", "Hali", "Packet", "Bag", "Carton"], categories: ["Rice", "Lentils", "Flour", "Oil", "Spices", "Sugar & Salt", "Eggs", "Milk & Dairy", "Tea & Coffee", "Biscuits", "Snacks", "Beverages", "Soap & Detergent", "Baby Food"] },
       pharmacy: { label: "Pharmacy", show: ["brand", "lowAlert", "manufacturer", "manufactureDate", "expireDate"], extra: ["genericName", "strength", "batchNo", "rack"], units: ["Strip", "Bottle", "Tube", "Vial"], categories: ["Tablet", "Capsule", "Syrup", "Injection", "Ointment", "Drops"] },
@@ -443,6 +445,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         ["Sticker", [["Bike Full Sticker", 1500], ["Bike Half Sticker", 800], ["Bike Tank Sticker", 300], ["Bike Name Sticker", 150], ["Number Plate Sticker", 200], ["Helmet Sticker", 150], ["Bike Reflective Sticker", 250], ["Car Full Wrap", 15000], ["Car Side Sticker", 1200], ["Car Name Sticker", 300], ["Windshield Sticker", 400], ["Laptop Skin", 350], ["Mobile Skin", 200], ["Custom Name Sticker", 100], ["Sticker Remove", 300]]],
         ["Wash", [["Bike Wash", 150], ["Bike Foam Wash", 250], ["Bike Polish", 300], ["Bike Full Wash & Polish", 400], ["Car Wash", 500], ["Car Foam Wash", 800], ["Car Interior Cleaning", 1000], ["Car Polish", 1500], ["Engine Wash", 300]]],
         ["Other", [["Chain Lubrication", 100], ["Number Plate Fitting", 200], ["Lamination", 50], ["Fitting Charge", 100], ["Delivery Charge", 60]]],
+      ] },
+      shoes: { label: "Shoe Repair", starter: [
+        ["Repair", [["Sole Change", 300], ["Heel Repair", 150], ["Stitching", 100], ["Gluing", 60], ["Zipper Repair", 150], ["Size Stretching", 100]]],
+        ["Care", [["Shoe Polish", 50], ["Shoe Wash", 150], ["Lace Change", 30], ["Insole Change", 80]]],
       ] },
       clothing: { label: "Tailoring", starter: [
         ["Stitching", [["Shirt Stitching", 450], ["Pant Stitching", 450], ["Panjabi Stitching", 650], ["Blouse Stitching", 350], ["Three Piece Stitching", 600], ["Salwar Kameez Stitching", 550], ["Kids Dress Stitching", 300]]],
@@ -1957,9 +1963,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // The sizes offered depend on what is being sold: trousers go by waist, children's clothes by age.
     // The category's name decides, in English or Bangla; anything else gets the letter sizes.
     const SIZE_SETS: [RegExp, string[]][] = [
+      [/(kid|baby|child|boys|girls|বাচ্চা|শিশু).*(shoe|sandal|slipper|sneaker|boot|জুতা|স্যান্ডেল|চপ্পল)|(shoe|sandal|slipper|sneaker|boot|জুতা|স্যান্ডেল|চপ্পল).*(kid|baby|child|বাচ্চা|শিশু)/i, ["26", "27", "28", "29", "30", "31", "32", "33", "34", "35"]],
+      [/(women|ladies|lady|মহিলা|লেডিস|মেয়েদের).*(shoe|sandal|slipper|sneaker|boot|heel|জুতা|স্যান্ডেল|চপ্পল)|(shoe|sandal|slipper|sneaker|boot|heel|জুতা|স্যান্ডেল|চপ্পল).*(women|ladies|lady|মহিলা|লেডিস)/i, ["35", "36", "37", "38", "39", "40", "41"]],
+      [/socks|মোজা/i, ["Free Size"]],
       [/kid|baby|child|boys|girls|বাচ্চা|শিশু/i, ["1-2Y", "3-4Y", "5-6Y", "7-8Y", "9-10Y", "11-12Y"]],
       [/pant|jeans|trouser|gabardine|প্যান্ট|জিন্স/i, ["28", "30", "32", "34", "36", "38", "40"]],
-      [/shoe|sandal|জুতা|স্যান্ডেল/i, ["38", "39", "40", "41", "42", "43", "44"]],
+      [/shoe|sandal|slipper|sneaker|boot|loafer|জুতা|স্যান্ডেল|চপ্পল|বুট/i, ["38", "39", "40", "41", "42", "43", "44", "45"]],
       [/panjabi|punjabi|পাঞ্জাবি/i, ["38", "40", "42", "44", "46"]],
       [/saree|sari|lungi|orna|শাড়ি|লুঙ্গি|ওড়না/i, ["Free Size"]],
     ];
