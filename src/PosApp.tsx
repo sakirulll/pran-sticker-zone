@@ -2609,11 +2609,34 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         D.settings.requirePhone = $("#settingNeedPhone").checked;
         D.settings.requireReceived = $("#settingNeedReceived").checked;
         D.settings.staffCanChangePrice = $("#settingStaffPrice").checked;
+        const typeChanged = D.settings.businessType !== $("#settingBusinessType").value;
         D.settings.businessType = $("#settingBusinessType").value;
         // Give the shop the units and categories its kind of business usually needs.
         for (const list of ["units", "categories"] as const) {
           for (const name of businessType()[list]) {
             if (!D[list].some((entry: any) => String(entry.name).toLowerCase() === name.toLowerCase())) D[list].push({ id: uid(), name, status: "Active" });
+          }
+        }
+        // Categories and units that came with another kind of business stay behind when the kind
+        // changes. Offer to clear the ones no product uses; the shop's own ones are never touched.
+        if (typeChanged) {
+          const leftovers = (list: "units" | "categories", field: "unit" | "category") => {
+            const ours = new Set(businessType()[list].map((name) => name.toLowerCase()));
+            const preset = new Set(Object.values(BUSINESS_TYPES).flatMap((kind) => kind[list]).map((name) => name.toLowerCase()));
+            return D[list].filter((entry: any) => {
+              const name = String(entry.name || "").toLowerCase();
+              return preset.has(name) && !ours.has(name) && !D.products.some((product: any) => product[field] == entry.id);
+            });
+          };
+          const units = leftovers("units", "unit");
+          const categories = leftovers("categories", "category");
+          if (units.length || categories.length) {
+            const names = [...categories, ...units].map((entry: any) => said(String(entry.name)));
+            const question = `${said("These categories and units came with another kind of business, and no product uses them:")}\n\n${names.join(", ")}\n\n${said("Remove them?")}`;
+            if (confirm(question)) {
+              D.categories = D.categories.filter((entry: any) => !categories.includes(entry));
+              D.units = D.units.filter((entry: any) => !units.includes(entry));
+            }
           }
         }
         CURRENCY_SYMBOL = D.currencies.find((currency: any) => currency.id == D.settings.currencyId)?.symbol || String.fromCharCode(2547);

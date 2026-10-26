@@ -334,6 +334,7 @@ const words: Record<string, string> = {
   "In stock": "স্টকে আছে", "Moving all of a product's stock moves the product to the new warehouse. Moving part of it is recorded only.": "পুরো স্টক সরালে পণ্যটা নতুন গুদামে চলে যাবে। কিছু অংশ সরালে শুধু রেকর্ড থাকবে।",
   "Save Transfer": "স্থানান্তর সেভ করুন", "Add a second warehouse first": "আগে আরেকটা গুদাম যোগ করুন", "Choose two different warehouses": "দুটো আলাদা গুদাম বাছুন", "Enter how many to move": "কতগুলো সরাবেন লিখুন",
   "That is more than the stock": "এটা স্টকের চেয়ে বেশি", "Transfer saved": "স্থানান্তর সেভ হয়েছে",
+  "These categories and units came with another kind of business, and no product uses them:": "এই ক্যাটাগরি আর এককগুলো আগের অন্য ব্যবসার ধরন থেকে এসেছিল, এগুলোতে কোনো পণ্য নেই:", "Remove them?": "এগুলো সরিয়ে দেব?", "Bike Sticker": "বাইক স্টিকার", "Car Sticker": "গাড়ির স্টিকার", "Helmet Sticker": "হেলমেট স্টিকার", "Vinyl Roll": "ভিনাইল রোল", "Inch": "ইঞ্চি", "Sq Ft": "বর্গফুট",
   "Service Sale": "সার্ভিস বিক্রি", "Service Sale List": "সার্ভিস বিক্রির তালিকা", "New Service Sale": "নতুন সার্ভিস বিক্রি", "Service Receipt": "সার্ভিস রসিদ",
   "Today's Service Income": "আজকের সার্ভিস আয়", "Service Due": "সার্ভিসের বাকি", "Service Income": "সার্ভিস আয়", "Service": "সার্ভিস",
   "Search by receipt, customer or service": "রসিদ, ক্রেতা বা সার্ভিস দিয়ে খুঁজুন", "No service sale matches your search": "খোঁজার সাথে মেলে এমন সার্ভিস বিক্রি নেই",
