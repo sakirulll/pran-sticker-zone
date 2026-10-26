@@ -4,8 +4,10 @@
 
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
+import { existsSync, readFileSync } from "node:fs";
 
 const BASE = process.env.POS_TEST_URL;
+const MAIL_LOG = process.env.POS_TEST_MAIL_LOG;
 const RUN = Date.now().toString(36);
 const DAY = 86400;
 
@@ -87,6 +89,14 @@ test("a payment is checked, recorded once, and approving it extends the shop", {
   assert.equal((await session.call("billing.php?action=submit", { plan: "yearly", method: "bkash", sender: "123", trxId: trx })).status, 400);
   assert.equal((await session.call("billing.php?action=submit", { plan: "yearly", method: "bkash", sender: "01700000000", trxId: "!!" })).status, 400);
   assert.equal((await session.call("billing.php?action=submit", { plan: "yearly", method: "bkash", sender: "01700000000", trxId: trx })).status, 201);
+  // The admin is told by email, with what is needed to check the payment.
+  if (MAIL_LOG && existsSync(MAIL_LOG)) {
+    const mail = readFileSync(MAIL_LOG, "utf8").split("\n---\n").find((entry) => entry.includes("To: admin@test.local\n") && entry.includes(trx));
+    assert.ok(mail, "the admin gets an email about the payment");
+    assert.match(mail!, /999\.00 Tk/);
+    assert.match(mail!, /01700000000/);
+    assert.match(mail!, /#admin-payments/);
+  }
   assert.equal((await session.call("billing.php?action=submit", { plan: "monthly", method: "nagad", sender: "01700000000", trxId: trx.toLowerCase() })).status, 409, "a Transaction ID cannot be used twice");
 
   const mine = (await session.call("billing.php?action=status")).body.payments;

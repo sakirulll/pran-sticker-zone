@@ -12,6 +12,37 @@ $action = (string)($_GET['action'] ?? '');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $admin = is_admin($pdo, $user);
 
+// Every platform admin hears about a new payment by email, so it can be checked
+// without keeping the admin panel open. A mail that fails never stops the payment.
+function notify_admins_of_payment(PDO $pdo, string $shopId, array $owner, string $plan, float $amount, string $payMethod, string $sender, string $trxId): void
+{
+    $emails = array_map('strval', is_array(config()['admin_emails'] ?? null) ? config()['admin_emails'] : []);
+    foreach ($pdo->query('SELECT u.email FROM pos_admins a JOIN pos_users u ON u.id = a.user_id')->fetchAll(PDO::FETCH_COLUMN) as $email) {
+        $emails[] = (string)$email;
+    }
+    $emails = array_values(array_unique(array_filter(array_map(fn ($email) => strtolower(trim($email)), $emails))));
+    if (!$emails) {
+        return;
+    }
+    $shop = $pdo->prepare('SELECT name FROM pos_shops WHERE id = ?');
+    $shop->execute([$shopId]);
+    $shopName = (string)($shop->fetchColumn() ?: 'A shop');
+    $planName = $plan === 'yearly' ? '1 year / ১ বছর' : '1 month / ১ মাস';
+    $body = "নতুন পেমেন্টের অনুরোধ এসেছে / A new payment is waiting for approval.\n\n"
+        . "Shop / দোকান: {$shopName}\n"
+        . "Owner / মালিক: " . ($owner['display_name'] ?? '') . " <" . ($owner['email'] ?? '') . ">\n"
+        . "Plan / প্ল্যান: {$planName}\n"
+        . "Amount / টাকা: " . number_format($amount, 2) . " Tk\n"
+        . "Paid with / যেভাবে: " . ($payMethod === 'nagad' ? 'Nagad' : 'bKash') . "\n"
+        . "Sent from / যে নম্বর থেকে: {$sender}\n"
+        . "Transaction ID: {$trxId}\n\n"
+        . "Check the transaction in your " . ($payMethod === 'nagad' ? 'Nagad' : 'bKash') . " account, then approve or reject it here:\n"
+        . app_url() . "/#admin-payments\n";
+    foreach ($emails as $email) {
+        send_mail($email, "New payment: {$shopName} – " . number_format($amount, 0) . " Tk ({$trxId})", $body);
+    }
+}
+
 function public_settings(array $settings): array
 {
     return [
@@ -95,6 +126,7 @@ if ($action === 'submit' && $method === 'POST') {
         }
         fail('The payment could not be recorded. Try again.', 500);
     }
+    notify_admins_of_payment($pdo, (string)$membership['shop_id'], $user, $plan, (float)$settings['price_' . $plan], $payMethod, (string)$sender, (string)$trxId);
     respond(['ok' => true], 201);
 }
 
