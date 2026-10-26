@@ -490,6 +490,25 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       "Custom Order", "Installation", "Bike Servicing", "Car Wash", "Laundry", "Photo Studio", "Courier Service", "Rental", "Event Booking",
       "Training & Course", "Consultation", "Other Income"];
     const serviceLabel = () => String(D.settings.serviceName || "").trim() || serviceKind().label;
+
+    // ---- The shop's own colour. Everything coloured in the app takes it from --pu.
+    const THEME_COLORS: [string, string][] = [
+      ["Orange", "#ea580c"], ["Red", "#dc2626"], ["Rose", "#e11d48"], ["Pink", "#db2777"], ["Purple", "#9333ea"],
+      ["Indigo", "#4f46e5"], ["Blue", "#2563eb"], ["Sky", "#0284c7"], ["Teal", "#0d9488"], ["Green", "#16a34a"],
+      ["Lime", "#65a30d"], ["Amber", "#d97706"], ["Brown", "#92400e"], ["Slate", "#475569"], ["Black", "#1f2937"],
+    ];
+    // A colour too pale for white writing on it is darkened until the writing can be read.
+    const readableColor = (hex: string) => {
+      let [r, g, b] = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+      const light = () => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      while (light() > 0.55) { r *= 0.88; g *= 0.88; b *= 0.88; }
+      return `#${[r, g, b].map((part) => Math.round(part).toString(16).padStart(2, "0")).join("")}`;
+    };
+    const applyTheme = (color = D.settings.themeColor) => {
+      const valid = /^#[0-9a-f]{6}$/i.test(String(color || ""));
+      if (valid) document.documentElement.style.setProperty("--pu", readableColor(color));
+      else document.documentElement.style.removeProperty("--pu");
+    };
     const menuLabel = (name: string) => (name === "Service Sale" ? serviceLabel() : name);
     const serviceCost = (entry: any) => sum(entry.items || [], (item) => (+item.cost || 0) * (+item.qty || 0));
     // The extra details a product has, for showing beside its name.
@@ -2588,7 +2607,15 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
 
     const generalSettingsPage = () => {
-      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Business Type<select id="settingBusinessType">${Object.entries(BUSINESS_TYPES).map(([id, kind]) => `<option value="${id}" ${id === (D.settings.businessType || "general") ? "selected" : ""}>${kind.label}</option>`).join("")}</select></label><label>Service Section Name${(() => { const current = String(D.settings.serviceName || "").trim(); const own = Boolean(current) && !SERVICE_NAMES.includes(current); return `<select id="settingServiceName"><option value="">Same as business type (${esc(serviceKind().label)})</option>${SERVICE_NAMES.map((name) => `<option value="${esc(name)}" ${name === current ? "selected" : ""}>${esc(name)}</option>`).join("")}<option value="__own" ${own ? "selected" : ""}>Other (write your own)</option></select><input id="settingServiceOwn" maxlength="40" placeholder="Write the name" value="${own ? esc(current) : ""}" ${own ? "" : "hidden"} style="margin-top:8px">`; })()}</label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedPhone" type="checkbox" style="width:auto" ${D.settings.requirePhone ? "checked" : ""}> Every sale and service bill needs the customer's phone number</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingStaffPrice" type="checkbox" style="width:auto" ${D.settings.staffCanChangePrice ? "checked" : ""}> Staff can change prices and give discounts while selling</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedReceived" type="checkbox" style="width:auto" ${D.settings.requireReceived ? "checked" : ""}> The amount received has to be typed on every sale</label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
+      $("#app").innerHTML = `<section class="card settings-card"><h2>General Settings</h2><p class="settings-help">Shop information and defaults used in sales and receipts.</p><form id="generalSettingsForm"><div class="settings-form-grid"><label>Shop Name<input id="settingShop" value="${esc(D.user.shop || "")}" required></label><label>Business Type<select id="settingBusinessType">${Object.entries(BUSINESS_TYPES).map(([id, kind]) => `<option value="${id}" ${id === (D.settings.businessType || "general") ? "selected" : ""}>${kind.label}</option>`).join("")}</select></label><label>Service Section Name${(() => { const current = String(D.settings.serviceName || "").trim(); const own = Boolean(current) && !SERVICE_NAMES.includes(current); return `<select id="settingServiceName"><option value="">Same as business type (${esc(serviceKind().label)})</option>${SERVICE_NAMES.map((name) => `<option value="${esc(name)}" ${name === current ? "selected" : ""}>${esc(name)}</option>`).join("")}<option value="__own" ${own ? "selected" : ""}>Other (write your own)</option></select><input id="settingServiceOwn" maxlength="40" placeholder="Write the name" value="${own ? esc(current) : ""}" ${own ? "" : "hidden"} style="margin-top:8px">`; })()}</label><label>Shop Logo (max ${MAX_IMAGE_FILE_KB} KB)<input id="settingLogo" type="file" accept="image/*">${D.user.logo ? `<span style="display:flex;align-items:center;gap:10px;margin-top:8px"><img src="${esc(D.user.logo)}" alt="Current logo" style="height:44px;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;font-weight:400"><input id="settingLogoRemove" type="checkbox" style="width:auto"> Remove logo</label></span>` : ""}</label><label>Email<input id="settingEmail" type="email" value="${esc(D.user.shopEmail || "")}"></label><label>Phone<input id="settingPhone" type="tel" value="${esc(D.user.phone || "")}"></label><label>Address<input id="settingAddress" value="${esc(D.user.address || "")}"></label><label>Default Currency<select id="settingCurrency">${opts(D.currencies, D.settings.currencyId)}</select></label><label>Current User Role${!isWorkspaceOwner ? `<input value="${esc(D.roles.find((entry: any) => entry.id == (isWorkspaceOwner ? D.user.roleId : activeRoleId))?.name || "Assigned role")}" disabled>` : `<select id="settingRole">${opts(D.roles, D.user.roleId)}</select>`}</label><label>Default VAT (%)<input id="settingTax" type="number" min="0" step="0.01" value="${+D.settings.taxRate || 0}"></label><div class="settings-wide theme-pick"><span class="theme-title">Theme Color</span><div class="theme-swatches">${THEME_COLORS.map(([name, color]) => `<button type="button" class="theme-swatch ${String(D.settings.themeColor || "#ea580c").toLowerCase() === color ? "on" : ""}" data-color="${color}" style="--sw:${color}" title="${name}" aria-label="${name}"></button>`).join("")}<label class="theme-own" title="Your own colour"><input id="settingThemeColor" type="color" value="${esc(/^#[0-9a-f]{6}$/i.test(String(D.settings.themeColor || "")) ? D.settings.themeColor : "#ea580c")}"><span>Your own colour</span></label></div><small class="settings-help">Tap a colour to see it at once. Press Save Changes to keep it.</small></div><label class="settings-wide">Invoice Footer<input id="settingFooter" value="${esc(D.settings.invoiceFooter || "Thank you for your purchase!")}"></label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedPhone" type="checkbox" style="width:auto" ${D.settings.requirePhone ? "checked" : ""}> Every sale and service bill needs the customer's phone number</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingStaffPrice" type="checkbox" style="width:auto" ${D.settings.staffCanChangePrice ? "checked" : ""}> Staff can change prices and give discounts while selling</label><label class="settings-wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input id="settingNeedReceived" type="checkbox" style="width:auto" ${D.settings.requireReceived ? "checked" : ""}> The amount received has to be typed on every sale</label></div><button class="btn pu" type="submit">Save Changes</button></form></section>`;
+      // A colour shows at once; leaving without saving puts the saved one back.
+      const pickColor = (color: string) => {
+        ($("#settingThemeColor") as HTMLInputElement).value = color;
+        document.querySelectorAll(".theme-swatch").forEach((button) => button.classList.toggle("on", (button as HTMLElement).dataset.color === color));
+        applyTheme(color);
+      };
+      document.querySelectorAll(".theme-swatch").forEach((button) => button.addEventListener("click", () => pickColor((button as HTMLElement).dataset.color!)));
+      $("#settingThemeColor").addEventListener("input", (event: Event) => pickColor((event.currentTarget as HTMLInputElement).value));
       // "Other" opens a box to write the section's own name.
       $("#settingServiceName").addEventListener("change", () => {
         const own = $("#settingServiceName").value === "__own";
@@ -2620,6 +2647,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         D.settings.requirePhone = $("#settingNeedPhone").checked;
         D.settings.requireReceived = $("#settingNeedReceived").checked;
         D.settings.staffCanChangePrice = $("#settingStaffPrice").checked;
+        D.settings.themeColor = ($("#settingThemeColor") as HTMLInputElement).value;
         const serviceChoice = $("#settingServiceName").value;
         D.settings.serviceName = serviceChoice === "__own" ? $("#settingServiceOwn").value.trim() : serviceChoice;
         const typeChanged = D.settings.businessType !== $("#settingBusinessType").value;
@@ -6377,6 +6405,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     const render = () => {
       updateBell();
+      applyTheme();
       document.body.classList.toggle("staff-mode", !isWorkspaceOwner);
       document.body.classList.toggle("price-locked", priceLocked());
       const r =

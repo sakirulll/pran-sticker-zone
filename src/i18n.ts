@@ -339,6 +339,7 @@ const words: Record<string, string> = {
   "Home Delivery": "হোম ডেলিভারি", "Party Order": "পার্টি অর্ডার", "Cake Order": "কেক অর্ডার", "Ice Cream Order": "আইসক্রিম অর্ডার", "Custom Order": "কাস্টম অর্ডার",
   "Installation": "ইনস্টলেশন", "Bike Servicing": "বাইক সার্ভিসিং", "Car Wash": "গাড়ি ওয়াশ", "Laundry": "লন্ড্রি", "Photo Studio": "ফটো স্টুডিও", "Courier Service": "কুরিয়ার সার্ভিস",
   "Rental": "ভাড়া", "Event Booking": "ইভেন্ট বুকিং", "Training & Course": "ট্রেনিং ও কোর্স", "Consultation": "পরামর্শ", "Other Income": "অন্যান্য আয়",
+  "Theme Color": "থিমের রঙ", "Your own colour": "নিজের পছন্দের রঙ", "Tap a colour to see it at once. Press Save Changes to keep it.": "রঙে চাপলে সাথে সাথে দেখা যাবে। রাখতে \"পরিবর্তন সেভ করুন\" চাপুন।",
   "Service Sale": "সার্ভিস বিক্রি", "Service Sale List": "সার্ভিস বিক্রির তালিকা", "New Service Sale": "নতুন সার্ভিস বিক্রি", "Service Receipt": "সার্ভিস রসিদ",
   "Today's Service Income": "আজকের সার্ভিস আয়", "Service Due": "সার্ভিসের বাকি", "Service Income": "সার্ভিস আয়", "Service": "সার্ভিস",
   "Search by receipt, customer or service": "রসিদ, ক্রেতা বা সার্ভিস দিয়ে খুঁজুন", "No service sale matches your search": "খোঁজার সাথে মেলে এমন সার্ভিস বিক্রি নেই",

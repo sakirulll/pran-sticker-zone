@@ -623,7 +623,7 @@ td.mut{
 .pl-bar em{font-style:normal}
 .pl-rank{flex:0 0 24px;height:24px;display:grid;place-items:center;border-radius:50%;background:color-mix(in srgb,var(--pu) 13%,transparent);color:var(--pu);font-size:12px;font-weight:700}
 .pl-bar i{display:block;height:6px;margin:7px 0 5px 34px;border-radius:99px;background:var(--bg);overflow:hidden}
-.pl-bar u{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--pu),#fb923c)}
+.pl-bar u{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--pu),color-mix(in srgb,var(--pu) 55%,#fff))}
 .pl-bar small{display:block;margin-left:34px;color:var(--mut);font-size:12px}
 .pl-empty{margin:24px 0;text-align:center;color:var(--mut)}
 .pl-pos{color:var(--gr)}
@@ -644,6 +644,15 @@ td.mut{
 .pl-scope svg{width:17px;height:17px}
 .sv-more{margin-top:12px;text-align:center}
 a.lx-out{text-decoration:none}
+input[hidden]{display:none!important}
+.theme-pick{display:flex;flex-direction:column;gap:8px}
+.theme-title{font-weight:600}
+.theme-swatches{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.theme-swatch{width:36px;height:36px;padding:0;border:3px solid var(--pn);border-radius:50%;background:var(--sw);box-shadow:0 0 0 1px var(--ln);cursor:pointer;transition:transform .12s}
+.theme-swatch:hover{transform:scale(1.1)}
+.theme-swatch.on{box-shadow:0 0 0 3px var(--sw);transform:scale(1.08)}
+.theme-own{display:inline-flex!important;align-items:center;gap:8px;margin:0;padding:4px 12px 4px 4px;border:1px dashed var(--ln);border-radius:999px;font-weight:500!important;cursor:pointer}
+.theme-own input{width:30px;height:30px;padding:0;border:0;border-radius:50%;background:none;cursor:pointer}
 .sal .lx-table tfoot th,.st .lx-table tfoot th{padding:12px;border-top:2px solid var(--ln);background:var(--bg);text-align:left;color:var(--tx);font-size:14px}
 .sal .lx-table tfoot th.num{text-align:right}
 .sal-att{display:inline-flex;flex-wrap:wrap;gap:4px}
@@ -662,7 +671,7 @@ a.lx-out{text-decoration:none}
 .wh-value{display:flex;align-items:baseline;justify-content:space-between}
 .wh-value b{font-size:19px;color:var(--gr)}
 .wh-bar{display:block;height:6px;border-radius:99px;background:var(--bg);overflow:hidden}
-.wh-bar u{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--pu),#fb923c)}
+.wh-bar u{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--pu),color-mix(in srgb,var(--pu) 55%,#fff))}
 .wh-list{margin:0;padding:0;list-style:none;font-size:13px}
 .wh-list li{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px dashed var(--ln)}
 .wh-list li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -732,7 +741,7 @@ input[readonly][title]{background:var(--bg);color:var(--mut);cursor:not-allowed}
 .sv-cats button.on{border-color:var(--pu);background:var(--pu);color:#fff}
 .sv-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .sv-tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;gap:8px;min-height:84px;padding:12px;border:1px solid var(--ln);border-radius:12px;background:var(--pn);color:var(--tx);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .1s}
-.sv-tile:hover{border-color:var(--pu);box-shadow:0 6px 16px rgba(234,88,12,.12)}
+.sv-tile:hover{border-color:var(--pu);box-shadow:0 6px 16px color-mix(in srgb,var(--pu) 14%,transparent)}
 .sv-tile:active{transform:scale(.97)}
 .sv-tile b{font-size:14px;line-height:1.3;overflow-wrap:anywhere}
 .sv-tile span{color:var(--pu);font-weight:700}
@@ -1058,7 +1067,7 @@ tbody tr:hover{background:color-mix(in srgb,var(--bg) 60%,transparent)}
 .stats{gap:14px}
 .stats div{margin:0;padding:16px 18px;border-radius:14px;background:var(--pn)}
 .stats .stat-link{cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s}
-.stats .stat-link:hover,.stats .stat-link:focus-visible{transform:translateY(-2px);border-color:var(--pu);box-shadow:0 8px 20px rgba(234,88,12,.14);outline:none}
+.stats .stat-link:hover,.stats .stat-link:focus-visible{transform:translateY(-2px);border-color:var(--pu);box-shadow:0 8px 20px color-mix(in srgb,var(--pu) 16%,transparent);outline:none}
 .stats span{display:block;padding-right:44px}
 .stats b{font-size:21px}
 .stats em{width:36px;height:36px;border-radius:10px}
