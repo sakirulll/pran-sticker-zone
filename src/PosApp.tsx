@@ -4182,6 +4182,145 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       });
     };
 
+    // ---- Stock: what is on the shelves, what it is worth, and what needs buying again.
+    let ST_STATE = "";
+    let ST_CATEGORY = "";
+    let ST_QUERY = "";
+    let ST_SORT = "value";
+    let ST_LIMIT = 25;
+
+    function stocksPage() {
+      // What sold in the last 30 days, to see what moves and what sits.
+      const since = dayIso(new Date(Date.now() - 29 * 864e5));
+      const sold = new Map<string, number>();
+      for (const sale of D.sales) {
+        if (sale.ret || String(sale.date) < since) continue;
+        for (const item of sale.items || []) sold.set(String(item.id), (sold.get(String(item.id)) || 0) + (+item.qty || 0));
+      }
+      const state = (product: any) => (+product.stock || 0) <= 0 ? "out" : isLowStock(product) ? "low" : "in";
+      const rows: AnyData[] = D.products.map((product: any) => ({
+        product,
+        qty: +product.stock || 0,
+        cost: (+product.buy || 0) * Math.max(0, +product.stock || 0),
+        worth: (+product.sell || 0) * Math.max(0, +product.stock || 0),
+        sold: q3(sold.get(String(product.id)) || 0),
+        state: state(product),
+        category: nm("categories", product.category) || "",
+      }));
+      const costValue = sum(rows, (row) => row.cost);
+      const saleValue = sum(rows, (row) => row.worth);
+      const lowCount = rows.filter((row) => row.state === "low").length;
+      const outCount = rows.filter((row) => row.state === "out").length;
+      const units = sum(rows, (row) => Math.max(0, row.qty));
+
+      const byCategory = new Map<string, number>();
+      for (const row of rows) byCategory.set(row.category || "Other", (byCategory.get(row.category || "Other") || 0) + row.cost);
+      const categories = [...byCategory.entries()].filter(([, value]) => value > 0).sort((a, b) => b[1] - a[1]);
+      const topCategory = Math.max(1, ...categories.map(([, value]) => value));
+      // Out of stock first, then the ones furthest under their alert line.
+      const restock = rows.filter((row) => row.state !== "in")
+        .sort((a, b) => (a.qty - alertQty(a.product)) - (b.qty - alertQty(b.product)) || b.sold - a.sold).slice(0, 6);
+      const STATES: [string, string, string][] = [["", "All", "var(--pu)"], ["in", "In Stock", "var(--gr)"], ["low", "Low Stock", "var(--or)"], ["out", "Out of Stock", "var(--rd)"]];
+      const statePill = (row: AnyData) => row.state === "out" ? lxPill("Out of Stock", "var(--rd)") : row.state === "low" ? lxPill("Low Stock", "var(--or)") : lxPill("In Stock", "var(--gr)");
+      const picture = (product: any) => typeof product.image === "string" && product.image
+        ? `<img class="st-img" src="${esc(product.image)}" alt="">`
+        : `<i class="lx-av" data-no-translate>${esc(([...String(product.name || "?").trim()][0] || "?").toUpperCase())}</i>`;
+
+      $("#app").innerHTML = `
+        <div class="lx st">
+          <div class="lx-kpis st-kpis">
+            ${lxKpi("box", "Stock Value", tk(costValue), `${rows.length} products · ${+units.toFixed(3)} units`, "var(--bl)")}
+            ${lxKpi("cart", "Sale Value", tk(saleValue), "At the selling price", "var(--pu)")}
+            ${lxKpi("trend", "Potential Profit", tk(saleValue - costValue), "If all of it sells", "var(--gr)")}
+            <button type="button" class="lx-kpi st-kpi-btn ${ST_STATE === "low" ? "on" : ""}" data-state="low" style="--c:var(--or)"><em>${lxIcon("clock")}</em><div><span>Low Stock</span><b>${lowCount}</b><small>Tap to see them</small></div></button>
+            <button type="button" class="lx-kpi st-kpi-btn ${ST_STATE === "out" ? "on" : ""}" data-state="out" style="--c:var(--rd)"><em>${lxIcon("down")}</em><div><span>Out of Stock</span><b>${outCount}</b><small>Tap to see them</small></div></button>
+          </div>
+
+          <div class="pl-grid">
+            <section class="card">
+              <div class="hd"><h2>Value by Category</h2></div>
+              ${categories.length ? categories.slice(0, 8).map(([name, value], index) => `<div class="pl-bar"><div><span class="pl-rank">${index + 1}</span><b>${esc(name)}</b><em><b>${tk(value)}</b></em></div><i><u style="width:${Math.max(3, (value / topCategory) * 100)}%"></u></i><small>${costValue ? ((value / costValue) * 100).toFixed(1) : "0.0"}% of stock value</small></div>`).join("") : `<p class="pl-empty">No stock yet</p>`}
+            </section>
+            <section class="card">
+              <div class="hd"><h2>Needs Restock</h2><a class="lx-link lx-noprint" href="#purchase-new">New Purchase</a></div>
+              ${restock.length ? restock.map((row) => `<div class="st-need">${picture(row.product)}<div><b data-no-translate>${esc(row.product.name)}</b><small>${said("Alert at")} ${alertQty(row.product)} · ${said("Sold")} ${row.sold} / 30 ${said("days")}</small></div><span class="st-qty ${row.state}">${+row.qty.toFixed(3)}</span></div>`).join("") : `<p class="pl-empty st-ok">${lxIcon("trend")}<span>Every product has enough stock</span></p>`}
+            </section>
+          </div>
+
+          <section class="card">
+            <div class="hd">
+              <h2>Stock List</h2>
+              <div class="lx-acts lx-noprint">
+                <button class="lx-out" type="button" id="stCsv">${lxIcon("download")}<span>Excel (CSV)</span></button>
+                <button class="lx-out" type="button" id="stPrint">${lxIcon("print")}<span>Print / PDF</span></button>
+              </div>
+            </div>
+            <div class="lx-bar">
+              <div class="sv-cats st-states">${STATES.map(([key, label]) => `<button type="button" class="${ST_STATE === key ? "on" : ""}" data-state="${key}">${label}</button>`).join("")}</div>
+              <span class="sp"></span>
+              <select id="stCategory" class="st-select" aria-label="Category"><option value="">All Categories</option>${[...new Set(rows.map((row) => row.category).filter(Boolean))].sort().map((name) => `<option value="${esc(name)}" ${ST_CATEGORY === name ? "selected" : ""}>${esc(name)}</option>`).join("")}</select>
+              <select id="stSort" class="st-select" aria-label="Sort">${[["value", "Highest value first"], ["low", "Lowest stock first"], ["sold", "Best selling first"], ["name", "Name A-Z"]].map(([key, label]) => `<option value="${key}" ${ST_SORT === key ? "selected" : ""}>${label}</option>`).join("")}</select>
+              <input class="srch lx-noprint" id="stSearch" value="${esc(ST_QUERY)}" placeholder="Search product or code">
+            </div>
+            <div class="wrap"><table class="lx-table st-table">
+              <thead><tr><th>Product</th><th>Category</th><th class="num">Cost Price</th><th class="num">Sale Price</th><th class="num">Qty</th><th class="num">Stock Value</th><th class="num">Sold (30 days)</th><th>Status</th></tr></thead>
+              <tbody id="stRows"></tbody>
+              <tfoot id="stFoot"></tfoot>
+            </table></div>
+            <div id="stMore" class="sv-more"></div>
+          </section>
+        </div>`;
+
+      let shown: AnyData[] = [];
+      const drawRows = () => {
+        const query = ST_QUERY.trim().toLowerCase();
+        shown = rows.filter((row: AnyData) => (!ST_STATE || row.state === ST_STATE) && (!ST_CATEGORY || row.category === ST_CATEGORY)
+          && (!query || `${row.product.name} ${row.product.code || ""} ${row.category}`.toLowerCase().includes(query)));
+        shown.sort(ST_SORT === "low" ? (a, b) => a.qty - b.qty : ST_SORT === "sold" ? (a, b) => b.sold - a.sold : ST_SORT === "name" ? (a, b) => String(a.product.name).localeCompare(String(b.product.name)) : (a, b) => b.cost - a.cost);
+        $("#stRows").innerHTML = shown.slice(0, ST_LIMIT).map((row) => {
+          const product = row.product;
+          const unit = nm("units", product.unit);
+          return `<tr class="${row.state === "out" ? "st-out" : ""}">
+            <td class="lx-main"><div class="lx-who">${picture(product)}<div><b data-no-translate>${esc(product.name)}</b>${product.code || sizeList(product).length ? `<small class="lx-tel" data-no-translate>${esc([product.code, sizeSummary(product)].filter(Boolean).join(" · "))}</small>` : ""}</div></div></td>
+            <td ${lxLabel("Category")}><span>${esc(row.category || "-")}</span></td>
+            <td class="num" ${lxLabel("Cost Price")}>${tk(product.buy)}</td>
+            <td class="num" ${lxLabel("Sale Price")}>${tk(product.sell)}</td>
+            <td class="num" ${lxLabel("Qty")}><span class="st-qty ${row.state}">${+row.qty.toFixed(3)}</span>${unit ? ` <small class="lx-none">${esc(unit)}</small>` : ""}</td>
+            <td class="num" ${lxLabel("Stock Value")}><b>${tk(row.cost)}</b></td>
+            <td class="num" ${lxLabel("Sold (30 days)")}>${row.sold ? `<span>${row.sold}</span>` : `<span class="lx-none">0</span>`}</td>
+            <td ${lxLabel("Status")}>${statePill(row)}</td>
+          </tr>`;
+        }).join("") || lxEmpty(8, D.products.length ? "No product matches" : "No product yet. Add products to see their stock here.");
+        $("#stFoot").innerHTML = shown.length ? `<tr><th colspan="4">Total</th><th class="num">${+sum(shown, (row) => Math.max(0, row.qty)).toFixed(3)}</th><th class="num">${tk(sum(shown, (row) => row.cost))}</th><th class="num">${+sum(shown, (row) => row.sold).toFixed(3)}</th><th></th></tr>` : "";
+        $("#stMore").innerHTML = shown.length > ST_LIMIT ? `<button class="lx-out" type="button" id="stShowMore">Show more</button>` : "";
+        $("#stShowMore")?.addEventListener("click", () => { ST_LIMIT += 25; drawRows(); });
+      };
+      drawRows();
+
+      // The state chips and the low / out cards filter the list and move to it.
+      document.querySelectorAll(".st [data-state]").forEach((button) => button.addEventListener("click", () => {
+        const picked = (button as HTMLElement).dataset.state || "";
+        ST_STATE = button.classList.contains("st-kpi-btn") && ST_STATE === picked ? "" : picked;
+        ST_LIMIT = 25;
+        stocksPage();
+        if (button.classList.contains("st-kpi-btn")) $("#stRows").closest("section").scrollIntoView({ behavior: "smooth", block: "start" });
+      }));
+      $("#stCategory").addEventListener("change", (event: Event) => { ST_CATEGORY = (event.currentTarget as HTMLSelectElement).value; ST_LIMIT = 25; drawRows(); });
+      $("#stSort").addEventListener("change", (event: Event) => { ST_SORT = (event.currentTarget as HTMLSelectElement).value; drawRows(); });
+      $("#stSearch").addEventListener("input", (event: Event) => { ST_QUERY = (event.currentTarget as HTMLInputElement).value; ST_LIMIT = 25; drawRows(); });
+      $("#stPrint").addEventListener("click", () => window.print());
+      $("#stCsv").addEventListener("click", () => {
+        const table = [["Product", "Code", "Category", "Cost", "Sale", "Qty", "Stock Value", "Sold (30 days)", "Status", "Sizes"],
+          ...shown.map((row) => [row.product.name, row.product.code || "", row.category, (+row.product.buy || 0).toFixed(2), (+row.product.sell || 0).toFixed(2), row.qty, row.cost.toFixed(2), row.sold, row.state === "out" ? "Out of Stock" : row.state === "low" ? "Low Stock" : "In Stock", sizeSummary(row.product)])];
+        const csv = "﻿" + table.map((line) => line.map((value: any) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+        link.download = `stock-${today()}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      });
+    }
+
     function peoplePage(k: PeopleList) {
       const forCustomers = k === "customers";
       const title = C[k][0];
@@ -5139,40 +5278,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
       "product-add": productForm,
 
-      stocks: () => {
-        $("#app").innerHTML = tab(
-          "Stock List",
-          [
-            "Product",
-            "Cost",
-            "Qty",
-            "Sale",
-            "Stock Value",
-          ],
-          D.products.map(
-            (p: any) => [
-              esc(p.name) + (sizeList(p).length ? `<br><small class="size-note" data-no-translate>${esc(sizeSummary(p))}</small>` : ""),
-              tk(p.buy),
-              p.stock,
-              tk(p.sell),
-              tk(
-                p.buy * p.stock,
-              ),
-            ],
-          ),
-          `<b>
-            Total stock value:
-            ${tk(
-              sum(
-                D.products,
-                (p) =>
-                  p.buy *
-                  p.stock,
-              ),
-            )}
-          </b>`,
-        );
-      },
+      stocks: stocksPage,
 
       dues: duesPage,
       expenses: expensesPage,
