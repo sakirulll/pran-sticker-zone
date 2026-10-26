@@ -19,6 +19,8 @@ const BILLING_DEFAULTS = [
     'support_hours' => '',
     // How long a new owner may use the shop before the email address must be confirmed.
     'verify_grace_days' => '3',
+    // Where emails about new payments go; empty sends them to the admins' own login emails.
+    'notify_email' => '',
 ];
 const BILLING_PLANS = ['monthly' => '1 MONTH', 'yearly' => '1 YEAR'];
 

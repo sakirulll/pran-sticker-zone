@@ -55,7 +55,7 @@ const canSave = async (session: Session) =>
 after(async () => {
   if (!BASE) return;
   const admin = await adminSession();
-  await admin.call("billing.php?action=admin-settings", { price_monthly: 100, price_yearly: 999, trial_days: 14, verify_grace_days: 3, bkash_number: "", nagad_number: "", support_phone: "" });
+  await admin.call("billing.php?action=admin-settings", { price_monthly: 100, price_yearly: 999, trial_days: 14, verify_grace_days: 3, bkash_number: "", nagad_number: "", support_phone: "", notify_email: "" });
 });
 
 test("a new shop starts on a free trial and the admin's own shop never expires", { skip: !BASE }, async () => {
@@ -197,4 +197,26 @@ test("prices and the support number can be read without logging in, and nothing 
   const seen = await new Session().call("contact.php");
   assert.equal(seen.status, 200);
   assert.deepEqual(seen.body, { priceMonthly: 100, priceYearly: 999, trialDays: 14, supportPhone: "01700000002", supportWhatsapp: "01700000003", supportEmail: "help@test.local", supportFacebook: "Test Page", supportHours: "10-10" });
+});
+
+test("payment emails go to the address the admin chose, and a test email can be sent there", { skip: !BASE || !MAIL_LOG }, async () => {
+  const admin = await adminSession();
+  const prices = { price_monthly: 100, price_yearly: 999, trial_days: 14, verify_grace_days: 3 };
+  assert.equal((await admin.call("billing.php?action=admin-settings", { ...prices, notify_email: "not an email" })).status, 400);
+  assert.equal((await admin.call("billing.php?action=admin-settings", { ...prices, notify_email: "notify@test.local" })).status, 200);
+  const overview = (await admin.call("billing.php?action=admin-overview")).body;
+  assert.deepEqual(overview.noticeEmails, ["notify@test.local"]);
+
+  const trial = await admin.call("billing.php?action=admin-test-mail", {});
+  assert.deepEqual([trial.status, trial.body.sentTo], [200, ["notify@test.local"]]);
+  // A shop owner cannot send them, nor see where they go.
+  const { session } = await newOwner("notify");
+  assert.equal((await session.call("billing.php?action=admin-test-mail", {})).status, 403);
+  assert.equal((await session.call("billing.php?action=status")).body.notifyEmail, undefined);
+
+  const trx = `TRX${RUN.toUpperCase()}N`;
+  assert.equal((await session.call("billing.php?action=submit", { plan: "monthly", method: "nagad", sender: "01700000000", trxId: trx })).status, 201);
+  const mails = readFileSync(MAIL_LOG!, "utf8").split("\n---\n").filter((entry) => entry.includes(trx));
+  assert.deepEqual(mails.map((entry) => /^To: (.+)$/m.exec(entry)?.[1]), ["notify@test.local"]);
+  await admin.call("billing.php?action=admin-settings", { ...prices, notify_email: "" });
 });

@@ -14,13 +14,22 @@ $admin = is_admin($pdo, $user);
 
 // Every platform admin hears about a new payment by email, so it can be checked
 // without keeping the admin panel open. A mail that fails never stops the payment.
+function notice_emails(PDO $pdo): array
+{
+    $chosen = preg_split('/[\s,;]+/', billing_settings($pdo)['notify_email'], -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $emails = $chosen;
+    if (!$emails) {
+        $emails = array_map('strval', is_array(config()['admin_emails'] ?? null) ? config()['admin_emails'] : []);
+        foreach ($pdo->query('SELECT u.email FROM pos_admins a JOIN pos_users u ON u.id = a.user_id')->fetchAll(PDO::FETCH_COLUMN) as $email) {
+            $emails[] = (string)$email;
+        }
+    }
+    return array_values(array_unique(array_filter(array_map(fn ($email) => strtolower(trim($email)), $emails), fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL) !== false)));
+}
+
 function notify_admins_of_payment(PDO $pdo, string $shopId, array $owner, string $plan, float $amount, string $payMethod, string $sender, string $trxId): void
 {
-    $emails = array_map('strval', is_array(config()['admin_emails'] ?? null) ? config()['admin_emails'] : []);
-    foreach ($pdo->query('SELECT u.email FROM pos_admins a JOIN pos_users u ON u.id = a.user_id')->fetchAll(PDO::FETCH_COLUMN) as $email) {
-        $emails[] = (string)$email;
-    }
-    $emails = array_values(array_unique(array_filter(array_map(fn ($email) => strtolower(trim($email)), $emails))));
+    $emails = notice_emails($pdo);
     if (!$emails) {
         return;
     }
@@ -169,6 +178,9 @@ if ($action === 'admin-overview' && $method === 'GET') {
         'shops' => $shops,
         'payments' => array_map('payment_row', $payments),
         'settings' => public_settings($settings),
+        // Only the admin sees where payment emails go.
+        'noticeEmails' => notice_emails($pdo),
+        'notifyEmail' => $settings['notify_email'],
     ]);
 }
 
@@ -222,7 +234,30 @@ try {
         respond(['ok' => true]);
     }
 
+    // A test email to wherever payment emails go, to see that they arrive.
+    if ($action === 'admin-test-mail') {
+        $emails = notice_emails($pdo);
+        if (!$emails) {
+            fail('There is no email address to send to.');
+        }
+        $sent = [];
+        foreach ($emails as $email) {
+            if (send_mail($email, 'Test email - ' . APP_NAME, "This is a test from " . APP_NAME . ". Payment emails will come to this address.\n\nএটা একটা পরীক্ষার মেইল। নতুন পেমেন্টের মেইল এই ঠিকানায় আসবে।\n\n" . app_url() . "/#admin-payments\n")) {
+                $sent[] = $email;
+            }
+        }
+        if (!$sent) {
+            fail('The server could not send the email.', 500);
+        }
+        respond(['ok' => true, 'sentTo' => $sent]);
+    }
+
     if ($action === 'admin-settings') {
+        foreach (preg_split('/[\s,;]+/', (string)($data['notify_email'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $email) {
+            if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                fail('Enter a correct email address for payment emails.');
+            }
+        }
         if (isset($data['verify_grace_days']) && (!is_numeric($data['verify_grace_days']) || (int)$data['verify_grace_days'] < 0 || (int)$data['verify_grace_days'] > 365)) {
             fail('Enter the days allowed before email confirmation as a number between 0 and 365.');
         }

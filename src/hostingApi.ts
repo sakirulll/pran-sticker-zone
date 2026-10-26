@@ -169,7 +169,11 @@ export const hostingApi = {
     shops: AdminShop[];
     payments: Payment[];
     settings: BillingSettings;
+    noticeEmails: string[];
+    notifyEmail: string;
   }>("billing.php?action=admin-overview"),
+
+  adminTestMail: () => request<{ ok: true; sentTo: string[] }>("billing.php?action=admin-test-mail", { method: "POST", body: "{}" }),
 
   adminAction: (action: "review" | "extend" | "suspend" | "settings" | "verify", body: Record<string, unknown>) =>
     request<{ ok: true }>(`billing.php?action=admin-${action}`, {
