@@ -644,6 +644,30 @@ td.mut{
 .pl-scope svg{width:17px;height:17px}
 .sv-more{margin-top:12px;text-align:center}
 a.lx-out{text-decoration:none}
+.ex-ic{flex:0 0 36px;width:36px;height:36px;display:grid;place-items:center;border-radius:10px;background:color-mix(in srgb,var(--c) 14%,transparent);color:var(--c);font-style:normal}
+.ex-ic svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ex-bar .ex-ic{flex-basis:28px;width:28px;height:28px;border-radius:8px}
+.ex-bar .ex-ic svg{width:15px;height:15px}
+.ex-bar i{margin-left:38px}
+.ex-bar small{margin-left:38px}
+.ex-big{display:flex;align-items:center;gap:10px;padding:10px 0}
+.ex-big+.ex-big{border-top:1px solid var(--ln)}
+.ex-big>div{flex:1;min-width:0}
+.ex-big b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ex-big small{color:var(--mut);font-size:12px}
+.ex-big em{font-style:normal;font-weight:700;color:var(--rd);white-space:nowrap}
+.ex .lx-kpi.pl-net b{font-size:22px}
+.ex .lx-table tfoot th{padding:12px;border-top:2px solid var(--ln);background:var(--bg);text-align:left;color:var(--tx);font-size:14px}
+.ex .lx-table tfoot th.num{color:var(--rd);font-size:16px}
+.ex .lx-table tfoot th.num{text-align:right}
+.ex-pick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ex-pick button{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--ln);border-radius:10px;background:var(--pn);color:var(--tx);font:inherit;font-size:13px;font-weight:600;text-align:left;cursor:pointer}
+.ex-pick button .ex-ic{flex-basis:28px;width:28px;height:28px;border-radius:8px}
+.ex-pick button .ex-ic svg{width:15px;height:15px}
+.ex-pick button:hover{border-color:var(--c)}
+.ex-pick button.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 10%,var(--pn));box-shadow:0 0 0 1px var(--c)}
+dialog:has(.ex-dlg){width:min(560px,calc(100vw - 24px));max-width:none}
+@media(max-width:700px){.ex .lx-table tfoot,.ex .lx-table tfoot tr{display:flex;width:100%}.ex .lx-table tfoot th{flex:1}.ex .lx-table tfoot th:empty{display:none}.ex .lx-four{grid-template-columns:repeat(2,minmax(0,1fr))}.ex .lx-kpi.pl-net{grid-column:1/-1}.ex-pick{grid-template-columns:repeat(2,minmax(0,1fr))}.ex .pl-head .lx-acts{flex-wrap:wrap}.ex .pl-head .lx-add{flex-basis:100%;justify-content:center}}
 /* A staff login does not see the buttons that change or delete what is saved. */
 body.staff-mode .owner-only,body.staff-mode [data-edit],body.staff-mode [data-delete],body.staff-mode #personEdit,
 body.staff-mode [onclick*="del('"],body.staff-mode [onclick*="editSale("],body.staff-mode [onclick*="editProduct("],body.staff-mode [onclick*="ret('"]{display:none!important}

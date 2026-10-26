@@ -987,7 +987,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <label>Party Name</label><input id="editSaleParty" value="${esc(sale.party)}">
         <label>Discount (৳)</label><input id="editSaleDiscount" type="number" min="0" step="0.01" value="${+sale.disc || 0}">
         <label>Paid Amount (৳)</label><input id="editSalePaid" type="number" min="0" step="0.01" value="${+sale.paid || 0}">
-        <label>Payment Type</label><select id="editSalePayment">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option ${sale.pay === type ? "selected" : ""}>${type}</option>`).join("")}</select>
+        <label>Payment Type</label><select id="editSalePayment">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option value="${type}" ${sale.pay === type ? "selected" : ""}>${type}</option>`).join("")}</select>
         <div class="two" style="margin-top:16px">
           <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
           <button class="btn pu" type="button" id="saveSaleEdit">Save Changes</button>
@@ -1160,10 +1160,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
                 </label>
 
                 <select id="py">
-                  <option>Cash</option>
-                  <option>bKash</option>
-                  <option>Nagad</option>
-                  <option>Card</option>
+                  <option value="Cash">Cash</option>
+                  <option value="bKash">bKash</option>
+                  <option value="Nagad">Nagad</option>
+                  <option value="Card">Card</option>
                 </select>
 
               </div>
@@ -3499,7 +3499,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         <label>Amount</label><input id="duePayAmount" type="number" inputmode="decimal" min="0.01" max="${party.due}" step="0.01" value="${party.due}">
         <div class="lx-quick"><button type="button" data-part="1">Full amount</button><button type="button" data-part="0.5">Half</button><span>Due after this payment</span><b id="duePayLeft"></b></div>
         <div class="two" style="margin-top:10px">
-          <div><label>Payment Type</label><select id="duePayMethod">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option>${type}</option>`).join("")}</select></div>
+          <div><label>Payment Type</label><select id="duePayMethod">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option value="${type}">${type}</option>`).join("")}</select></div>
           <div><label>Date</label><input id="duePayDate" type="date" value="${today()}"></div>
         </div>
         <p class="settings-help">${party.invoices.length > 1 ? "The payment is taken off the oldest invoice first." : `Invoice ${esc(party.invoices[0].inv)}`}</p>
@@ -3804,7 +3804,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             </div>
             <div class="two">
               <div><label>Received <kbd>F4</kbd></label><input id="svPaid" type="number" inputmode="decimal" min="0" step="0.01" value="0"></div>
-              <div><label>Payment Type</label><select id="svPay">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option>${type}</option>`).join("")}</select></div>
+              <div><label>Payment Type</label><select id="svPay">${["Cash", "bKash", "Nagad", "Card"].map((type) => `<option value="${type}">${type}</option>`).join("")}</select></div>
             </div>
             <div class="lx-quick"><span>Due</span><b id="svDue"></b></div>
             <div class="two" style="margin-top:10px">
@@ -3981,6 +3981,206 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         quickReceipt(id);
       });
     }
+
+    // ---- Expenses: what the shop spends, by kind, for any period. Expenses from before kinds
+    // were kept count as "Other".
+    const EXPENSE_KINDS: [string, string, string][] = [
+      ["Rent", "var(--bl)", '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>'],
+      ["Electricity", "#eab308", '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>'],
+      ["Salary", "var(--gr)", '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'],
+      ["Transport", "#0ea5e9", '<path d="M3 7h12v11H3zM15 11h4l3 3v4h-7z"/><circle cx="7" cy="19" r="2"/><circle cx="18" cy="19" r="2"/>'],
+      ["Tea & Snacks", "#a16207", '<path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 9h2a2 2 0 0 1 0 4h-2M8 2v3M12 2v3"/>'],
+      ["Shop Supplies", "#8b5cf6", '<path d="m12 3 9 5v8l-9 5-9-5V8z"/><path d="m3 8 9 5 9-5M12 13v8"/>'],
+      ["Internet & Phone", "#14b8a6", '<path d="M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1"/>'],
+      ["Repair", "var(--or)", '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>'],
+      ["Other", "var(--mut)", '<circle cx="12" cy="12" r="9"/><path d="M8 12h.01M12 12h.01M16 12h.01"/>'],
+    ];
+    const expenseKind = (entry: any) => EXPENSE_KINDS.find(([name]) => name === entry.category) || EXPENSE_KINDS[EXPENSE_KINDS.length - 1];
+    const kindIcon = (kind: [string, string, string]) => `<i class="ex-ic" style="--c:${kind[1]}"><svg viewBox="0 0 24 24" aria-hidden="true">${kind[2]}</svg></i>`;
+    const dayIso = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const EX_PERIODS: [string, string, () => [string, string]][] = [
+      ["today", "Today", () => [today(), today()]],
+      ["week", "Last 7 Days", () => { const now = new Date(); return [dayIso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)), today()]; }],
+      ["month", "This Month", () => { const now = new Date(); return [dayIso(new Date(now.getFullYear(), now.getMonth(), 1)), today()]; }],
+      ["last-month", "Last Month", () => { const now = new Date(); return [dayIso(new Date(now.getFullYear(), now.getMonth() - 1, 1)), dayIso(new Date(now.getFullYear(), now.getMonth(), 0))]; }],
+      ["year", "This Year", () => [dayIso(new Date(new Date().getFullYear(), 0, 1)), today()]],
+      ["all", "All Time", () => ["", ""]],
+    ];
+    let EX_PERIOD = "month";
+    let [EX_FROM, EX_TO] = EX_PERIODS[2][2]();
+    let EX_KIND = "";
+    let EX_QUERY = "";
+    let EX_LIMIT = 25;
+
+    function expensesPage() {
+      const inRange = (date: any) => { const day = String(date || "").slice(0, 10); return (!EX_FROM || day >= EX_FROM) && (!EX_TO || day <= EX_TO); };
+      const inPeriod = D.expenses.filter((entry: any) => inRange(entry.date))
+        .sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)) || (+b.id || 0) - (+a.id || 0));
+      const total = sum(inPeriod, (entry) => entry.amount);
+      const todayTotal = sum(D.expenses.filter((entry: any) => entry.date === today()), (entry) => entry.amount);
+      const month = today().slice(0, 7);
+      const monthTotal = sum(D.expenses.filter((entry: any) => String(entry.date).startsWith(month)), (entry) => entry.amount);
+      const firstDay = EX_FROM || inPeriod[inPeriod.length - 1]?.date || today();
+      const days = Math.max(1, Math.round((Date.parse(EX_TO || today()) - Date.parse(firstDay)) / 864e5) + 1);
+      const byKind = EXPENSE_KINDS.map((kind) => {
+        const entries = inPeriod.filter((entry: any) => expenseKind(entry) === kind);
+        return { kind, count: entries.length, amount: sum(entries, (entry) => entry.amount) };
+      }).filter((row) => row.count).sort((a, b) => b.amount - a.amount);
+      const biggest = Math.max(1, ...byKind.map((row) => row.amount));
+      const largest = [...inPeriod].sort((a: any, b: any) => (+b.amount || 0) - (+a.amount || 0)).slice(0, 5);
+      const rangeText = EX_FROM || EX_TO ? `${EX_FROM || "…"} — ${EX_TO || "…"}` : said("All Time");
+
+      $("#app").innerHTML = `
+        <div class="lx ex">
+          <section class="card pl-head">
+            <div class="hd">
+              <div><h2>Expense List</h2><small class="pl-range" data-no-translate>${esc(rangeText)}</small></div>
+              <div class="lx-acts lx-noprint">
+                <button class="lx-out" type="button" id="exCsv">${lxIcon("download")}<span>Excel (CSV)</span></button>
+                <button class="lx-out" type="button" id="exPrint">${lxIcon("print")}<span>Print / PDF</span></button>
+                <button class="lx-add" type="button" id="exAdd">${lxIcon("plus")}<span>Add Expense</span></button>
+              </div>
+            </div>
+            <div class="pl-periods lx-noprint">
+              ${EX_PERIODS.map(([key, label]) => `<button type="button" class="${EX_PERIOD === key ? "on" : ""}" data-period="${key}">${label}</button>`).join("")}
+              <span class="pl-custom"><input id="exFrom" type="date" value="${EX_FROM}" aria-label="From"><span>to</span><input id="exTo" type="date" value="${EX_TO}" aria-label="To"></span>
+            </div>
+          </section>
+
+          <div class="lx-kpis lx-four">
+            <div class="lx-kpi pl-net loss"><em>${lxIcon("wallet")}</em><div><span>Total Expense</span><b>${tk(total)}</b><small>${inPeriod.length} expenses</small></div></div>
+            ${lxKpi("clock", "Today", tk(todayTotal), "", "var(--or)")}
+            ${lxKpi("trend", "This Month", tk(monthTotal), "", "var(--bl)")}
+            ${lxKpi("box", "Average per Day", tk(total / days), `${days} days`, "var(--mut)")}
+          </div>
+
+          <div class="pl-grid">
+            <section class="card">
+              <div class="hd"><h2>By Category</h2></div>
+              ${byKind.length ? byKind.map((row) => `<div class="pl-bar ex-bar"><div>${kindIcon(row.kind)}<b>${row.kind[0]}</b><em><b>${tk(row.amount)}</b></em></div><i><u style="width:${Math.max(3, (row.amount / biggest) * 100)}%;background:${row.kind[1]}"></u></i><small>${row.count} expenses · ${total ? ((row.amount / total) * 100).toFixed(1) : "0.0"}%</small></div>`).join("") : `<p class="pl-empty">No expense in this period</p>`}
+            </section>
+            <section class="card">
+              <div class="hd"><h2>Largest Expenses</h2></div>
+              ${largest.length ? largest.map((entry: any, index: number) => `<div class="ex-big"><span class="pl-rank">${index + 1}</span><div><b data-no-translate>${esc(entry.title || said(expenseKind(entry)[0]))}</b><small>${esc(entry.date)} · <span>${expenseKind(entry)[0]}</span></small></div><em>${tk(entry.amount)}</em></div>`).join("") : `<p class="pl-empty">No expense in this period</p>`}
+            </section>
+          </div>
+
+          <section class="card">
+            <div class="lx-bar">
+              <div class="sv-cats ex-kinds">${[["", "All"], ...byKind.map((row) => [row.kind[0], row.kind[0]])].map(([key, label]) => `<button type="button" class="${EX_KIND === key ? "on" : ""}" data-kind="${esc(key)}">${label}</button>`).join("")}</div>
+              <span class="sp"></span>
+              <input class="srch lx-noprint" id="exSearch" value="${esc(EX_QUERY)}" placeholder="Search expense">
+            </div>
+            <div class="wrap"><table class="lx-table">
+              <thead><tr><th>Expense</th><th>Date</th><th>Category</th><th>Payment</th><th class="num">Amount</th><th></th></tr></thead>
+              <tbody id="exRows"></tbody>
+              <tfoot id="exFoot"></tfoot>
+            </table></div>
+            <div id="exMore" class="sv-more"></div>
+          </section>
+        </div>`;
+
+      let shown: any[] = [];
+      const drawRows = () => {
+        const query = EX_QUERY.trim().toLowerCase();
+        shown = inPeriod.filter((entry: any) => (!EX_KIND || expenseKind(entry)[0] === EX_KIND)
+          && (!query || `${entry.title || ""} ${entry.note || ""} ${expenseKind(entry)[0]} ${said(expenseKind(entry)[0])}`.toLowerCase().includes(query)));
+        $("#exRows").innerHTML = shown.slice(0, EX_LIMIT).map((entry: any) => {
+          const kind = expenseKind(entry);
+          return `<tr>
+            <td class="lx-main"><div class="lx-who">${kindIcon(kind)}<div><b data-no-translate>${esc(entry.title || said(kind[0]))}</b>${entry.note ? `<small class="lx-tel" data-no-translate>${esc(entry.note)}</small>` : ""}</div></div></td>
+            <td ${lxLabel("Date")}>${esc(entry.date || "-")}</td>
+            <td ${lxLabel("Category")}>${lxPill(kind[0], kind[1])}</td>
+            <td ${lxLabel("Payment")}><span>${esc(entry.pay || "Cash")}</span></td>
+            <td class="num" ${lxLabel("Amount")}><b class="lx-due">${tk(entry.amount)}</b></td>
+            <td><div class="lx-acts"><button class="lx-ic" type="button" title="Edit" aria-label="Edit" data-edit="${entry.id}">${lxIcon("edit")}</button><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-delete="${entry.id}">${lxIcon("trash")}</button></div></td>
+          </tr>`;
+        }).join("") || lxEmpty(6, D.expenses.length ? "No expense in this period" : "No expense yet. Press \"Add Expense\" to write the first one.");
+        $("#exFoot").innerHTML = shown.length ? `<tr><th colspan="4">Total</th><th class="num">${tk(sum(shown, (entry) => entry.amount))}</th><th></th></tr>` : "";
+        $("#exMore").innerHTML = shown.length > EX_LIMIT ? `<button class="lx-out" type="button" id="exShowMore">Show more</button>` : "";
+        $("#exShowMore")?.addEventListener("click", () => { EX_LIMIT += 25; drawRows(); });
+      };
+      drawRows();
+
+      document.querySelectorAll(".ex .pl-periods [data-period]").forEach((button) => button.addEventListener("click", () => {
+        EX_PERIOD = (button as HTMLElement).dataset.period!;
+        [EX_FROM, EX_TO] = EX_PERIODS.find(([key]) => key === EX_PERIOD)![2]();
+        EX_LIMIT = 25;
+        expensesPage();
+      }));
+      $("#exFrom").addEventListener("change", (event: Event) => { EX_FROM = (event.currentTarget as HTMLInputElement).value; EX_PERIOD = ""; expensesPage(); });
+      $("#exTo").addEventListener("change", (event: Event) => { EX_TO = (event.currentTarget as HTMLInputElement).value; EX_PERIOD = ""; expensesPage(); });
+      document.querySelectorAll(".ex-kinds [data-kind]").forEach((button) => button.addEventListener("click", () => {
+        EX_KIND = (button as HTMLElement).dataset.kind || "";
+        document.querySelectorAll(".ex-kinds button").forEach((other) => other.classList.toggle("on", other === button));
+        EX_LIMIT = 25;
+        drawRows();
+      }));
+      $("#exSearch").addEventListener("input", (event: Event) => { EX_QUERY = (event.currentTarget as HTMLInputElement).value; EX_LIMIT = 25; drawRows(); });
+      $("#exAdd").addEventListener("click", () => expenseForm());
+      $("#exPrint").addEventListener("click", () => window.print());
+      $("#exCsv").addEventListener("click", () => {
+        const rows = [["Date", "Expense", "Category", "Payment", "Amount", "Note"], ...shown.map((entry: any) => [entry.date, entry.title || expenseKind(entry)[0], expenseKind(entry)[0], entry.pay || "Cash", (+entry.amount || 0).toFixed(2), entry.note || ""])];
+        const csv = "﻿" + rows.map((row) => row.map((value: any) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+        link.download = `expenses-${EX_FROM || "start"}-to-${EX_TO || today()}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      });
+      $("#exRows").addEventListener("click", (event: Event) => {
+        const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
+        const entry = button && D.expenses.find((item: any) => item.id == (button.dataset.edit || button.dataset.delete));
+        if (!button || !entry) return;
+        if (button.dataset.edit) expenseForm(entry);
+        if (button.dataset.delete && ownerOnly() && confirm("Delete this expense?")) {
+          D.expenses = D.expenses.filter((item: any) => item !== entry);
+          save();
+          expensesPage();
+        }
+      });
+    }
+
+    const expenseForm = (entry?: any) => {
+      if (entry && !ownerOnly()) return;
+      let kind = entry ? expenseKind(entry)[0] : "";
+      const dialog = $("#dlg") as HTMLDialogElement;
+      dialog.innerHTML = `<div class="lx-dlg ex-dlg">
+        <h3>${entry ? "Edit Expense" : "Add Expense"}</h3>
+        <label>Category</label>
+        <div class="ex-pick">${EXPENSE_KINDS.map((option) => `<button type="button" class="${kind === option[0] ? "on" : ""}" data-pick="${esc(option[0])}" style="--c:${option[1]}">${kindIcon(option)}<span>${option[0]}</span></button>`).join("")}</div>
+        <div class="two" style="margin-top:12px">
+          <div><label>Amount</label><input id="exAmount" type="number" inputmode="decimal" min="0.01" step="0.01" value="${entry ? +entry.amount || "" : ""}" placeholder="0"></div>
+          <div><label>Date</label><input id="exDate" type="date" value="${esc(entry?.date || today())}"></div>
+        </div>
+        <label style="margin-top:10px">Description</label><input id="exTitle" value="${esc(entry?.title || "")}" placeholder="e.g. October shop rent" autocomplete="off">
+        <div class="two" style="margin-top:10px">
+          <div><label>Payment Type</label><select id="exPay">${["Cash", "bKash", "Nagad", "Card", "Bank"].map((type) => `<option value="${type}" ${type === (entry?.pay || "Cash") ? "selected" : ""}>${type}</option>`).join("")}</select></div>
+          <div><label>Note</label><input id="exNote" value="${esc(entry?.note || "")}" placeholder="Optional" autocomplete="off"></div>
+        </div>
+        <div class="two" style="margin-top:16px">
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
+          <button class="btn pu" type="button" id="exSave">Save</button>
+        </div></div>`;
+      dialog.showModal();
+      ($("#exAmount") as HTMLInputElement).focus();
+      dialog.querySelectorAll(".ex-pick [data-pick]").forEach((button) => button.addEventListener("click", () => {
+        kind = (button as HTMLElement).dataset.pick!;
+        dialog.querySelectorAll(".ex-pick button").forEach((other) => other.classList.toggle("on", other === button));
+      }));
+      $("#exSave").addEventListener("click", () => {
+        const amount = money2(+$("#exAmount").value || 0);
+        if (!(amount > 0)) { toast("Enter the amount spent"); $("#exAmount").focus(); return; }
+        if (!kind) { toast("Choose what the money was spent on"); return; }
+        const values = { date: $("#exDate").value || today(), category: kind, title: $("#exTitle").value.trim(), amount, pay: $("#exPay").value, note: $("#exNote").value.trim() };
+        if (entry) Object.assign(entry, values);
+        else D.expenses.unshift({ id: uid(), ...values });
+        save();
+        dialog.close();
+        toast(entry ? "Expense saved" : "Expense added");
+        expensesPage();
+      });
+    };
 
     function peoplePage(k: PeopleList) {
       const forCustomers = k === "customers";
@@ -4975,6 +5175,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       },
 
       dues: duesPage,
+      expenses: expensesPage,
       services: servicePosPage,
       "service-list": servicesPage,
       "service-items": serviceItemsPage,
