@@ -3387,6 +3387,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/>',
       print: '<path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v7H7z"/>',
       plus: '<path d="M12 5v14M5 12h14"/>',
+      home: '<path d="M3 21V9l9-5 9 5v12"/><path d="M8 21v-7h8v7"/>',
+      swap: '<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
       tool: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
       download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/>',
       box: '<path d="m12 3 9 5v8l-9 5-9-5V8z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
@@ -4320,6 +4322,359 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         URL.revokeObjectURL(link.href);
       });
     }
+
+    // ---- Salary: each month's pay worked out from the attendance register, paid in one or more
+    // slips. Every slip is also written down as a Salary expense, so profit and loss counts it.
+    let SAL_MONTH = "";
+    const monthName = (month: string) => /^\d{4}-\d{2}$/.test(String(month))
+      ? new Date(`${month}-01T00:00:00`).toLocaleDateString(currentLanguage() === "bn" ? "bn-BD" : "en-GB", { month: "long", year: "numeric" })
+      : String(month || "-");
+    const payrollFor = (employee: any, month: string) => {
+      const sheet = monthAttendance(employee.id, month);
+      const [year, monthNumber] = month.split("-").map(Number);
+      const days = new Date(year, monthNumber, 0).getDate();
+      const salary = +employee.salary || 0;
+      const cut = money2((salary / days) * sheet.absent);
+      const payable = Math.max(0, money2(salary - cut));
+      const slips = D.salary.filter((slip: any) => slip.employee == employee.id && slip.month === month);
+      const paid = money2(sum(slips, (slip) => slip.amount));
+      return { employee, sheet, salary, cut, payable, slips, paid, left: Math.max(0, money2(payable - paid)) };
+    };
+
+    function salaryPage() {
+      const month = SAL_MONTH || today().slice(0, 7);
+      const rows = D.employees.map((employee: any) => payrollFor(employee, month));
+      const payable = sum(rows, (row: AnyData) => row.payable);
+      const paid = sum(rows, (row: AnyData) => row.paid);
+      const settled = rows.filter((row: AnyData) => row.payable > 0 && row.left <= 0).length;
+      const history = [...D.salary].sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)) || (+b.id || 0) - (+a.id || 0)).slice(0, 30);
+      const state = (row: AnyData) => row.payable <= 0 && !row.paid ? `<span class="lx-none">-</span>`
+        : row.left <= 0 ? lxPill("Paid", "var(--gr)") : row.paid ? lxPill("Partly Paid", "var(--or)") : lxPill("Not Paid", "var(--rd)");
+
+      $("#app").innerHTML = `
+        <div class="lx sal">
+          <section class="card pl-head">
+            <div class="hd">
+              <div><h2>Salary Sheet</h2><small class="pl-range">${esc(monthName(month))}</small></div>
+              <div class="lx-acts lx-noprint">
+                <label class="lx-date"><span>Month</span><input id="salMonth" type="month" value="${esc(month)}"></label>
+                <button class="lx-out" type="button" id="salPrint">${lxIcon("print")}<span>Print / PDF</span></button>
+              </div>
+            </div>
+          </section>
+
+          <div class="lx-kpis lx-four">
+            ${lxKpi("people", "Total Payable", tk(payable), `${rows.length} employees`, "var(--bl)")}
+            ${lxKpi("wallet", "Salary Paid", tk(paid), `${D.salary.filter((slip: any) => slip.month === month).length} slips`, "var(--gr)")}
+            <div class="lx-kpi pl-net ${payable - paid > 0 ? "loss" : ""}"><em>${lxIcon("clock")}</em><div><span>Still to Pay</span><b>${tk(Math.max(0, payable - paid))}</b><small>${settled} / ${rows.length} employees paid</small></div></div>
+            ${lxKpi("down", "Cut for absence", tk(sum(rows, (row: AnyData) => row.cut)), `${sum(rows, (row: AnyData) => row.sheet.absent)} days absent`, "var(--or)")}
+          </div>
+
+          <section class="card">
+            <div class="hd"><h2>Payroll</h2><a class="lx-link lx-noprint" href="#employees">Employees and attendance</a></div>
+            <div class="wrap"><table class="lx-table">
+              <thead><tr><th>Employee</th><th class="num">Monthly Salary</th><th>Attendance</th><th class="num">Cut for absence</th><th class="num">Payable</th><th class="num">Paid</th><th>Status</th><th></th></tr></thead>
+              <tbody id="salRows">${rows.map((row: AnyData, index: number) => `
+                <tr>
+                  <td class="lx-main"><div class="lx-who">${lxAvatar(row.employee.name)}<div><b data-no-translate>${esc(row.employee.name)}</b><small class="lx-tel" data-no-translate>${esc([row.employee.role, row.employee.phone].filter(Boolean).join(" · "))}</small></div></div></td>
+                  <td class="num" ${lxLabel("Monthly Salary")}>${tk(row.salary)}</td>
+                  <td ${lxLabel("Attendance")}><span class="sal-att">${lxPill(`${said("Present")} ${row.sheet.present}`, "var(--gr)")} ${row.sheet.absent ? lxPill(`${said("Absent")} ${row.sheet.absent}`, "var(--rd)") : ""} ${row.sheet.leave ? lxPill(`${said("Leave")} ${row.sheet.leave}`, "var(--or)") : ""}</span></td>
+                  <td class="num" ${lxLabel("Cut for absence")}>${row.cut ? `<span class="lx-due">− ${tk(row.cut)}</span>` : tk(0)}</td>
+                  <td class="num" ${lxLabel("Payable")}><b>${tk(row.payable)}</b></td>
+                  <td class="num" ${lxLabel("Paid")}>${tk(row.paid)}</td>
+                  <td ${lxLabel("Status")}>${state(row)}</td>
+                  <td><div class="lx-acts">${row.left > 0 ? `<button class="lx-go" type="button" data-pay="${index}">Pay</button>` : ""}<button class="lx-ic" type="button" title="Attendance" aria-label="Attendance" data-sheet="${index}">${lxIcon("eye")}</button></div></td>
+                </tr>`).join("") || lxEmpty(8, "No employee yet. Add employees first, with their monthly salary.")}</tbody>
+              ${rows.length ? `<tfoot><tr><th>Total</th><th class="num">${tk(sum(rows, (row: AnyData) => row.salary))}</th><th></th><th class="num">${tk(sum(rows, (row: AnyData) => row.cut))}</th><th class="num">${tk(payable)}</th><th class="num">${tk(paid)}</th><th colspan="2"></th></tr></tfoot>` : ""}
+            </table></div>
+          </section>
+
+          <section class="card">
+            <div class="hd"><h2>Salary Slips</h2></div>
+            <div class="wrap"><table class="lx-table">
+              <thead><tr><th>Employee</th><th>Month</th><th>Date</th><th>Payment</th><th class="num">Amount</th><th></th></tr></thead>
+              <tbody id="salSlips">${history.map((slip: any) => `
+                <tr>
+                  <td class="lx-main">${lxWho(nm("employees", slip.employee) || "-", "")}</td>
+                  <td ${lxLabel("Month")}><span>${esc(monthName(slip.month))}</span></td>
+                  <td ${lxLabel("Date")}>${esc(slip.date || "-")}</td>
+                  <td ${lxLabel("Payment")}><span>${esc(slip.pay || "Cash")}</span></td>
+                  <td class="num" ${lxLabel("Amount")}><b>${tk(slip.amount)}</b></td>
+                  <td><div class="lx-acts"><button class="lx-go sv-go" type="button" data-slip="${slip.id}">${lxIcon("print")}<span>Slip</span></button><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-delete="${slip.id}">${lxIcon("trash")}</button></div></td>
+                </tr>`).join("") || lxEmpty(6, "No salary paid yet")}</tbody>
+            </table></div>
+          </section>
+        </div>`;
+
+      $("#salMonth").addEventListener("change", (event: Event) => { SAL_MONTH = (event.currentTarget as HTMLInputElement).value || month; salaryPage(); });
+      $("#salPrint").addEventListener("click", () => window.print());
+      $("#salRows").addEventListener("click", (event: Event) => {
+        const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
+        if (!button) return;
+        if (button.dataset.pay) salaryDialog(rows[+button.dataset.pay], month);
+        if (button.dataset.sheet) employeeSheet(rows[+button.dataset.sheet].employee, month);
+      });
+      $("#salSlips").addEventListener("click", (event: Event) => {
+        const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
+        const slip = button && D.salary.find((entry: any) => entry.id == (button.dataset.slip || button.dataset.delete));
+        if (!button || !slip) return;
+        if (button.dataset.slip) printSalarySlip(slip);
+        if (button.dataset.delete && ownerOnly() && confirm("Delete this salary slip? Its expense is removed too.")) {
+          D.salary = D.salary.filter((entry: any) => entry !== slip);
+          D.expenses = D.expenses.filter((entry: any) => entry.salarySlip != slip.id);
+          save();
+          salaryPage();
+        }
+      });
+    }
+
+    const salaryDialog = (row: AnyData, month: string) => {
+      const dialog = $("#dlg") as HTMLDialogElement;
+      dialog.innerHTML = `<div class="lx-dlg">
+        <h3>Pay Salary</h3>
+        ${lxDialogHead(row.employee.name, row.employee.phone || "", row.employee.role || "")}
+        <div class="lx-figs">
+          <div><span>Payable</span><b>${tk(row.payable)}</b></div>
+          <div><span>Paid</span><b style="color:var(--gr)">${tk(row.paid)}</b></div>
+          <div><span>Still to Pay</span><b style="color:var(--rd)">${tk(row.left)}</b></div>
+        </div>
+        <div class="two">
+          <div><label>Amount</label><input id="salAmount" type="number" inputmode="decimal" min="0.01" step="0.01" value="${row.left}"></div>
+          <div><label>Payment Type</label><select id="salPay">${["Cash", "bKash", "Nagad", "Bank"].map((type) => `<option value="${type}">${type}</option>`).join("")}</select></div>
+        </div>
+        <div class="two" style="margin-top:10px">
+          <div><label>Date</label><input id="salDate" type="date" value="${today()}"></div>
+          <div><label>Note</label><input id="salNote" autocomplete="off" placeholder="e.g. bonus included"></div>
+        </div>
+        <p class="settings-help">${esc(monthName(month))} · ${said("It is also added to expenses as Salary.")}</p>
+        <div class="two" style="margin-top:12px">
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
+          <button class="btn pu" type="button" id="salSave">Save and Slip</button>
+        </div></div>`;
+      dialog.showModal();
+      ($("#salAmount") as HTMLInputElement).select();
+      $("#salSave").addEventListener("click", () => {
+        const amount = money2(+$("#salAmount").value || 0);
+        if (!(amount > 0)) { toast("Enter the amount paid"); return; }
+        const slip = { id: uid(), employee: row.employee.id, month, amount, date: $("#salDate").value || today(), pay: $("#salPay").value, note: $("#salNote").value.trim() };
+        D.salary.unshift(slip);
+        D.expenses.unshift({ id: uid(), date: slip.date, category: "Salary", title: `${row.employee.name} · ${monthName(month)}`, amount, pay: slip.pay, note: slip.note, salarySlip: slip.id });
+        save();
+        dialog.close();
+        toast("Salary paid");
+        salaryPage();
+        printSalarySlip(slip);
+      });
+    };
+
+    // A printable slip for the employee to sign.
+    const printSalarySlip = (slip: any) => {
+      const employee = D.employees.find((entry: any) => entry.id == slip.employee) || { name: nm("employees", slip.employee) };
+      const row = /^\d{4}-\d{2}$/.test(String(slip.month)) && employee.id ? payrollFor(employee, slip.month) : null;
+      const win = window.open("", "_blank", "width=720,height=860");
+      if (!win) { toast("Allow pop-ups to open the invoice"); return; }
+      const line = (label: string, value: string, strong = false) => `<div class="row${strong ? " strong" : ""}"><span>${esc(said(label))}</span><span>${value}</span></div>`;
+      win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(said("Salary Slip"))} — ${esc(employee.name)}</title>
+        <style>*{box-sizing:border-box}body{margin:0;background:#f3f4f6;font:14px/1.5 Arial,sans-serif;color:#111827}.bar{text-align:center;padding:16px}.bar button{border:0;border-radius:6px;padding:9px 18px;background:#ea580c;color:#fff;font-weight:700;cursor:pointer}
+        .paper{width:min(100%,640px);margin:0 auto 24px;padding:32px;background:#fff;border:1px solid #d1d5db}.head{text-align:center;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:16px}.head b{font-size:22px}.head div{color:#4b5563}
+        .row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed #d1d5db}.strong{font-weight:800;font-size:16px;border-bottom:2px solid #111}.sign{display:flex;justify-content:space-between;margin-top:60px}.sign span{border-top:1px solid #111;padding-top:6px;width:40%;text-align:center}.foot{margin-top:18px;text-align:center;color:#6b7280;font-size:11px}
+        @media print{body{background:#fff}.bar{display:none}.paper{border:0;margin:0;width:100%}}</style></head><body>
+        <div class="bar"><button onclick="window.print()">${esc(said("Print"))}</button></div>
+        <main class="paper">
+          <div class="head"><b>${esc(D.user.shop || "My Shop")}</b><div>${esc([D.user.phone, D.user.address].filter(Boolean).join(" · "))}</div><div><b style="font-size:16px">${esc(said("Salary Slip"))}</b> · ${esc(monthName(slip.month))}</div></div>
+          ${line("Employee", esc(employee.name || "-"))}
+          ${employee.role ? line("Role", esc(employee.role)) : ""}
+          ${row ? line("Monthly Salary", tk(row.salary)) + line("Present", String(row.sheet.present)) + line("Absent", String(row.sheet.absent)) + line("Cut for absence", tk(row.cut)) + line("Payable", tk(row.payable)) : ""}
+          ${line("Amount Paid", tk(slip.amount), true)}
+          ${line("Date", esc(slip.date || "-"))}
+          ${line("Payment", esc(said(slip.pay || "Cash")))}
+          ${slip.note ? line("Note", esc(slip.note)) : ""}
+          <div class="sign"><span>${esc(said("Employee's signature"))}</span><span>${esc(said("Owner's signature"))}</span></div>
+          <div class="foot">${POWERED_BY}</div>
+        </main></body></html>`);
+      win.document.close();
+    };
+
+    // ---- Warehouses: where the stock is kept, and how much is in each.
+    function warehousesPage() {
+      const groups = [...D.warehouses.map((warehouse: any) => ({ warehouse, products: D.products.filter((product: any) => product.warehouse == warehouse.id) }))];
+      const loose = D.products.filter((product: any) => !D.warehouses.some((warehouse: any) => warehouse.id == product.warehouse));
+      if (loose.length) groups.push({ warehouse: { id: 0, name: said("Not assigned"), location: "" }, products: loose });
+      const valueOf = (products: any[]) => sum(products, (product) => (+product.buy || 0) * Math.max(0, +product.stock || 0));
+      const total = valueOf(D.products);
+      const biggest = Math.max(1, ...groups.map((group) => valueOf(group.products)));
+
+      $("#app").innerHTML = `
+        <div class="lx wh">
+          <div class="lx-kpis lx-four">
+            ${lxKpi("home", "Warehouses", String(D.warehouses.length), "", "var(--pu)")}
+            ${lxKpi("box", "Products", String(D.products.length), `${+sum(D.products, (product) => Math.max(0, +product.stock || 0)).toFixed(3)} units`, "var(--bl)")}
+            ${lxKpi("wallet", "Stock Value", tk(total), "At cost", "var(--gr)")}
+            ${lxKpi("swap", "Transfers", String(D.transfers.length), `${D.transfers.filter((entry: any) => String(entry.date).startsWith(today().slice(0, 7))).length} this month`, "var(--or)")}
+          </div>
+          <section class="card">
+            <div class="hd">
+              <h2>Warehouse List</h2>
+              <div class="lx-acts"><a class="lx-out" href="#transfers">${lxIcon("swap")}<span>Warehouse Transfer</span></a><button class="lx-add" type="button" id="whAdd">${lxIcon("plus")}<span>Add Warehouse</span></button></div>
+            </div>
+            <div class="wh-grid">${groups.map((group) => {
+              const value = valueOf(group.products);
+              const low = group.products.filter((product: any) => isLowStock(product)).length;
+              const top = [...group.products].sort((a: any, b: any) => (+b.buy || 0) * (+b.stock || 0) - (+a.buy || 0) * (+a.stock || 0)).slice(0, 4);
+              return `<article class="wh-card ${group.warehouse.id ? "" : "loose"}">
+                <div class="wh-top"><i class="ex-ic" style="--c:var(--pu)"><svg viewBox="0 0 24 24" aria-hidden="true">${LX_ICONS.home}</svg></i><div><b data-no-translate>${esc(group.warehouse.name)}</b><small data-no-translate>${esc(group.warehouse.location || group.warehouse.phone || "")}</small></div>
+                  ${group.warehouse.id ? `<div class="lx-acts"><button class="lx-ic" type="button" title="Edit" aria-label="Edit" data-edit="${group.warehouse.id}">${lxIcon("edit")}</button><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-delete="${group.warehouse.id}">${lxIcon("trash")}</button></div>` : ""}</div>
+                <div class="wh-figs"><div><span>Products</span><b>${group.products.length}</b></div><div><span>Units</span><b>${+sum(group.products, (product) => Math.max(0, +product.stock || 0)).toFixed(3)}</b></div><div><span>Low Stock</span><b class="${low ? "pl-neg" : ""}">${low}</b></div></div>
+                <div class="wh-value"><span>Stock Value</span><b>${tk(value)}</b></div>
+                <i class="wh-bar"><u style="width:${Math.max(2, (value / biggest) * 100)}%"></u></i>
+                <ul class="wh-list">${top.map((product: any) => `<li><span data-no-translate>${esc(product.name)}</span><b>${+(+product.stock || 0).toFixed(3)}</b></li>`).join("") || `<li class="lx-none"><span>No product here yet</span></li>`}</ul>
+              </article>`;
+            }).join("")}</div>
+          </section>
+        </div>`;
+
+      $("#whAdd").addEventListener("click", () => warehouseForm());
+      $("#app").querySelector(".wh-grid")!.addEventListener("click", (event: Event) => {
+        const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
+        const warehouse = button && D.warehouses.find((entry: any) => entry.id == (button.dataset.edit || button.dataset.delete));
+        if (!button || !warehouse) return;
+        if (button.dataset.edit) warehouseForm(warehouse);
+        if (button.dataset.delete) {
+          if (!ownerOnly()) return;
+          if (D.products.some((product: any) => product.warehouse == warehouse.id)) { toast("Move this warehouse's products to another one first"); return; }
+          if (D.warehouses.length <= 1) { toast("The shop needs at least one warehouse"); return; }
+          if (!confirm("Delete this warehouse?")) return;
+          D.warehouses = D.warehouses.filter((entry: any) => entry !== warehouse);
+          save();
+          warehousesPage();
+        }
+      });
+    }
+
+    const warehouseForm = (warehouse?: any) => {
+      if (warehouse && !ownerOnly()) return;
+      const dialog = $("#dlg") as HTMLDialogElement;
+      dialog.innerHTML = `<div class="lx-dlg">
+        <h3>${warehouse ? "Edit Warehouse" : "Add Warehouse"}</h3>
+        <label>Name</label><input id="whName" value="${esc(warehouse?.name || "")}" placeholder="e.g. Shop godown" autocomplete="off">
+        <label style="margin-top:10px">Location</label><input id="whLocation" value="${esc(warehouse?.location || "")}" placeholder="e.g. Behind the shop" autocomplete="off">
+        <label style="margin-top:10px">Phone</label><input id="whPhone" type="tel" value="${esc(warehouse?.phone || "")}" placeholder="Optional" autocomplete="off">
+        <div class="two" style="margin-top:16px">
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
+          <button class="btn pu" type="button" id="whSave">Save</button>
+        </div></div>`;
+      dialog.showModal();
+      ($("#whName") as HTMLInputElement).focus();
+      $("#whSave").addEventListener("click", () => {
+        const name = $("#whName").value.trim();
+        if (!name) { toast("Write the warehouse's name"); return; }
+        const values = { name, location: $("#whLocation").value.trim(), phone: $("#whPhone").value.trim(), status: "Active" };
+        if (warehouse) Object.assign(warehouse, values);
+        else D.warehouses.push({ id: uid(), ...values });
+        save();
+        dialog.close();
+        warehousesPage();
+      });
+    };
+
+    // ---- Transfers: stock moved from one warehouse to another. A product is kept in one
+    // warehouse, so moving all of it moves the product; moving part of it is recorded only.
+    let TR_QUERY = "";
+    function transfersPage() {
+      const month = today().slice(0, 7);
+      const list = [...D.transfers].sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)) || (+b.id || 0) - (+a.id || 0));
+      const thisMonth = list.filter((entry: any) => String(entry.date).startsWith(month));
+      $("#app").innerHTML = `
+        <div class="lx tr">
+          <div class="lx-kpis">
+            ${lxKpi("swap", "Transfers This Month", String(thisMonth.length), "", "var(--pu)")}
+            ${lxKpi("box", "Units Moved This Month", String(+sum(thisMonth, (entry) => entry.qty).toFixed(3)), "", "var(--bl)")}
+            ${lxKpi("home", "Warehouses", String(D.warehouses.length), `${list.length} transfers in all`, "var(--gr)")}
+          </div>
+          <section class="card">
+            <div class="hd">
+              <h2>Warehouse Transfer</h2>
+              <div class="lx-acts"><a class="lx-out" href="#warehouses">${lxIcon("home")}<span>Warehouse List</span></a><button class="lx-add" type="button" id="trAdd">${lxIcon("plus")}<span>New Transfer</span></button></div>
+            </div>
+            <div class="lx-bar"><input class="srch" id="trSearch" value="${esc(TR_QUERY)}" placeholder="Search product or warehouse"></div>
+            <div class="wrap"><table class="lx-table">
+              <thead><tr><th>Product</th><th>From → To</th><th class="num">Qty</th><th>Date</th><th></th></tr></thead>
+              <tbody id="trRows"></tbody>
+            </table></div>
+          </section>
+        </div>`;
+      const drawRows = () => {
+        const query = TR_QUERY.trim().toLowerCase();
+        const shown = list.filter((entry: any) => !query || `${nm("products", entry.product)} ${nm("warehouses", entry.from)} ${nm("warehouses", entry.to)} ${entry.note || ""}`.toLowerCase().includes(query));
+        $("#trRows").innerHTML = shown.slice(0, 100).map((entry: any) => `<tr>
+          <td class="lx-main"><div class="lx-who"><i class="ex-ic" style="--c:var(--pu)"><svg viewBox="0 0 24 24" aria-hidden="true">${LX_ICONS.swap}</svg></i><div><b data-no-translate>${esc(nm("products", entry.product) || "-")}</b>${entry.note ? `<small class="lx-tel" data-no-translate>${esc(entry.note)}</small>` : ""}</div></div></td>
+          <td ${lxLabel("From → To")}><span class="tr-route"><span data-no-translate>${esc(nm("warehouses", entry.from) || "-")}</span><b>→</b><span data-no-translate>${esc(nm("warehouses", entry.to) || "-")}</span></span></td>
+          <td class="num" ${lxLabel("Qty")}><b>${+(+entry.qty || 0).toFixed(3)}</b></td>
+          <td ${lxLabel("Date")}>${esc(entry.date || "-")}</td>
+          <td><div class="lx-acts"><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-delete="${entry.id}">${lxIcon("trash")}</button></div></td>
+        </tr>`).join("") || lxEmpty(5, D.transfers.length ? "No transfer matches" : "No transfer yet");
+      };
+      drawRows();
+      $("#trSearch").addEventListener("input", (event: Event) => { TR_QUERY = (event.currentTarget as HTMLInputElement).value; drawRows(); });
+      $("#trAdd").addEventListener("click", () => transferForm());
+      $("#trRows").addEventListener("click", (event: Event) => {
+        const button = (event.target as HTMLElement).closest("button") as HTMLElement | null;
+        const entry = button && D.transfers.find((item: any) => item.id == button.dataset.delete);
+        if (!entry || !ownerOnly() || !confirm("Delete this transfer record? The product stays where it is now.")) return;
+        D.transfers = D.transfers.filter((item: any) => item !== entry);
+        save();
+        transfersPage();
+      });
+    }
+
+    const transferForm = () => {
+      if (D.warehouses.length < 2) { toast("Add a second warehouse first"); location.hash = "warehouses"; return; }
+      const dialog = $("#dlg") as HTMLDialogElement;
+      const warehouseOptions = (selected: any) => D.warehouses.map((warehouse: any) => `<option value="${warehouse.id}" ${warehouse.id == selected ? "selected" : ""}>${esc(warehouse.name)}</option>`).join("");
+      dialog.innerHTML = `<div class="lx-dlg">
+        <h3>New Transfer</h3>
+        <label>Product</label>
+        <select id="trProduct"><option value="">Choose a product</option>${[...D.products].sort((a: any, b: any) => String(a.name).localeCompare(String(b.name))).map((product: any) => `<option value="${product.id}">${esc(product.name)}${product.code ? ` (${esc(product.code)})` : ""}</option>`).join("")}</select>
+        <p class="settings-help" id="trNow"></p>
+        <div class="two">
+          <div><label>From</label><select id="trFrom">${warehouseOptions(D.warehouses[0].id)}</select></div>
+          <div><label>To</label><select id="trTo">${warehouseOptions(D.warehouses[1].id)}</select></div>
+        </div>
+        <div class="two" style="margin-top:10px">
+          <div><label>Qty</label><input id="trQty" type="number" inputmode="decimal" min="0.001" step="any"></div>
+          <div><label>Date</label><input id="trDate" type="date" value="${today()}"></div>
+        </div>
+        <label style="margin-top:10px">Note</label><input id="trNote" autocomplete="off" placeholder="Optional">
+        <p class="settings-help">Moving all of a product's stock moves the product to the new warehouse. Moving part of it is recorded only.</p>
+        <div class="two" style="margin-top:12px">
+          <button class="btn or" type="button" onclick="document.querySelector('#dlg').close()">Cancel</button>
+          <button class="btn pu" type="button" id="trSave">Save Transfer</button>
+        </div></div>`;
+      dialog.showModal();
+      const pick = () => {
+        const product = prod(+$("#trProduct").value);
+        if (!product) { $("#trNow").textContent = ""; return; }
+        if (product.warehouse) $("#trFrom").value = String(product.warehouse);
+        if ($("#trTo").value === $("#trFrom").value) $("#trTo").value = String(D.warehouses.find((warehouse: any) => warehouse.id != $("#trFrom").value)?.id || "");
+        $("#trQty").value = String(+(+product.stock || 0).toFixed(3));
+        $("#trNow").textContent = `${said("In stock")}: ${+(+product.stock || 0).toFixed(3)} · ${nm("warehouses", product.warehouse) || said("Not assigned")}`;
+      };
+      $("#trProduct").addEventListener("change", pick);
+      $("#trSave").addEventListener("click", () => {
+        const product = prod(+$("#trProduct").value);
+        const qty = q3(+$("#trQty").value || 0);
+        if (!product) { toast("Choose a product"); return; }
+        if ($("#trFrom").value === $("#trTo").value) { toast("Choose two different warehouses"); return; }
+        if (!(qty > 0)) { toast("Enter how many to move"); return; }
+        if (qty > (+product.stock || 0)) { toast("That is more than the stock"); return; }
+        D.transfers.unshift({ id: uid(), product: product.id, from: +$("#trFrom").value, to: +$("#trTo").value, qty, date: $("#trDate").value || today(), note: $("#trNote").value.trim() });
+        if (qty >= (+product.stock || 0)) product.warehouse = +$("#trTo").value;
+        save();
+        dialog.close();
+        toast("Transfer saved");
+        transfersPage();
+      });
+    };
 
     function peoplePage(k: PeopleList) {
       const forCustomers = k === "customers";
@@ -5281,6 +5636,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       stocks: stocksPage,
 
       dues: duesPage,
+      salary: salaryPage,
+      warehouses: warehousesPage,
+      transfers: transfersPage,
       expenses: expensesPage,
       services: servicePosPage,
       "service-list": servicesPage,

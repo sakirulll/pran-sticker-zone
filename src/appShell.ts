@@ -644,6 +644,32 @@ td.mut{
 .pl-scope svg{width:17px;height:17px}
 .sv-more{margin-top:12px;text-align:center}
 a.lx-out{text-decoration:none}
+.sal .lx-table tfoot th,.st .lx-table tfoot th{padding:12px;border-top:2px solid var(--ln);background:var(--bg);text-align:left;color:var(--tx);font-size:14px}
+.sal .lx-table tfoot th.num{text-align:right}
+.sal-att{display:inline-flex;flex-wrap:wrap;gap:4px}
+.sal .hd .lx-acts{flex-wrap:wrap}
+.wh-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.wh-card{display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--ln);border-radius:14px;background:var(--pn)}
+.wh-card.loose{border-style:dashed}
+.wh-top{display:flex;align-items:center;gap:11px}
+.wh-top>div:nth-child(2){flex:1;min-width:0}
+.wh-top b{display:block;font-size:16px;overflow-wrap:anywhere}
+.wh-top small{color:var(--mut);font-size:12px}
+.wh-figs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.wh-figs div{padding:8px 10px;border-radius:10px;background:var(--bg)}
+.wh-figs span,.wh-value span{display:block;color:var(--mut);font-size:12px}
+.wh-figs b{font-size:16px}
+.wh-value{display:flex;align-items:baseline;justify-content:space-between}
+.wh-value b{font-size:19px;color:var(--gr)}
+.wh-bar{display:block;height:6px;border-radius:99px;background:var(--bg);overflow:hidden}
+.wh-bar u{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--pu),#fb923c)}
+.wh-list{margin:0;padding:0;list-style:none;font-size:13px}
+.wh-list li{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px dashed var(--ln)}
+.wh-list li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr-route{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tr-route span{padding:3px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--ln);font-size:13px}
+.tr-route b{color:var(--pu)}
+@media(max-width:700px){.sal .lx-four{grid-template-columns:repeat(2,minmax(0,1fr))}.sal .lx-kpi.pl-net{grid-column:1/-1}.sal .lx-table tfoot{display:none}.wh .lx-four{grid-template-columns:repeat(2,minmax(0,1fr))}.wh .hd .lx-acts,.tr .hd .lx-acts{width:100%}.wh .hd .lx-acts>*,.tr .hd .lx-acts>*{flex:1;justify-content:center}}
 .st-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
 .st-kpis .lx-kpi b{font-size:20px;overflow-wrap:anywhere}
 .st-kpi-btn{font:inherit;color:inherit;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s}
