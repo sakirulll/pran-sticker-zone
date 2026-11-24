@@ -420,6 +420,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // and categories are added to the shop's lists when the kind is chosen.
     const BUSINESS_TYPES: Record<string, { label: string; show: string[]; extra: string[]; units: string[]; categories: string[] }> = {
       general: { label: "General Store", show: ["brand", "lowAlert", "wholesale", "dealer", "manufacturer", "manufactureDate", "expireDate", "serial"], extra: [], units: [], categories: [] },
+      factory: { label: "Factory", show: ["brand", "lowAlert", "wholesale", "dealer", "manufacturer", "manufactureDate", "expireDate", "serial"], extra: ["batchNo", "rack"], units: ["Pcs", "Set", "Box", "Kg", "Gram", "Ton", "Meter", "Liter", "Packet", "Carton", "Dozen", "Roll"], categories: ["Raw Materials", "Finished Goods", "Packaging", "Machinery Parts", "Spare Parts", "Factory Supply"] },
       sticker: { label: "Sticker & Wash Shop", show: ["brand", "lowAlert", "wholesale"], extra: [], units: ["Feet", "Inch", "Sq Ft"], categories: ["Bike Sticker", "Car Sticker", "Helmet Sticker", "Vinyl Roll", "Accessories"] },
       shoes: { label: "Shoe Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "material"], units: ["Pair", "Box"], categories: ["Men's Shoe", "Women's Shoe", "Kids Shoe", "Sandal", "Sneaker", "Slipper", "Formal Shoe", "Boot", "Socks"] },
       clothing: { label: "Clothing Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "fabric"], units: ["Dozen", "Yard", "Meter"], categories: ["Shirt", "Pant", "Panjabi", "Saree", "Three Piece", "Kids Wear"] },
@@ -440,6 +441,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const SERVICE_KINDS: Record<string, { label: string; starter: ServiceGroup[] }> = {
       general: { label: "Service Sale", starter: [
         ["Service", [["Home Delivery", 60], ["Installation", 300], ["Repair", 200], ["Fitting Charge", 100], ["Packing Charge", 20], ["Gift Wrapping", 50], ["Service Charge", 50]]],
+      ] },
+      factory: { label: "Factory Work & Service", starter: [
+        ["Production", [["Cutting", 300], ["Fabrication", 500], ["Assembly", 500], ["Printing", 300], ["Packaging", 200], ["Quality Checking", 100]]],
+        ["Delivery & Work", [["Machine Repair", 500], ["Maintenance", 300], ["Installation", 500], ["Bulk Delivery", 500], ["Loading & Unloading", 300]]],
       ] },
       sticker: { label: "Sticker & Wash", starter: [
         ["Sticker", [["Bike Full Sticker", 1500], ["Bike Half Sticker", 800], ["Bike Tank Sticker", 300], ["Bike Name Sticker", 150], ["Number Plate Sticker", 200], ["Helmet Sticker", 150], ["Bike Reflective Sticker", 250], ["Car Full Wrap", 15000], ["Car Side Sticker", 1200], ["Car Name Sticker", 300], ["Windshield Sticker", 400], ["Laptop Skin", 350], ["Mobile Skin", 200], ["Custom Name Sticker", 100], ["Sticker Remove", 300]]],
@@ -485,7 +490,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
     const serviceKind = () => SERVICE_KINDS[D.settings.businessType] || SERVICE_KINDS.general;
     // Names a shop can give its service section, besides one it writes itself.
-    const SERVICE_NAMES = ["Service Sale", "Sticker & Wash", "Tailoring", "Repair Service", "Shoe Repair", "Health Service", "Beauty Service",
+    const SERVICE_NAMES = ["Service Sale", "Factory Work & Service", "Sticker & Wash", "Tailoring", "Repair Service", "Shoe Repair", "Health Service", "Beauty Service",
       "Fitting & Repair", "Print & Photocopy", "Delivery & Service", "Catering & Event", "Home Delivery", "Party Order", "Cake Order", "Ice Cream Order",
       "Custom Order", "Installation", "Bike Servicing", "Car Wash", "Laundry", "Photo Studio", "Courier Service", "Rental", "Event Booking",
       "Training & Course", "Consultation", "Other Income"];

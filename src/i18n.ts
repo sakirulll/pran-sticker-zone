@@ -240,10 +240,11 @@ const words: Record<string, string> = {
   "Category List": "ক্যাটাগরির তালিকা", "Brand List": "ব্র্যান্ডের তালিকা", "Unit List": "এককের তালিকা", "Stock Value": "স্টকের মূল্য",
   "Add new Brand": "নতুন ব্র্যান্ড যোগ", "Add new Category": "নতুন ক্যাটাগরি যোগ", "Add new Unit": "নতুন একক যোগ",
   "Add new Product": "নতুন পণ্য যোগ", "General": "সাধারণ", "No Brand": "ব্র্যান্ড ছাড়া", "Pcs": "পিস", "Set": "সেট", "Box": "বক্স", "Kg": "কেজি",
+  "Ton": "টন", "Roll": "রোল", "Raw Materials": "কাঁচামাল", "Finished Goods": "তৈরি পণ্য", "Packaging": "প্যাকেজিং", "Machinery Parts": "মেশিনের পার্টস", "Spare Parts": "স্পেয়ার পার্টস", "Factory Supply": "ফ্যাক্টরি সামগ্রী", "Factory Work & Service": "ফ্যাক্টরি কাজ ও সার্ভিস",
 
   // ---- kinds of business, and the product fields, units and categories each one uses
   "Business Type": "ব্যবসার ধরন", "Choose your type of business": "আপনার ব্যবসার ধরন বাছুন",
-  "General Store": "সাধারণ দোকান", "Clothing Shop": "কাপড়ের দোকান", "Grocery Shop": "মুদি দোকান", "Pharmacy": "ফার্মেসি", "Restaurant": "রেস্টুরেন্ট",
+  "General Store": "সাধারণ দোকান", "Factory": "ফ্যাক্টরি", "Clothing Shop": "কাপড়ের দোকান", "Grocery Shop": "মুদি দোকান", "Pharmacy": "ফার্মেসি", "Restaurant": "রেস্টুরেন্ট",
   "Mobile & Electronics": "মোবাইল ও ইলেকট্রনিক্স", "Cosmetics Shop": "কসমেটিক্সের দোকান", "Hardware Shop": "হার্ডওয়্যারের দোকান", "Books & Stationery": "বই ও স্টেশনারি",
   "Color": "রঙ", "Fabric": "কাপড়ের ধরন", "Generic Name": "জেনেরিক নাম", "Strength": "মাত্রা", "Batch No": "ব্যাচ নম্বর", "Rack / Shelf": "র‍্যাক / তাক",
   "Model": "মডেল", "Warranty": "ওয়ারেন্টি", "Author": "লেখক", "Publisher": "প্রকাশক",
