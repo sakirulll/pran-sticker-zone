@@ -34,7 +34,7 @@ export function switchLanguage(language: Language) {
 
 const words: Record<string, string> = {
   // ---- menu
-  "Dashboard": "ড্যাশবোর্ড", "Sales": "বিক্রি", "Sale New": "নতুন বিক্রি", "Sale List": "বিক্রির তালিকা", "Sales Return": "বিক্রি ফেরত",
+  "Dashboard": "ড্যাশবোর্ড", "Sales": "বিক্রয়", "Sale New": "নতুন বিক্রি", "Sale List": "বিক্রির তালিকা", "Sales Return": "বিক্রি ফেরত",
   "Purchases": "ক্রয়", "Purchase New": "নতুন ক্রয়", "Purchase List": "ক্রয়ের তালিকা", "Purchase Return": "ক্রয় ফেরত",
   "Products": "পণ্য", "All Product": "সব পণ্য", "Add Product": "পণ্য যোগ", "Category": "ক্যাটাগরি", "Brand": "ব্র্যান্ড", "Unit": "একক",
   "Stock List": "স্টকের তালিকা", "Employee": "কর্মচারী", "Salary Slip": "বেতন স্লিপ", "Warehouse": "গুদাম", "Warehouse Transfer": "গুদাম স্থানান্তর",
@@ -437,6 +437,7 @@ const words: Record<string, string> = {
   "Please wait…": "অপেক্ষা করুন…", "Show password": "পাসওয়ার্ড দেখান", "Hide password": "পাসওয়ার্ড লুকান",
   "Run your whole shop from one place.": "পুরো দোকান চালান এক জায়গা থেকে।",
   "Sales, stock, customers and reports for your shop, ready on any device.": "বিক্রি, স্টক, গ্রাহক আর রিপোর্ট, সব ডিভাইসে হাতের কাছে।",
+  "Factory Accounts": "ফ্যাক্টরি হিসাব", "Raw Purchase": "কাঁচামাল ক্রয়", "Production": "উৎপাদন", "Dues": "বাকি / পাওনা", "Reports": "রিপোর্ট",
   "Fast billing with printable invoices": "দ্রুত বিল আর প্রিন্ট করার মতো ইনভয়েস", "Live stock and purchase tracking": "স্টক ও ক্রয়ের তাৎক্ষণিক হিসাব",
   "Separate staff logins with their own permissions": "কর্মীদের আলাদা লগইন ও আলাদা অনুমতি", "Email confirmed. Thank you!": "ইমেইল নিশ্চিত হয়েছে। ধন্যবাদ!",
 
