@@ -199,6 +199,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         services: [],
         serviceItems: [],
         transfers: [],
+        factoryBatches: [],
 
         currencies: [
           { id: 40, name: "Bangladeshi Taka", code: "BDT", symbol: String.fromCharCode(2547), rate: 1, status: "Active" },
@@ -5098,6 +5099,98 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       return `<section class="card start-card"><h3>Get your shop ready</h3><ol>${items.map(([text, route, done]) => `<li class="${done ? "done" : ""}"><span aria-hidden="true">${done ? "✔" : "○"}</span>${done ? text : `<a href="#${route}">${text}</a>`}</li>`).join("")}</ol><p><a href="#help">Read the full guide</a> · <button type="button" onclick="hideStartCard()">Hide this</button></p></section>`;
     };
 
+    const factoryPage = () => {
+      const batches: AnyData[] = D.factoryBatches || [];
+      const batchCost = (batch: AnyData) => (+batch.rawCost || 0) + (+batch.laborCost || 0) + (+batch.powerCost || 0) + (+batch.otherCost || 0);
+      const averageCost = (batch: AnyData) => +batch.quantity > 0 ? batchCost(batch) / +batch.quantity : 0;
+      const soldValue = (batch: AnyData) => (+batch.soldQuantity || 0) * (+batch.sellPrice || 0);
+      const costOfSold = (batch: AnyData) => +batch.quantity > 0 ? batchCost(batch) * (+batch.soldQuantity || 0) / +batch.quantity : 0;
+      const batchProfit = (batch: AnyData) => soldValue(batch) - costOfSold(batch);
+
+      const month = today().slice(0, 7);
+      const monthBatches = batches.filter((batch: AnyData) => String(batch.date || "").startsWith(month));
+      const totalProduced = sum(batches, (batch: AnyData) => +batch.quantity || 0);
+      const totalSold = sum(batches, (batch: AnyData) => +batch.soldQuantity || 0);
+      const totalStock = sum(batches, (batch: AnyData) => Math.max(0, (+batch.quantity || 0) - (+batch.soldQuantity || 0)));
+      const monthCost = sum(monthBatches, (batch: AnyData) => batchCost(batch));
+      const monthSales = sum(monthBatches, (batch: AnyData) => soldValue(batch));
+      const monthProfit = sum(monthBatches, (batch: AnyData) => batchProfit(batch));
+
+      $("#app").innerHTML = `
+        <div class="lx">
+          <section class="card pl-head">
+            <div class="hd"><h2>Factory Accounts</h2><button class="lx-add" type="button" id="factoryAdd">+ Add Production</button></div>
+          </section>
+          <div class="lx-kpis lx-four">
+            ${lxKpi("box", "Produced Stock", String(+totalProduced.toFixed(3)), "Total produced quantity", "var(--bl)")}
+            ${lxKpi("cart", "Finished Goods Sold", String(+totalSold.toFixed(3)), "This factory's sales", "var(--pu)")}
+            ${lxKpi("box", "Available Stock", String(+totalStock.toFixed(3)), "Produced but not sold", "var(--gr)")}
+            ${lxKpi("wallet", "This Month Profit", tk(monthProfit), `${tk(monthCost)} cost · ${tk(monthSales)} sales`, monthProfit < 0 ? "var(--rd)" : "var(--gr)")}
+          </div>
+          <section class="card">
+            <div class="hd"><h2>Daily Production & Cost</h2></div>
+            <div class="wrap"><table class="lx-table"><thead><tr><th>Date</th><th>Product</th><th>Produced</th><th>Raw Cost</th><th>Labour</th><th>Power</th><th>Other</th><th>Total Cost</th><th>Cost/Unit</th><th>Sold</th><th>Sale Value</th><th>Profit</th><th>Stock</th><th></th></tr></thead><tbody>${batches.map((batch: AnyData) => {
+              const stock = Math.max(0, (+batch.quantity || 0) - (+batch.soldQuantity || 0));
+              return `<tr>
+                <td ${lxLabel("Date")}>${esc(batch.date || "-")}</td>
+                <td class="lx-main"><b data-no-translate>${esc(batch.product || "-")}</b>${batch.rawName ? `<small class="lx-tel">${esc(batch.rawName)}${batch.rawQuantity ? ` · ${batch.rawQuantity} ${esc(batch.rawUnit || "")}` : ""}</small>` : ""}</td>
+                <td class="num" ${lxLabel("Produced")}>${+batch.quantity || 0} ${esc(batch.unit || "")}</td>
+                <td class="num" ${lxLabel("Raw Cost")}>${tk(+batch.rawCost || 0)}</td>
+                <td class="num" ${lxLabel("Labour")}>${tk(+batch.laborCost || 0)}</td>
+                <td class="num" ${lxLabel("Power")}>${tk(+batch.powerCost || 0)}</td>
+                <td class="num" ${lxLabel("Other")}>${tk(+batch.otherCost || 0)}</td>
+                <td class="num" ${lxLabel("Total Cost")}>${tk(batchCost(batch))}</td>
+                <td class="num" ${lxLabel("Cost/Unit")}>${tk(averageCost(batch))}</td>
+                <td class="num" ${lxLabel("Sold")}>${+batch.soldQuantity || 0} ${esc(batch.unit || "")}</td>
+                <td class="num" ${lxLabel("Sale Value")}>${tk(soldValue(batch))}</td>
+                <td class="num" ${lxLabel("Profit")}>${batchProfit(batch) < 0 ? `<b class="lx-due">${tk(batchProfit(batch))}</b>` : `<b class="pl-pos">${tk(batchProfit(batch))}</b>`}</td>
+                <td class="num" ${lxLabel("Stock")}>${+stock.toFixed(3)} ${esc(batch.unit || "")}</td>
+                <td><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-factory-delete="${batch.id}">${lxIcon("trash")}</button></td>
+              </tr>`;
+            }).join("") || lxEmpty(14, "No production added yet")}</tbody></table></div>
+          </section>
+        </div>`;
+
+      $("#factoryAdd").addEventListener("click", () => {
+        const dialog = $("#dlg") as HTMLDialogElement;
+        dialog.innerHTML = `<div class="lx-dlg"><h3>Add Factory Production</h3>
+          <label>Product Name</label><input id="factoryProduct" list="factoryProducts" placeholder="e.g. Biscuit, Ruti, Cake"><datalist id="factoryProducts"><option value="Biscuit"><option value="Ruti"><option value="Cake"><option value="Bread"><option value="Chanachur"></datalist>
+          <div class="two"><div><label>Date</label><input id="factoryDate" type="date" value="${today()}"></div><div><label>Unit</label><select id="factoryUnit"><option>Pcs</option><option>Packet</option><option>Carton</option><option>Box</option><option>Kg</option><option>Dozen</option></select></div></div>
+          <div class="two"><div><label>Produced Quantity</label><input id="factoryQuantity" type="number" min="0.001" step="0.001" placeholder="0"></div><div><label>Sold Quantity</label><input id="factorySold" type="number" min="0" step="0.001" value="0"></div></div>
+          <label>Selling Price per Unit</label><input id="factorySellPrice" type="number" min="0" step="0.01" value="0">
+          <div class="two"><div><label>Raw Material Name</label><input id="factoryRawName" placeholder="e.g. Flour, Sugar, Oil"></div><div><label>Raw Material Quantity</label><input id="factoryRawQuantity" type="number" min="0" step="0.001" placeholder="0"></div></div>
+          <label>Raw Material Unit</label><input id="factoryRawUnit" placeholder="Kg, Liter, Packet">
+          <div class="settings-form-grid"><label>Raw Material Cost (৳)<input id="factoryRawCost" type="number" min="0" step="0.01" value="0"></label><label>Labour Cost (৳)<input id="factoryLabor" type="number" min="0" step="0.01" value="0"></label><label>Power/Gas Cost (৳)<input id="factoryPower" type="number" min="0" step="0.01" value="0"></label><label>Other Cost (৳)<input id="factoryOther" type="number" min="0" step="0.01" value="0"></label></div>
+          <div class="two" style="margin-top:16px"><button class="btn or" type="button" id="factoryCancel">Cancel</button><button class="btn pu" type="button" id="factorySave">Save Production</button></div></div>`;
+        dialog.showModal();
+        $("#factoryCancel").addEventListener("click", () => dialog.close());
+        $("#factorySave").addEventListener("click", () => {
+          const product = $("#factoryProduct").value.trim();
+          const quantity = +$("#factoryQuantity").value || 0;
+          const soldQuantity = +$("#factorySold").value || 0;
+          if (!product) { toast("Write the product name"); $("#factoryProduct").focus(); return; }
+          if (!(quantity > 0)) { toast("Enter produced quantity"); $("#factoryQuantity").focus(); return; }
+          if (soldQuantity > quantity) { toast("Sold quantity cannot be more than produced quantity"); $("#factorySold").focus(); return; }
+          batches.unshift({
+            id: uid(), date: $("#factoryDate").value || today(), product, quantity,
+            unit: $("#factoryUnit").value, soldQuantity,
+            sellPrice: Math.max(0, +$("#factorySellPrice").value || 0),
+            rawName: $("#factoryRawName").value.trim(), rawQuantity: +$("#factoryRawQuantity").value || 0, rawUnit: $("#factoryRawUnit").value.trim(),
+            rawCost: Math.max(0, +$("#factoryRawCost").value || 0), laborCost: Math.max(0, +$("#factoryLabor").value || 0), powerCost: Math.max(0, +$("#factoryPower").value || 0), otherCost: Math.max(0, +$("#factoryOther").value || 0),
+          });
+          D.factoryBatches = batches;
+          save(); dialog.close(); factoryPage(); toast("Factory production saved");
+        });
+      });
+
+      $("#app").querySelectorAll("[data-factory-delete]").forEach((button: Element) => button.addEventListener("click", () => {
+        const id = +(button as HTMLElement).dataset.factoryDelete!;
+        if (!confirm("Delete this production record?")) return;
+        D.factoryBatches = batches.filter((batch: AnyData) => batch.id != id);
+        save(); factoryPage(); toast("Factory record deleted");
+      }));
+    };
+
     const P: AnyData = {
       help: helpPage,
       products: productList,
@@ -5113,6 +5206,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       "admin-payments": () => adminPage("payments"),
       "admin-settings": () => adminPage("settings"),
       "admin-drive": drivePage,
+      "factory": factoryPage,
 
       dashboard: () => {
         const cm = today().slice(0, 7);
@@ -6190,6 +6284,11 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     const M: any[] = [
       [
+        "Factory Accounts",
+        "🏭",
+        "factory",
+      ],
+      [
         "Dashboard",
         "🏠",
         "dashboard",
@@ -6373,6 +6472,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // The line drawing beside each sidebar entry, looked up by the name of the entry.
     const MENU_ICONS: Record<string, string> = {
       Dashboard: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+      "Factory Accounts": '<path d="M3 21V10l6 3V8l6 4V5h4v16z"/><path d="M7 17h2M12 17h2M17 17h2"/>',
       Sales: LX_ICONS.cart,
       "Service Sale": LX_ICONS.tool,
       Purchases: '<path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
@@ -6435,6 +6535,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const navItems: any[] = M.map((item: any[]) => {
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
+            if (item[0] === "Factory Accounts") return D.settings.businessType === "factory" ? item : null;
             if (item[0] === "Subscription") return isWorkspaceOwner ? item : null;
             // The guide is for everyone.
             if (item[0] === "Help") return item;
