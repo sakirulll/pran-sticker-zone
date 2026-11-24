@@ -2,7 +2,7 @@
 // files, and images that have been seen. It never answers for the API: shop
 // data offline comes from the copy the app keeps itself (src/offlineStore.ts).
 
-const CACHE = "hishabpos-v1";
+const CACHE = "hishabpos-v2";
 const PAGE = "/";
 // Where the list of the current version's files is remembered.
 const VERSION = "/__app-version";

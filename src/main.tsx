@@ -8,7 +8,7 @@ import { startTranslating } from './i18n.ts'
 // developing, where it would keep serving old files.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((error) => console.warn('Offline support is unavailable', error))
+    navigator.serviceWorker.register('/sw.js?v=2').catch((error) => console.warn('Offline support is unavailable', error))
   })
 }
 
