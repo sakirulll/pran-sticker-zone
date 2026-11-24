@@ -6579,7 +6579,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
             if (D.settings.businessType === "factory") {
-              return ["Factory Accounts", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
+              return ["Factory Accounts", "Sales", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
             }
             if (item[0] === "Subscription") return isWorkspaceOwner ? item : null;
             // The guide is for everyone.
