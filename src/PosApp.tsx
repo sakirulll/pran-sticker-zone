@@ -6360,6 +6360,16 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       ],
 
       [
+        "Sales",
+        "🛒",
+        [
+          ["Sale New", "sale-new"],
+          ["Sale List", "sales"],
+          ["Sales Return", "sale-returns"],
+        ],
+      ],
+
+      [
         "Service Sale",
         "🧰",
         [
