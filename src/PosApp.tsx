@@ -421,7 +421,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // and categories are added to the shop's lists when the kind is chosen.
     const BUSINESS_TYPES: Record<string, { label: string; show: string[]; extra: string[]; units: string[]; categories: string[] }> = {
       general: { label: "General Store", show: ["brand", "lowAlert", "wholesale", "dealer", "manufacturer", "manufactureDate", "expireDate", "serial"], extra: [], units: [], categories: [] },
-      factory: { label: "Factory", show: ["brand", "lowAlert", "wholesale", "dealer", "manufacturer", "manufactureDate", "expireDate", "serial"], extra: ["batchNo", "rack"], units: ["Pcs", "Set", "Box", "Kg", "Gram", "Ton", "Meter", "Liter", "Packet", "Carton", "Dozen", "Roll"], categories: ["Raw Materials", "Finished Goods", "Packaging", "Machinery Parts", "Spare Parts", "Factory Supply"] },
+      factory: { label: "Factory", show: ["lowAlert"], extra: [], units: ["Pcs", "Packet", "Box", "Carton", "Kg", "Dozen"], categories: ["Biscuit", "Ruti", "Cake", "Bread", "Packaging", "Raw Materials"] },
       sticker: { label: "Sticker & Wash Shop", show: ["brand", "lowAlert", "wholesale"], extra: [], units: ["Feet", "Inch", "Sq Ft"], categories: ["Bike Sticker", "Car Sticker", "Helmet Sticker", "Vinyl Roll", "Accessories"] },
       shoes: { label: "Shoe Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "material"], units: ["Pair", "Box"], categories: ["Men's Shoe", "Women's Shoe", "Kids Shoe", "Sandal", "Sneaker", "Slipper", "Formal Shoe", "Boot", "Socks"] },
       clothing: { label: "Clothing Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "fabric"], units: ["Dozen", "Yard", "Meter"], categories: ["Shirt", "Pant", "Panjabi", "Saree", "Three Piece", "Kids Wear"] },
@@ -1059,8 +1059,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       PRICE_LEVEL = "sell";
 
       const s = t === "sale";
-      const priceLevels = [["sell", "Retail Price"], ["wholesale", "Wholesale Price"], ["dealer", "Dealer Price"]]
-        .filter(([level]) => level === "sell" || businessType().show.includes(level));
+      const priceLevels = D.settings.businessType === "factory"
+        ? [["sell", "Sale Price"]]
+        : [["sell", "Retail Price"], ["wholesale", "Wholesale Price"], ["dealer", "Dealer Price"]].filter(([level]) => level === "sell" || businessType().show.includes(level));
 
       $("#app").innerHTML = `
         <div class="pos">
@@ -1282,8 +1283,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             <div class="pos-product-toolbar">
               <input id="productSearch" placeholder="Search product..." oninput="pgrid(this.value)">
               <button class="product-search-button" type="button" aria-label="Search products" onclick="pgrid(document.getElementById('productSearch').value)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
-              <select class="product-category-filter" id="productCategoryFilter" aria-label="Filter by category" onchange="setProductFilters()"><option value="">Category</option>${opts(D.categories)}</select>
-              <select class="product-brand-filter" id="productBrandFilter" aria-label="Filter by brand" onchange="setProductFilters()"><option value="">Brand</option>${opts(D.brands)}</select>
+              ${D.settings.businessType === "factory" ? "" : `<select class="product-category-filter" id="productCategoryFilter" aria-label="Filter by category" onchange="setProductFilters()"><option value="">Category</option>${opts(D.categories)}</select>
+              <select class="product-brand-filter" id="productBrandFilter" aria-label="Filter by brand" onchange="setProductFilters()"><option value="">Brand</option>${opts(D.brands)}</select>`}
             </div>
 
             <div

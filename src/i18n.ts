@@ -241,6 +241,7 @@ const words: Record<string, string> = {
   "Add new Brand": "নতুন ব্র্যান্ড যোগ", "Add new Category": "নতুন ক্যাটাগরি যোগ", "Add new Unit": "নতুন একক যোগ",
   "Add new Product": "নতুন পণ্য যোগ", "General": "সাধারণ", "No Brand": "ব্র্যান্ড ছাড়া", "Pcs": "পিস", "Set": "সেট", "Box": "বক্স", "Kg": "কেজি",
   "Ton": "টন", "Roll": "রোল", "Raw Materials": "কাঁচামাল", "Finished Goods": "তৈরি পণ্য", "Packaging": "প্যাকেজিং", "Machinery Parts": "মেশিনের পার্টস", "Spare Parts": "স্পেয়ার পার্টস", "Factory Supply": "ফ্যাক্টরি সামগ্রী", "Factory Work & Service": "ফ্যাক্টরি কাজ ও সার্ভিস",
+  "Biscuit": "বিস্কুট", "Ruti": "রুটি", "Cake": "কেক", "Bread": "পাউরুটি",
 
   // ---- kinds of business, and the product fields, units and categories each one uses
   "Business Type": "ব্যবসার ধরন", "Choose your type of business": "আপনার ব্যবসার ধরন বাছুন",
