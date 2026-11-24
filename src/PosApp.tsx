@@ -6431,7 +6431,16 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       [
         "Factory Accounts",
         "🏭",
-        "factory-dashboard",
+        [
+          ["Dashboard", "factory-dashboard"],
+          ["Sales", "factory-sale"],
+          ["Raw Purchase", "factory-purchase"],
+          ["Production", "factory-production"],
+          ["Expenses", "factory-expense"],
+          ["Stock", "factory-stock"],
+          ["Dues", "factory-due"],
+          ["Reports", "factory-report"],
+        ],
       ],
       [
         "Dashboard",
