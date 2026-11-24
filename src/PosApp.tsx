@@ -200,6 +200,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         serviceItems: [],
         transfers: [],
         factoryBatches: [],
+        factoryPurchases: [],
 
         currencies: [
           { id: 40, name: "Bangladeshi Taka", code: "BDT", symbol: String.fromCharCode(2547), rate: 1, status: "Active" },
@@ -5102,6 +5103,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     const factoryPage = () => {
       const batches: AnyData[] = D.factoryBatches || [];
+      const purchases: AnyData[] = D.factoryPurchases || [];
       const batchCost = (batch: AnyData) => (+batch.rawCost || 0) + (+batch.laborCost || 0) + (+batch.powerCost || 0) + (+batch.otherCost || 0);
       const averageCost = (batch: AnyData) => +batch.quantity > 0 ? batchCost(batch) / +batch.quantity : 0;
       const soldValue = (batch: AnyData) => (+batch.soldQuantity || 0) * (+batch.sellPrice || 0);
@@ -5116,11 +5118,16 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const monthCost = sum(monthBatches, (batch: AnyData) => batchCost(batch));
       const monthSales = sum(monthBatches, (batch: AnyData) => soldValue(batch));
       const monthProfit = sum(monthBatches, (batch: AnyData) => batchProfit(batch));
+      const monthPurchases = purchases.filter((item: AnyData) => String(item.date || "").startsWith(month));
+      const totalRawPurchase = sum(purchases, (item: AnyData) => +item.total || 0);
+      const monthRawPurchase = sum(monthPurchases, (item: AnyData) => +item.total || 0);
+      const monthRawPaid = sum(monthPurchases, (item: AnyData) => +item.paid || 0);
+      const monthRawDue = sum(monthPurchases, (item: AnyData) => Math.max(0, (+item.total || 0) - (+item.paid || 0)));
 
       $("#app").innerHTML = `
         <div class="lx">
           <section class="card pl-head">
-            <div class="hd"><h2>Factory Accounts</h2><button class="lx-add" type="button" id="factoryAdd">+ Add Production</button></div>
+            <div class="hd"><h2>Factory Accounts</h2><div class="lx-acts"><button class="lx-out" type="button" id="rawPurchaseAdd">+ Add Raw Material Purchase</button><button class="lx-add" type="button" id="factoryAdd">+ Add Production</button></div></div>
           </section>
           <div class="lx-kpis lx-four">
             ${lxKpi("box", "Produced Stock", String(+totalProduced.toFixed(3)), "Total produced quantity", "var(--bl)")}
@@ -5128,6 +5135,19 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             ${lxKpi("box", "Available Stock", String(+totalStock.toFixed(3)), "Produced but not sold", "var(--gr)")}
             ${lxKpi("wallet", "This Month Profit", tk(monthProfit), `${tk(monthCost)} cost · ${tk(monthSales)} sales`, monthProfit < 0 ? "var(--rd)" : "var(--gr)")}
           </div>
+          <div class="lx-kpis lx-four">
+            ${lxKpi("wallet", "Raw Material Purchased", tk(totalRawPurchase), "All-time purchase", "var(--bl)")}
+            ${lxKpi("wallet", "This Month Purchase", tk(monthRawPurchase), `${purchases.length} purchase entries`, "var(--pu)")}
+            ${lxKpi("wallet", "Paid in This Month", tk(monthRawPaid), "Paid cash or bank", "var(--gr)")}
+            ${lxKpi("wallet", "Raw Purchase Due", tk(monthRawDue), "Still to pay", monthRawDue > 0 ? "var(--rd)" : "var(--gr)")}
+          </div>
+          <section class="card">
+            <div class="hd"><h2>Raw Material Purchases</h2></div>
+            <div class="wrap"><table class="lx-table"><thead><tr><th>Date</th><th>Material</th><th>Supplier</th><th>Quantity</th><th>Unit</th><th>Rate</th><th>Total</th><th>Paid</th><th>Due</th><th></th></tr></thead><tbody>${purchases.map((item: AnyData) => {
+              const due = Math.max(0, (+item.total || 0) - (+item.paid || 0));
+              return `<tr><td ${lxLabel("Date")}>${esc(item.date || "-")}</td><td class="lx-main"><b data-no-translate>${esc(item.material || "-")}</b></td><td ${lxLabel("Supplier")}>${esc(item.supplier || "-")}</td><td class="num" ${lxLabel("Quantity")}>${+item.quantity || 0}</td><td ${lxLabel("Unit")}>${esc(item.unit || "")}</td><td class="num" ${lxLabel("Rate")}>${tk(+item.rate || 0)}</td><td class="num" ${lxLabel("Total")}>${tk(+item.total || 0)}</td><td class="num" ${lxLabel("Paid")}>${tk(+item.paid || 0)}</td><td class="num" ${lxLabel("Due")}>${due > 0 ? `<b class="lx-due">${tk(due)}</b>` : tk(0)}</td><td><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-purchase-delete="${item.id}">${lxIcon("trash")}</button></td></tr>`;
+            }).join("") || lxEmpty(10, "No raw material purchase added yet")}</tbody></table></div>
+          </section>
           <section class="card">
             <div class="hd"><h2>Daily Production & Cost</h2></div>
             <div class="wrap"><table class="lx-table"><thead><tr><th>Date</th><th>Product</th><th>Produced</th><th>Raw Cost</th><th>Labour</th><th>Power</th><th>Other</th><th>Total Cost</th><th>Cost/Unit</th><th>Sold</th><th>Sale Value</th><th>Profit</th><th>Stock</th><th></th></tr></thead><tbody>${batches.map((batch: AnyData) => {
@@ -5151,6 +5171,37 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             }).join("") || lxEmpty(14, "No production added yet")}</tbody></table></div>
           </section>
         </div>`;
+
+      $("#rawPurchaseAdd").addEventListener("click", () => {
+        const dialog = $("#dlg") as HTMLDialogElement;
+        dialog.innerHTML = `<div class="lx-dlg"><h3>Add Raw Material Purchase</h3>
+          <label>Material Name</label><input id="rawMaterial" list="rawMaterials" placeholder="e.g. Sugar, Flour, Oil, Maida"><datalist id="rawMaterials"><option value="Sugar"><option value="Flour"><option value="Maida"><option value="Oil"><option value="Milk Powder"><option value="Salt"><option value="Packaging"><option value="Fuel"></datalist>
+          <div class="two"><div><label>Date</label><input id="rawDate" type="date" value="${today()}"></div><div><label>Supplier / Shop</label><input id="rawSupplier" placeholder="Supplier name"></div></div>
+          <div class="settings-form-grid"><label>Quantity<input id="rawQuantity" type="number" min="0" step="0.001" value="0"></label><label>Unit<select id="rawUnit"><option>Kg</option><option>Gram</option><option>Liter</option><option>Packet</option><option>Carton</option><option>Bag</option><option>Pcs</option></select></label><label>Rate per Unit (৳)<input id="rawRate" type="number" min="0" step="0.01" value="0"></label><label>Paid Amount (৳)<input id="rawPaid" type="number" min="0" step="0.01" value="0"></label></div>
+          <label>Payment Type</label><select id="rawPay"><option>Cash</option><option>bKash</option><option>Nagad</option><option>Bank</option><option>Card</option></select>
+          <div class="lx-owed"><span>Total Purchase</span><b id="rawTotalPreview">৳0.00</b></div>
+          <div class="two" style="margin-top:16px"><button class="btn or" type="button" id="rawCancel">Cancel</button><button class="btn pu" type="button" id="rawSave">Save Purchase</button></div></div>`;
+        dialog.showModal();
+        const updateRawTotal = () => {
+          const total = Math.max(0, (+$("#rawQuantity").value || 0) * (+$("#rawRate").value || 0));
+          $("#rawTotalPreview").textContent = tk(total);
+        };
+        $("#rawQuantity").addEventListener("input", updateRawTotal);
+        $("#rawRate").addEventListener("input", updateRawTotal);
+        $("#rawCancel").addEventListener("click", () => dialog.close());
+        $("#rawSave").addEventListener("click", () => {
+          const material = $("#rawMaterial").value.trim();
+          const quantity = Math.max(0, +$("#rawQuantity").value || 0);
+          const rate = Math.max(0, +$("#rawRate").value || 0);
+          const total = quantity * rate;
+          const paid = Math.min(total, Math.max(0, +$("#rawPaid").value || 0));
+          if (!material) { toast("Write the raw material name"); $("#rawMaterial").focus(); return; }
+          if (!(quantity > 0)) { toast("Enter purchased quantity"); $("#rawQuantity").focus(); return; }
+          purchases.unshift({ id: uid(), date: $("#rawDate").value || today(), material, supplier: $("#rawSupplier").value.trim(), quantity, unit: $("#rawUnit").value, rate, total, paid, pay: $("#rawPay").value });
+          D.factoryPurchases = purchases;
+          save(); dialog.close(); factoryPage(); toast("Raw material purchase saved");
+        });
+      });
 
       $("#factoryAdd").addEventListener("click", () => {
         const dialog = $("#dlg") as HTMLDialogElement;
@@ -5183,6 +5234,13 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
           save(); dialog.close(); factoryPage(); toast("Factory production saved");
         });
       });
+
+      $("#app").querySelectorAll("[data-purchase-delete]").forEach((button: Element) => button.addEventListener("click", () => {
+        const id = +(button as HTMLElement).dataset.purchaseDelete!;
+        if (!confirm("Delete this raw material purchase?")) return;
+        D.factoryPurchases = purchases.filter((item: AnyData) => item.id != id);
+        save(); factoryPage(); toast("Raw material purchase deleted");
+      }));
 
       $("#app").querySelectorAll("[data-factory-delete]").forEach((button: Element) => button.addEventListener("click", () => {
         const id = +(button as HTMLElement).dataset.factoryDelete!;
@@ -6537,6 +6595,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
             if (item[0] === "Factory Accounts") return D.settings.businessType === "factory" ? item : null;
+            if (item[0] === "Service Sale" && D.settings.businessType === "factory") return null;
             if (item[0] === "Subscription") return isWorkspaceOwner ? item : null;
             // The guide is for everyone.
             if (item[0] === "Help") return item;
