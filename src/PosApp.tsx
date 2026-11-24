@@ -5289,6 +5289,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
       const recordsFiltered = filterMonth(records);
       let content = "";
+      void content;
       if (view === "dashboard") {
         const sales = sumType(recordsFiltered, "sale"), purchases = sumType(recordsFiltered, "purchase"), expenses = sumType(recordsFiltered, "expense"), profit = sales - purchases - expenses;
         const now = new Date(), months: string[] = [];
@@ -5329,7 +5330,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         content = `<div class="factory-card"><h3>${tr("নতুন এন্ট্রি", "New Entry")}</h3><div class="factory-form"><label>${tr("তারিখ", "Date")}<input id="factoryDate" type="date" value="${today()}"></label><label>${tr("খাত", "Category")}<select id="factoryCategory">${(categories[view] || []).map((item: string) => `<option>${esc(item)}</option>`).join("")}</select></label><label>${tr("বিবরণ", "Details")}<input id="factoryDetails"></label>${view !== "expense" ? `<label>${tr("পরিমাণ", "Quantity")}<input id="factoryQuantity" type="number" min="0" step="0.001"></label>` : ""}${view === "purchase" ? `<label>${tr("সরবরাহকারী", "Supplier")}<input id="factoryParty"></label><label>${tr("মোট টাকা", "Amount")}<input id="factoryAmount" type="number" min="0"></label><label>${tr("নগদ পরিশোধ", "Paid")}<input id="factoryPaid" type="number" min="0"></label>` : view === "expense" ? `<label>${tr("মোট টাকা", "Amount")}<input id="factoryAmount" type="number" min="0"></label>` : ""}<button type="button" class="factory-save" id="factorySave">${tr("সংরক্ষণ", "Save")}</button></div></div><div class="factory-card"><h3>${formType}</h3>${table(typeRows, view)}</div>`;
       }
 
-      $("#app").innerHTML = `<div class="factory-main"><div class="factory-top"><div><span class="factory-eyebrow">Biscuits · Cakes · Chanachur</span><h2>${tr("ফ্যাক্টরি হিসাব", "Factory Accounts")}</h2></div><label class="factory-month"><input type="month" value="${esc(D.factoryMonth || "")}" onchange="setFactoryMonth(this.value)"><button type="button" onclick="setFactoryMonth('')">${tr("সব সময়", "All Time")}</button><button type="button" class="factory-action" onclick="window.print()">${tr("প্রিন্ট", "Print")}</button><button type="button" class="factory-action" onclick="printFactoryPage()">${tr("রসিদ / PDF", "Receipt / PDF")}</button></label></div>${content}</div>`;
+      $("#app").innerHTML = `<iframe title="${tr("ফ্যাক্টরি হিসাব", "Factory Accounts")}" src="/factory.html" style="width:100%;height:calc(100vh - 0px);border:0;display:block;background:#f2f4f6"></iframe>`;
 
       $("#factorySave")?.addEventListener("click", () => {
         const details = $("#factoryDetails")?.value.trim();
