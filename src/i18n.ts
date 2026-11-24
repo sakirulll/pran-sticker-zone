@@ -244,7 +244,7 @@ const words: Record<string, string> = {
 
   // ---- kinds of business, and the product fields, units and categories each one uses
   "Business Type": "ব্যবসার ধরন", "Choose your type of business": "আপনার ব্যবসার ধরন বাছুন",
-  "General Store": "সাধারণ দোকান", "Clothing Shop": "কাপড়ের দোকান", "Grocery Shop": "মুদি দোকান", "Pharmacy": "ফার্মেসি", "Restaurant": "রেস্টুরেন্ট",
+  "General Store": "সাধারণ দোকান", "Factory": "ফ্যাক্টরি", "Clothing Shop": "কাপড়ের দোকান", "Grocery Shop": "মুদি দোকান", "Pharmacy": "ফার্মেসি", "Restaurant": "রেস্টুরেন্ট",
   "Mobile & Electronics": "মোবাইল ও ইলেকট্রনিক্স", "Cosmetics Shop": "কসমেটিক্সের দোকান", "Hardware Shop": "হার্ডওয়্যারের দোকান", "Books & Stationery": "বই ও স্টেশনারি",
   "Color": "রঙ", "Fabric": "কাপড়ের ধরন", "Generic Name": "জেনেরিক নাম", "Strength": "মাত্রা", "Batch No": "ব্যাচ নম্বর", "Rack / Shelf": "র‍্যাক / তাক",
   "Model": "মডেল", "Warranty": "ওয়ারেন্টি", "Author": "লেখক", "Publisher": "প্রকাশক",

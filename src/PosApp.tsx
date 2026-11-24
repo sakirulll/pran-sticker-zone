@@ -420,6 +420,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // and categories are added to the shop's lists when the kind is chosen.
     const BUSINESS_TYPES: Record<string, { label: string; show: string[]; extra: string[]; units: string[]; categories: string[] }> = {
       general: { label: "General Store", show: ["brand", "lowAlert", "wholesale", "dealer", "manufacturer", "manufactureDate", "expireDate", "serial"], extra: [], units: [], categories: [] },
+      factory: { label: "Factory", show: ["lowAlert"], extra: [], units: ["Pcs", "Packet", "Box", "Carton", "Kg", "Dozen"], categories: ["Biscuit", "Ruti", "Cake", "Bread", "Packaging", "Raw Materials"] },
       sticker: { label: "Sticker & Wash Shop", show: ["brand", "lowAlert", "wholesale"], extra: [], units: ["Feet", "Inch", "Sq Ft"], categories: ["Bike Sticker", "Car Sticker", "Helmet Sticker", "Vinyl Roll", "Accessories"] },
       shoes: { label: "Shoe Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "material"], units: ["Pair", "Box"], categories: ["Men's Shoe", "Women's Shoe", "Kids Shoe", "Sandal", "Sneaker", "Slipper", "Formal Shoe", "Boot", "Socks"] },
       clothing: { label: "Clothing Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "fabric"], units: ["Dozen", "Yard", "Meter"], categories: ["Shirt", "Pant", "Panjabi", "Saree", "Three Piece", "Kids Wear"] },
@@ -5277,6 +5278,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       "admin-payments": () => adminPage("payments"),
       "admin-settings": () => adminPage("settings"),
       "admin-drive": drivePage,
+      "factory": factoryPage,
 
       dashboard: () => {
         const cm = today().slice(0, 7);
@@ -6354,6 +6356,11 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     const M: any[] = [
       [
+        "Factory Accounts",
+        "🏭",
+        "factory",
+      ],
+      [
         "Dashboard",
         "🏠",
         "dashboard",
@@ -6601,6 +6608,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const permissions: string[] = role?.permissions || (isWorkspaceOwner ? ["All permissions"] : []);
       const hasAllPermissions = isWorkspaceOwner || permissions.includes("All permissions");
       const navItems: any[] = M.map((item: any[]) => {
+            if (item[0] === "Factory Accounts" && D.settings.businessType !== "factory") return null;
+            if (D.settings.businessType === "factory") {
+              return ["Factory Accounts", "Sales", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
+            }
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
             if (item[0] === "Subscription") return isWorkspaceOwner ? item : null;
