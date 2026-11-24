@@ -199,6 +199,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         services: [],
         serviceItems: [],
         transfers: [],
+        factoryRecords: [],
+        factoryMonth: "",
 
         currencies: [
           { id: 40, name: "Bangladeshi Taka", code: "BDT", symbol: String.fromCharCode(2547), rate: 1, status: "Active" },
@@ -5263,6 +5265,69 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       }));
     };
 
+    const factoryScreen = (view: "dashboard" | "sale" | "purchase" | "production" | "expense" | "stock" | "due" | "report") => {
+      const lang = currentLanguage();
+      const tr = (bn: string, en: string) => lang === "bn" ? bn : en;
+      const records: AnyData[] = D.factoryRecords || [];
+      const categories: Record<string, string[]> = {
+        sale: [tr("বিস্কুট", "Biscuits"), tr("কেক", "Cake"), tr("চানাচুর", "Chanachur"), tr("অন্যান্য", "Other")],
+        purchase: [tr("ময়দা", "Flour"), tr("চিনি", "Sugar"), tr("তেল", "Oil"), tr("ডিম", "Egg"), tr("বাদাম/ডাল", "Nuts/Lentils"), tr("প্যাকেজিং", "Packaging"), tr("অন্যান্য", "Other")],
+        production: [tr("বিস্কুট", "Biscuits"), tr("কেক", "Cake"), tr("চানাচুর", "Chanachur"), tr("অন্যান্য", "Other")],
+        expense: [tr("বেতন", "Salary"), tr("বিদ্যুৎ", "Electricity"), tr("গ্যাস", "Gas"), tr("ভাড়া", "Rent"), tr("পরিবহন", "Transport"), tr("মেরামত", "Repair"), tr("অন্যান্য", "Other")],
+      };
+      const filterMonth = (rows: AnyData[]) => rows.filter((row: AnyData) => !D.factoryMonth || String(row.date).slice(0, 7) === D.factoryMonth);
+      const sumType = (rows: AnyData[], type: string) => sum(rows.filter((row: AnyData) => row.type === type), (row: AnyData) => +row.amount || 0);
+      const dueSales = sum(records.filter((row: AnyData) => row.type === "sale"), (row: AnyData) => Math.max(0, (+row.amount || 0) - (+row.paid || 0)));
+      const duePurchases = sum(records.filter((row: AnyData) => row.type === "purchase"), (row: AnyData) => Math.max(0, (+row.amount || 0) - (+row.paid || 0)));
+
+      const navItems: [string, string, string][] = [["dashboard", tr("ড্যাশবোর্ড", "Dashboard"), ""], ["sale", tr("বিক্রয়", "Sales"), ""], ["purchase", tr("কাঁচামাল ক্রয়", "Raw Purchase"), ""], ["production", tr("উৎপাদন", "Production"), ""], ["expense", tr("খরচ", "Expenses"), ""], ["stock", tr("স্টক", "Stock"), ""], ["due", tr("বাকি / পাওনা", "Dues"), ""], ["report", tr("রিপোর্ট", "Reports"), ""]];
+
+      const kpi = (tone: string, label: string, value: string) => `<div class="factory-kpi ${tone}"><span>${label}</span><b>${value}</b></div>`;
+      const table = (rows: AnyData[], type: string) => {
+        if (!rows.length) return `<div class="factory-empty">${tr("কোনো এন্ট্রি নেই", "No entries yet")}</div>`;
+        const party = type === "sale" ? tr("ক্রেতা / দোকান", "Buyer / Shop") : type === "purchase" ? tr("সরবরাহকারী", "Supplier") : "";
+        return `<div class="factory-table-wrap"><table class="factory-table"><thead><tr><th>${tr("তারিখ", "Date")}</th><th>${tr("খাত", "Category")}</th><th>${tr("বিবরণ", "Details")}</th>${party ? `<th>${party}</th>` : ""}${type !== "expense" ? `<th>${tr("পরিমাণ", "Qty")}</th>` : ""}<th>${tr("টাকা", "Amount")}</th>${type === "sale" || type === "purchase" ? `<th>${tr("বাকি", "Due")}</th>` : ""}<th></th></tr></thead><tbody>${rows.map((row: AnyData) => `<tr><td>${esc(row.date)}</td><td><span class="factory-tag">${esc(row.category)}</span></td><td>${esc(row.details)}</td>${party ? `<td>${esc(row.party)}</td>` : ""}${type !== "expense" ? `<td>${+row.quantity || 0}</td>` : ""}<td>${tk(+row.amount || 0)}</td>${type === "sale" || type === "purchase" ? `<td class="${(+row.amount || 0) - (+row.paid || 0) > 0 ? "factory-danger" : ""}">${tk(Math.max(0, (+row.amount || 0) - (+row.paid || 0)))}</td>` : ""}<td><button class="factory-delete" type="button" onclick="deleteFactoryRecord(${row.id})">×</button></td></tr>`).join("")}</tbody></table></div>`;
+      };
+
+      const recordsFiltered = filterMonth(records);
+      let content = "";
+      if (view === "dashboard") {
+        const sales = sumType(recordsFiltered, "sale"), purchases = sumType(recordsFiltered, "purchase"), expenses = sumType(recordsFiltered, "expense"), profit = sales - purchases - expenses;
+        content = `<div class="factory-kpis">${kpi("", tr("মোট বিক্রয়", "Total Sales"), tk(sales))}${kpi("gold", tr("কাঁচামাল ক্রয়", "Raw Purchases"), tk(purchases))}${kpi("gold", tr("অন্যান্য খরচ", "Expenses"), tk(expenses))}${kpi(profit >= 0 ? "green" : "red", profit >= 0 ? tr("নীট লাভ", "Net Profit") : tr("নীট লোকসান", "Net Loss"), tk(Math.abs(profit)))}${kpi("green", tr("বাকি পাওনা", "Receivables"), tk(dueSales))}${kpi("red", tr("বাকি দেনা", "Payables"), tk(duePurchases))}</div>`;
+      } else if (view === "stock") {
+        const stockMap = new Map<string, AnyData>();
+        recordsFiltered.forEach((row: AnyData) => {
+          if (!["sale", "production"].includes(row.type) || !row.details) return;
+          const key = String(row.details).trim().toLowerCase();
+          const item = stockMap.get(key) || { name: row.details, category: row.category, produced: 0, sold: 0 };
+          if (row.type === "production") item.produced += +row.quantity || 0;
+          if (row.type === "sale") item.sold += +row.quantity || 0;
+          stockMap.set(key, item);
+        });
+        content = `<div class="factory-card"><h3>${tr("পণ্যের স্টক", "Product Stock")}</h3><div class="factory-table-wrap"><table class="factory-table"><thead><tr><th>${tr("পণ্য", "Product")}</th><th>${tr("উৎপাদন", "Produced")}</th><th>${tr("বিক্রয়", "Sold")}</th><th>${tr("স্টক", "Stock")}</th></tr></thead><tbody>${[...stockMap.values()].map((item: AnyData) => `<tr><td>${esc(item.name)}</td><td>${item.produced}</td><td>${item.sold}</td><td class="${item.produced - item.sold < 50 ? "factory-danger" : "factory-positive"}">${item.produced - item.sold}</td></tr>`).join("") || `<tr><td colspan="4" class="factory-empty">${tr("উৎপাদন ও বিক্রয় এন্ট্রি দিন", "Add production and sales")}</td></tr>`}</tbody></table></div></div>`;
+      } else if (view === "due") {
+        content = `<div class="factory-grid"><div class="factory-card"><h3>${tr("আমরা পাব", "Receivables")}</h3><b class="factory-big-green">${tk(dueSales)}</b></div><div class="factory-card"><h3>${tr("আমরা দেব", "Payables")}</h3><b class="factory-big-red">${tk(duePurchases)}</b></div></div>`;
+      } else if (view === "report") {
+        const totalSales = sumType(records, "sale"), totalPurchases = sumType(records, "purchase"), totalExpenses = sumType(records, "expense");
+        content = `<div class="factory-card"><h3>${tr("মাসিক রিপোর্ট", "Monthly Report")}</h3>${kpi("", tr("মোট বিক্রয়", "Total Sales"), tk(totalSales))}${kpi("gold", tr("মোট ক্রয়", "Total Purchases"), tk(totalPurchases))}${kpi("gold", tr("মোট খরচ", "Total Expenses"), tk(totalExpenses))}${kpi(totalSales - totalPurchases - totalExpenses >= 0 ? "green" : "red", tr("নীট", "Net"), tk(totalSales - totalPurchases - totalExpenses))}</div>`;
+      } else {
+        const typeRows = filterMonth(records.filter((row: AnyData) => row.type === view));
+        const formType = view === "sale" ? tr("বিক্রয়", "Sale") : view === "purchase" ? tr("কাঁচামাল ক্রয়", "Raw Purchase") : view === "production" ? tr("উৎপাদন", "Production") : tr("খরচ", "Expense");
+        content = `<div class="factory-card"><h3>${tr("নতুন এন্ট্রি", "New Entry")}</h3><div class="factory-form"><label>${tr("তারিখ", "Date")}<input id="factoryDate" type="date" value="${today()}"></label><label>${tr("খাত", "Category")}<select id="factoryCategory">${(categories[view] || []).map((item: string) => `<option>${esc(item)}</option>`).join("")}</select></label><label>${tr("বিবরণ", "Details")}<input id="factoryDetails"></label>${view !== "expense" ? `<label>${tr("পরিমাণ", "Quantity")}<input id="factoryQuantity" type="number" min="0" step="0.001"></label>` : ""}${view === "sale" || view === "purchase" ? `<label>${view === "sale" ? tr("ক্রেতা", "Buyer") : tr("সরবরাহকারী", "Supplier")}<input id="factoryParty"></label><label>${tr("মোট টাকা", "Amount")}<input id="factoryAmount" type="number" min="0"></label><label>${tr("নগদ পরিশোধ", "Paid")}<input id="factoryPaid" type="number" min="0"></label>` : view === "expense" ? `<label>${tr("মোট টাকা", "Amount")}<input id="factoryAmount" type="number" min="0"></label>` : ""}<button type="button" class="factory-save" id="factorySave">${tr("সংরক্ষণ", "Save")}</button></div></div><div class="factory-card"><h3>${formType}</h3>${table(typeRows, view)}</div>`;
+      }
+
+      $("#app").innerHTML = `<div class="factory-shell"><aside class="factory-nav"><h1>${tr("ফ্যাক্টরি হিসাব", "Factory Account")}</h1><small>Biscuits · Cakes · Chanachur</small><div class="factory-nav-items">${navItems.map((item) => `<button type="button" class="${view === item[0] ? "on" : ""}" onclick="openFactoryScreen('${item[0]}')">${item[1]}</button>`).join("")}</div></aside><main class="factory-main"><div class="factory-top"><h2>${navItems.find((item) => item[0] === view)?.[1] || ""}</h2><label class="factory-month"><input type="month" value="${esc(D.factoryMonth || "")}" onchange="setFactoryMonth(this.value)"><button type="button" onclick="setFactoryMonth('')">${tr("সব সময়", "All Time")}</button></label></div>${content}</main></div>`;
+
+      $("#factorySave")?.addEventListener("click", () => {
+        const details = $("#factoryDetails")?.value.trim();
+        if (!details) { $("#factoryDetails")?.focus(); toast(tr("বিবরণ লিখুন", "Enter details")); return; }
+        const row: AnyData = { id: uid(), type: view, date: $("#factoryDate")?.value || today(), category: $("#factoryCategory")?.value || "", details, quantity: +( $("#factoryQuantity")?.value || 0), party: $("#factoryParty")?.value.trim() || "", amount: +( $("#factoryAmount")?.value || 0), paid: +( $("#factoryPaid")?.value || 0) };
+        if (["sale", "purchase"].includes(view) && $("#factoryPaid")?.value === "") row.paid = row.amount;
+        D.factoryRecords = [row, ...(D.factoryRecords || [])];
+        save(); factoryScreen(view); toast(tr("এন্ট্রি সংরক্ষিত", "Entry saved"));
+      });
+    };
+
     const P: AnyData = {
       help: helpPage,
       products: productList,
@@ -5278,7 +5343,15 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       "admin-payments": () => adminPage("payments"),
       "admin-settings": () => adminPage("settings"),
       "admin-drive": drivePage,
-      "factory": factoryPage,
+      "factory": () => factoryScreen("dashboard"),
+      "factory-dashboard": () => factoryScreen("dashboard"),
+      "factory-sale": () => factoryScreen("sale"),
+      "factory-purchase": () => factoryScreen("purchase"),
+      "factory-production": () => factoryScreen("production"),
+      "factory-expense": () => factoryScreen("expense"),
+      "factory-stock": () => factoryScreen("stock"),
+      "factory-due": () => factoryScreen("due"),
+      "factory-report": () => factoryScreen("report"),
 
       dashboard: () => {
         const cm = today().slice(0, 7);
@@ -6358,7 +6431,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       [
         "Factory Accounts",
         "🏭",
-        "factory",
+        "factory-dashboard",
       ],
       [
         "Dashboard",
@@ -6599,6 +6672,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       let r =
         location.hash.slice(1) ||
         "dashboard";
+      if (["factory", "factory-dashboard", "factory-sale", "factory-purchase", "factory-production", "factory-expense", "factory-stock", "factory-due", "factory-report"].includes(r) && D.settings.businessType !== "factory") {
+        location.hash = "dashboard";
+        r = "dashboard";
+      }
 
       const menu = $("#menu");
 
@@ -6610,7 +6687,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const navItems: any[] = M.map((item: any[]) => {
             if (item[0] === "Factory Accounts" && D.settings.businessType !== "factory") return null;
             if (D.settings.businessType === "factory") {
-              return ["Factory Accounts", "Sales", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
+              return ["Factory Accounts", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
             }
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
@@ -6948,6 +7025,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     (window as any).setPriceLevel = setPriceLevel;
     (window as any).removeCartItem = removeCartItem;
     (window as any).hideStartCard = () => { D.settings.guideHidden = true; save(); render(); };
+    (window as any).openFactoryScreen = (view: string) => factoryScreen(view as any);
+    (window as any).setFactoryMonth = (month: string) => { D.factoryMonth = month; save(); factoryScreen((location.hash.slice(1).replace("factory-", "") || "dashboard") as any); };
+    (window as any).deleteFactoryRecord = (id: number) => { if (!confirm(said("Delete this entry?"))) return; D.factoryRecords = (D.factoryRecords || []).filter((row: AnyData) => row.id != id); save(); factoryScreen((location.hash.slice(1).replace("factory-", "") || "dashboard") as any); };
 
     (
       window as any
