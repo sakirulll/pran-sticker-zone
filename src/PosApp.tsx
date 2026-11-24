@@ -5280,8 +5280,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const dueSales = sum(records.filter((row: AnyData) => row.type === "sale"), (row: AnyData) => Math.max(0, (+row.amount || 0) - (+row.paid || 0)));
       const duePurchases = sum(records.filter((row: AnyData) => row.type === "purchase"), (row: AnyData) => Math.max(0, (+row.amount || 0) - (+row.paid || 0)));
 
-      const navItems: [string, string, string][] = [["dashboard", tr("ড্যাশবোর্ড", "Dashboard"), ""], ["sale", tr("বিক্রয়", "Sales"), ""], ["purchase", tr("কাঁচামাল ক্রয়", "Raw Purchase"), ""], ["production", tr("উৎপাদন", "Production"), ""], ["expense", tr("খরচ", "Expenses"), ""], ["stock", tr("স্টক", "Stock"), ""], ["due", tr("বাকি / পাওনা", "Dues"), ""], ["report", tr("রিপোর্ট", "Reports"), ""]];
-
       const kpi = (tone: string, label: string, value: string) => `<div class="factory-kpi ${tone}"><span>${label}</span><b>${value}</b></div>`;
       const table = (rows: AnyData[], type: string) => {
         if (!rows.length) return `<div class="factory-empty">${tr("কোনো এন্ট্রি নেই", "No entries yet")}</div>`;
@@ -5293,7 +5291,16 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       let content = "";
       if (view === "dashboard") {
         const sales = sumType(recordsFiltered, "sale"), purchases = sumType(recordsFiltered, "purchase"), expenses = sumType(recordsFiltered, "expense"), profit = sales - purchases - expenses;
-        content = `<div class="factory-menu-grid">${navItems.map((item) => `<button type="button" class="factory-menu-tile ${item[0] === "dashboard" ? "on" : ""}" onclick="openFactoryScreen('${item[0]}')"><b>${item[1]}</b></button>`).join("")}</div><div class="factory-kpis">${kpi("", tr("মোট বিক্রয়", "Total Sales"), tk(sales))}${kpi("gold", tr("কাঁচামাল ক্রয়", "Raw Purchases"), tk(purchases))}${kpi("gold", tr("অন্যান্য খরচ", "Expenses"), tk(expenses))}${kpi(profit >= 0 ? "green" : "red", profit >= 0 ? tr("নীট লাভ", "Net Profit") : tr("নীট লোকসান", "Net Loss"), tk(Math.abs(profit)))}${kpi("green", tr("বাকি পাওনা", "Receivables"), tk(dueSales))}${kpi("red", tr("বাকি দেনা", "Payables"), tk(duePurchases))}</div>`;
+        const now = new Date(), months: string[] = [];
+        for (let i = 5; i >= 0; i--) { const x = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`); }
+        const chart = months.map((month) => { const monthRows = records.filter((row: AnyData) => String(row.date).slice(0, 7) === month); return [sumType(monthRows, "sale"), sumType(monthRows, "purchase") + sumType(monthRows, "expense")]; });
+        const maxChart = Math.max(1, ...chart.flat());
+        const salesByProduct: Record<string, number> = {};
+        recordsFiltered.filter((row: AnyData) => row.type === "sale").forEach((row: AnyData) => { salesByProduct[row.category || tr("অন্যান্য", "Other")] = (salesByProduct[row.category || tr("অন্যান্য", "Other")] || 0) + (+row.amount || 0); });
+        const costByCategory: Record<string, number> = {};
+        recordsFiltered.filter((row: AnyData) => row.type === "purchase" || row.type === "expense").forEach((row: AnyData) => { costByCategory[row.category || tr("অন্যান্য", "Other")] = (costByCategory[row.category || tr("অন্যান্য", "Other")] || 0) + (+row.amount || 0); });
+        const shareCard = (values: Record<string, number>) => { const entries = Object.entries(values).sort((a, b) => b[1] - a[1]); const total = entries.reduce((n, [, value]) => n + value, 0); return entries.length ? entries.map(([label, value]) => `<div class="factory-share-row"><span>${esc(label)}</span><b>${tk(value)}</b></div><div class="factory-share-bar"><i style="width:${total ? value / total * 100 : 0}%"></i></div>`).join("") : `<div class="factory-empty">${tr("এখনো কোনো এন্ট্রি নেই", "No entries yet")}</div>`; };
+        content = `<div class="factory-kpis">${kpi("", tr("মোট বিক্রয়", "Total Sales"), tk(sales))}${kpi("gold", tr("কাঁচামাল ক্রয়", "Raw Purchases"), tk(purchases))}${kpi("gold", tr("অন্যান্য খরচ", "Expenses"), tk(expenses))}${kpi(profit >= 0 ? "green" : "red", profit >= 0 ? tr("নীট লাভ", "Net Profit") : tr("নীট লোকসান", "Net Loss"), tk(Math.abs(profit)))}${kpi("green", tr("বাকি পাওনা", "Receivables"), tk(dueSales))}${kpi("red", tr("বাকি দেনা", "Payables"), tk(duePurchases))}</div><div class="factory-card"><h3>${tr("গত ৬ মাস", "Last 6 Months")}</h3><div class="factory-chart-legend"><span><i></i>${tr("বিক্রয়", "Sales")}</span><span><i class="gold"></i>${tr("মোট খরচ", "Total Cost")}</span></div><div class="factory-chart">${months.map((month, i) => `<div class="factory-chart-col"><div class="factory-chart-bars"><i style="height:${chart[i][0] / maxChart * 100}%"></i><i class="gold" style="height:${chart[i][1] / maxChart * 100}%"></i></div><small>${month.slice(5)}/${month.slice(2, 4)}</small></div>`).join("")}</div></div><div class="factory-grid"><div class="factory-card"><h3>${tr("পণ্য অনুযায়ী বিক্রয়", "Sales by Product")}</h3>${shareCard(salesByProduct)}</div><div class="factory-card"><h3>${tr("খরচের খাত", "Cost Categories")}</h3>${shareCard(costByCategory)}</div></div>`;
       } else if (view === "stock") {
         const stockMap = new Map<string, AnyData>();
         recordsFiltered.forEach((row: AnyData) => {
