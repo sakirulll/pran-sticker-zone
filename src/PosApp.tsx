@@ -5287,6 +5287,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       "admin-drive": drivePage,
       "factory": factoryPage,
       "factory-cost": factoryCostPage,
+      "factory-production": factoryPage,
+      "factory-raw-materials": factoryCostPage,
+      "factory-finished-goods": stocksPage,
+      "factory-due": duesPage,
+      "factory-profit": () => P.profit(),
+      "factory-reports": () => P.profit(),
 
       dashboard: () => {
         const cm = today().slice(0, 7);
@@ -6369,27 +6375,25 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         "factory",
       ],
       [
+        "Sales",
+        "🛒",
+        [["Sale New", "sale-new"], ["Sale List", "sales"], ["Sales Return", "sale-returns"]],
+      ],
+      [
         "Cost",
         "৳",
         "factory-cost",
       ],
+      ["Production", "🏭", "factory-production"],
+      ["Raw Materials", "📦", "factory-raw-materials"],
+      ["Finished Goods", "📦", "factory-finished-goods"],
+      ["Due / Payments", "💳", "factory-due"],
+      ["Profit & Loss", "📈", "factory-profit"],
+      ["Reports", "📊", "factory-reports"],
       [
         "Dashboard",
         "🏠",
         "dashboard",
-      ],
-
-      [
-        "Sales",
-        "🛒",
-        [
-          ["Sale New", "sale-new"],
-          ["Sale List", "sales"],
-          [
-            "Sales Return",
-            "sale-returns",
-          ],
-        ],
       ],
 
       [
@@ -6558,6 +6562,12 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const MENU_ICONS: Record<string, string> = {
       Dashboard: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
       "Factory Accounts": '<path d="M3 21V10l6 3V8l6 4V5h4v16z"/><path d="M7 17h2M12 17h2M17 17h2"/>',
+      Production: '<path d="M3 21V10l6 3V8l6 4V5h4v16z"/><path d="M7 17h2M12 17h2M17 17h2"/>',
+      "Raw Materials": '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>',
+      "Finished Goods": '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>',
+      "Due / Payments": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/>',
+      "Profit & Loss": '<path d="M4 20V4M4 20h16"/><path d="M8 15l3-4 3 2 4-6"/>',
+      Reports: '<path d="M4 20V4M4 20h16"/><path d="M7 15h.01M11 11h.01M15 13h.01M19 7h.01"/>',
       Cost: '<path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
       Sales: LX_ICONS.cart,
       "Service Sale": LX_ICONS.tool,
@@ -6611,7 +6621,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       let r =
         location.hash.slice(1) ||
         "dashboard";
-      if ((r === "factory" || r === "factory-cost") && D.settings.businessType !== "factory") {
+      if (["factory", "factory-cost", "factory-production", "factory-raw-materials", "factory-finished-goods", "factory-due", "factory-profit", "factory-reports"].includes(r) && D.settings.businessType !== "factory") {
         location.hash = "dashboard";
         r = "dashboard";
       }
@@ -6628,7 +6638,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
             if (D.settings.businessType === "factory") {
-              return ["Factory Accounts", "Sales", "Cost", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
+              return ["Factory Accounts", "Sales", "Cost", "Production", "Raw Materials", "Finished Goods", "Due / Payments", "Profit & Loss", "Reports", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
             }
             if (item[0] === "Subscription") return isWorkspaceOwner ? item : null;
             // The guide is for everyone.
