@@ -489,6 +489,34 @@ td.mut{
 
 .stats em svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
+/* Dedicated Factory workspace */
+body.factory-mode{background:#f3f5f4}
+body.factory-mode .main{background:#f3f5f4}
+.factory-dash{max-width:1440px;margin:0 auto;text-align:left}
+.factory-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:18px;padding:24px 26px;border-radius:10px;background:#17242c;color:#fff}
+.factory-head h2{margin:4px 0 2px;color:#fff;font-size:28px;font-weight:800;letter-spacing:0}
+.factory-head p{margin:0;color:#aebbc2;font-size:13px}
+.factory-eyebrow{font-size:11px;font-weight:800;color:#65c7a6;letter-spacing:1.2px}
+.factory-actions{display:flex;gap:8px}
+.factory-btn{height:42px;padding:0 16px;border-radius:7px;font:inherit;font-weight:700;cursor:pointer}
+.factory-btn.primary{border:1px solid #f47b45;background:#f47b45;color:#fff}
+.factory-btn.secondary{border:1px solid #52616a;background:#25343d;color:#fff}
+.factory-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.factory-kpi{min-height:118px;padding:18px;border-radius:8px;border:1px solid #e2e7e5;background:#fff}
+.factory-kpi span,.factory-kpi small{display:block;color:#718079}
+.factory-kpi span{font-size:12px;font-weight:700;text-transform:uppercase}
+.factory-kpi strong{display:block;margin:8px 0 4px;font-size:27px;color:#17242c}
+.factory-kpi small{font-size:12px}
+.factory-kpi.navy{border-top:3px solid #274c63}.factory-kpi.orange{border-top:3px solid #ed7d49}.factory-kpi.green{border-top:3px solid #2e9d73}.factory-kpi.teal{border-top:3px solid #1f9a9a}.factory-kpi.red{border-top:3px solid #cf4a4a}
+.factory-grid{display:grid;grid-template-columns:minmax(360px,.75fr) minmax(520px,1.25fr);gap:12px}
+.factory-panel{overflow:hidden;border:1px solid #dde5e1;border-radius:8px;background:#fff}
+.factory-panel-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #edf0ee}
+.factory-panel-head span{color:#7b8882;font-size:11px;font-weight:800;text-transform:uppercase}.factory-panel-head h3{margin:3px 0 0;font-size:16px;color:#17242c}.factory-panel-head>b{font-size:13px;color:#52615b}
+.factory-mini-grid{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #edf0ee}.factory-mini-grid div{padding:12px 18px;border-right:1px solid #edf0ee}.factory-mini-grid div:last-child{border-right:0}.factory-mini-grid span{display:block;color:#7b8882;font-size:11px}.factory-mini-grid strong{display:block;margin-top:3px;font-size:16px;color:#17242c}
+.factory-table-wrap{overflow-x:auto}.factory-table{width:max(100%,760px);border-collapse:collapse}.factory-table th{padding:10px 12px;background:#f7f9f8;color:#75827d;font-size:11px;text-align:left}.factory-table td{padding:11px 12px;border-top:1px solid #edf0ee;color:#30423a;font-size:12px}.factory-table td b{display:block;color:#17242c}.factory-table td small{display:block;margin-top:2px;color:#8a9691}.factory-table td:last-child{text-align:right}.factory-empty{text-align:center!important;color:#8a9691!important;padding:30px!important}.factory-delete{width:28px;height:28px;border:0;border-radius:6px;background:#eef1ef;color:#7b8882;font-size:18px;cursor:pointer}.factory-delete:hover{background:#fee8e5;color:#c94444}.factory-mini-grid .danger,.factory-table .danger{color:#c94444!important}.factory-table .positive{color:#16845c!important}
+@media(max-width:1100px){.factory-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.factory-grid{grid-template-columns:1fr}.factory-head{align-items:flex-start}.factory-actions{flex-wrap:wrap}}
+@media(max-width:700px){.factory-head{padding:18px}.factory-head h2{font-size:22px}.factory-actions{width:100%}.factory-btn{flex:1}.factory-kpis{grid-template-columns:1fr 1fr}.factory-kpi{min-height:96px;padding:14px}.factory-kpi strong{font-size:20px}.factory-mini-grid{grid-template-columns:1fr}.factory-mini-grid div{border-right:0;border-bottom:1px solid #edf0ee}}
+
 /* Customer, supplier and due screens */
 .lx,.lx-dlg,.lx-who>div,.lx-head>div{text-align:left}
 .lx-who>div,.lx-head>div{min-width:0}

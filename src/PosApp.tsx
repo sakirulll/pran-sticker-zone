@@ -5125,51 +5125,29 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const monthRawDue = sum(monthPurchases, (item: AnyData) => Math.max(0, (+item.total || 0) - (+item.paid || 0)));
 
       $("#app").innerHTML = `
-        <div class="lx">
-          <section class="card pl-head">
-            <div class="hd"><h2>Factory Accounts</h2><div class="lx-acts"><button class="lx-out" type="button" id="rawPurchaseAdd">+ Add Raw Material Purchase</button><button class="lx-add" type="button" id="factoryAdd">+ Add Production</button></div></div>
+        <div class="factory-dash">
+          <section class="factory-head">
+            <div><span class="factory-eyebrow">FACTORY WORKSPACE</span><h2>Production Dashboard</h2><p>${esc(D.user.shop || "My Factory")} · ${month.replace("-", "/")}</p></div>
+            <div class="factory-actions"><button type="button" class="factory-btn secondary" id="rawPurchaseAdd">+ Raw Purchase</button><button type="button" class="factory-btn primary" id="factoryAdd">+ Add Production</button></div>
           </section>
-          <div class="lx-kpis lx-four">
-            ${lxKpi("box", "Produced Stock", String(+totalProduced.toFixed(3)), "Total produced quantity", "var(--bl)")}
-            ${lxKpi("cart", "Finished Goods Sold", String(+totalSold.toFixed(3)), "This factory's sales", "var(--pu)")}
-            ${lxKpi("box", "Available Stock", String(+totalStock.toFixed(3)), "Produced but not sold", "var(--gr)")}
-            ${lxKpi("wallet", "This Month Profit", tk(monthProfit), `${tk(monthCost)} cost · ${tk(monthSales)} sales`, monthProfit < 0 ? "var(--rd)" : "var(--gr)")}
+
+          <div class="factory-kpis">
+            <article class="factory-kpi navy"><span>Produced</span><strong>${+totalProduced.toFixed(3)}</strong><small>All production</small></article>
+            <article class="factory-kpi orange"><span>Finished Goods Sold</span><strong>${+totalSold.toFixed(3)}</strong><small>${tk(monthSales)} this month</small></article>
+            <article class="factory-kpi green"><span>Available Stock</span><strong>${+totalStock.toFixed(3)}</strong><small>Ready to sell</small></article>
+            <article class="factory-kpi ${monthProfit < 0 ? "red" : "teal"}"><span>Monthly Profit</span><strong>${tk(monthProfit)}</strong><small>${tk(monthCost)} total cost</small></article>
           </div>
-          <div class="lx-kpis lx-four">
-            ${lxKpi("wallet", "Raw Material Purchased", tk(totalRawPurchase), "All-time purchase", "var(--bl)")}
-            ${lxKpi("wallet", "This Month Purchase", tk(monthRawPurchase), `${purchases.length} purchase entries`, "var(--pu)")}
-            ${lxKpi("wallet", "Paid in This Month", tk(monthRawPaid), "Paid cash or bank", "var(--gr)")}
-            ${lxKpi("wallet", "Raw Purchase Due", tk(monthRawDue), "Still to pay", monthRawDue > 0 ? "var(--rd)" : "var(--gr)")}
+
+          <div class="factory-grid">
+            <section class="factory-panel purchase-panel"><div class="factory-panel-head"><div><span>Expenses</span><h3>Raw Material Purchase</h3></div><b>${tk(monthRawPurchase)}</b></div>
+              <div class="factory-mini-grid"><div><span>Paid</span><strong>${tk(monthRawPaid)}</strong></div><div><span>Due</span><strong class="${monthRawDue > 0 ? "danger" : ""}">${tk(monthRawDue)}</strong></div><div><span>All-time</span><strong>${tk(totalRawPurchase)}</strong></div></div>
+              <div class="factory-table-wrap"><table class="factory-table"><thead><tr><th>Date</th><th>Material</th><th>Quantity</th><th>Rate</th><th>Total</th><th>Paid</th><th>Due</th><th></th></tr></thead><tbody>${purchases.map((item: AnyData) => { const due = Math.max(0, (+item.total || 0) - (+item.paid || 0)); return `<tr><td>${esc(item.date || "-")}</td><td><b>${esc(item.material || "-")}</b><small>${esc(item.supplier || "")}</small></td><td>${+item.quantity || 0} ${esc(item.unit || "")}</td><td>${tk(+item.rate || 0)}</td><td>${tk(+item.total || 0)}</td><td>${tk(+item.paid || 0)}</td><td class="${due > 0 ? "danger" : ""}">${tk(due)}</td><td><button class="factory-delete" type="button" title="Delete" aria-label="Delete" data-purchase-delete="${item.id}">×</button></td></tr>`; }).join("") || `<tr><td colspan="8" class="factory-empty">No raw material purchase added yet</td></tr>`}</tbody></table></div>
+            </section>
+
+            <section class="factory-panel production-panel"><div class="factory-panel-head"><div><span>Operations</span><h3>Production Register</h3></div><b>${batches.length} batches</b></div>
+              <div class="factory-table-wrap"><table class="factory-table"><thead><tr><th>Date</th><th>Product</th><th>Produced</th><th>Cost</th><th>Cost/Unit</th><th>Sold</th><th>Profit</th><th>Stock</th><th></th></tr></thead><tbody>${batches.map((batch: AnyData) => { const stock = Math.max(0, (+batch.quantity || 0) - (+batch.soldQuantity || 0)); return `<tr><td>${esc(batch.date || "-")}</td><td><b>${esc(batch.product || "-")}</b><small>${esc(batch.rawName || "Raw material")}</small></td><td>${+batch.quantity || 0} ${esc(batch.unit || "")}</td><td>${tk(batchCost(batch))}</td><td>${tk(averageCost(batch))}</td><td>${+batch.soldQuantity || 0}</td><td class="${batchProfit(batch) < 0 ? "danger" : "positive"}">${tk(batchProfit(batch))}</td><td>${+stock.toFixed(3)} ${esc(batch.unit || "")}</td><td><button class="factory-delete" type="button" title="Delete" aria-label="Delete" data-factory-delete="${batch.id}">×</button></td></tr>`; }).join("") || `<tr><td colspan="9" class="factory-empty">No production batch added yet</td></tr>`}</tbody></table></div>
+            </section>
           </div>
-          <section class="card">
-            <div class="hd"><h2>Raw Material Purchases</h2></div>
-            <div class="wrap"><table class="lx-table"><thead><tr><th>Date</th><th>Material</th><th>Supplier</th><th>Quantity</th><th>Unit</th><th>Rate</th><th>Total</th><th>Paid</th><th>Due</th><th></th></tr></thead><tbody>${purchases.map((item: AnyData) => {
-              const due = Math.max(0, (+item.total || 0) - (+item.paid || 0));
-              return `<tr><td ${lxLabel("Date")}>${esc(item.date || "-")}</td><td class="lx-main"><b data-no-translate>${esc(item.material || "-")}</b></td><td ${lxLabel("Supplier")}>${esc(item.supplier || "-")}</td><td class="num" ${lxLabel("Quantity")}>${+item.quantity || 0}</td><td ${lxLabel("Unit")}>${esc(item.unit || "")}</td><td class="num" ${lxLabel("Rate")}>${tk(+item.rate || 0)}</td><td class="num" ${lxLabel("Total")}>${tk(+item.total || 0)}</td><td class="num" ${lxLabel("Paid")}>${tk(+item.paid || 0)}</td><td class="num" ${lxLabel("Due")}>${due > 0 ? `<b class="lx-due">${tk(due)}</b>` : tk(0)}</td><td><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-purchase-delete="${item.id}">${lxIcon("trash")}</button></td></tr>`;
-            }).join("") || lxEmpty(10, "No raw material purchase added yet")}</tbody></table></div>
-          </section>
-          <section class="card">
-            <div class="hd"><h2>Daily Production & Cost</h2></div>
-            <div class="wrap"><table class="lx-table"><thead><tr><th>Date</th><th>Product</th><th>Produced</th><th>Raw Cost</th><th>Labour</th><th>Power</th><th>Other</th><th>Total Cost</th><th>Cost/Unit</th><th>Sold</th><th>Sale Value</th><th>Profit</th><th>Stock</th><th></th></tr></thead><tbody>${batches.map((batch: AnyData) => {
-              const stock = Math.max(0, (+batch.quantity || 0) - (+batch.soldQuantity || 0));
-              return `<tr>
-                <td ${lxLabel("Date")}>${esc(batch.date || "-")}</td>
-                <td class="lx-main"><b data-no-translate>${esc(batch.product || "-")}</b>${batch.rawName ? `<small class="lx-tel">${esc(batch.rawName)}${batch.rawQuantity ? ` · ${batch.rawQuantity} ${esc(batch.rawUnit || "")}` : ""}</small>` : ""}</td>
-                <td class="num" ${lxLabel("Produced")}>${+batch.quantity || 0} ${esc(batch.unit || "")}</td>
-                <td class="num" ${lxLabel("Raw Cost")}>${tk(+batch.rawCost || 0)}</td>
-                <td class="num" ${lxLabel("Labour")}>${tk(+batch.laborCost || 0)}</td>
-                <td class="num" ${lxLabel("Power")}>${tk(+batch.powerCost || 0)}</td>
-                <td class="num" ${lxLabel("Other")}>${tk(+batch.otherCost || 0)}</td>
-                <td class="num" ${lxLabel("Total Cost")}>${tk(batchCost(batch))}</td>
-                <td class="num" ${lxLabel("Cost/Unit")}>${tk(averageCost(batch))}</td>
-                <td class="num" ${lxLabel("Sold")}>${+batch.soldQuantity || 0} ${esc(batch.unit || "")}</td>
-                <td class="num" ${lxLabel("Sale Value")}>${tk(soldValue(batch))}</td>
-                <td class="num" ${lxLabel("Profit")}>${batchProfit(batch) < 0 ? `<b class="lx-due">${tk(batchProfit(batch))}</b>` : `<b class="pl-pos">${tk(batchProfit(batch))}</b>`}</td>
-                <td class="num" ${lxLabel("Stock")}>${+stock.toFixed(3)} ${esc(batch.unit || "")}</td>
-                <td><button class="lx-ic del" type="button" title="Delete" aria-label="Delete" data-factory-delete="${batch.id}">${lxIcon("trash")}</button></td>
-              </tr>`;
-            }).join("") || lxEmpty(14, "No production added yet")}</tbody></table></div>
-          </section>
         </div>`;
 
       $("#rawPurchaseAdd").addEventListener("click", () => {
@@ -6579,6 +6557,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       updateBell();
       applyTheme();
       document.body.classList.toggle("staff-mode", !isWorkspaceOwner);
+      document.body.classList.toggle("factory-mode", D.settings.businessType === "factory");
       document.body.classList.toggle("price-locked", priceLocked());
       const r =
         location.hash.slice(1) ||
@@ -6594,8 +6573,9 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const navItems: any[] = M.map((item: any[]) => {
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
-            if (item[0] === "Factory Accounts") return D.settings.businessType === "factory" ? item : null;
-            if (item[0] === "Service Sale" && D.settings.businessType === "factory") return null;
+            if (D.settings.businessType === "factory") {
+              return ["Factory Accounts", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
+            }
             if (item[0] === "Subscription") return isWorkspaceOwner ? item : null;
             // The guide is for everyone.
             if (item[0] === "Help") return item;
