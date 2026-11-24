@@ -6559,9 +6559,13 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       document.body.classList.toggle("staff-mode", !isWorkspaceOwner);
       document.body.classList.toggle("factory-mode", D.settings.businessType === "factory");
       document.body.classList.toggle("price-locked", priceLocked());
-      const r =
+      let r =
         location.hash.slice(1) ||
         "dashboard";
+      if (r === "factory" && D.settings.businessType !== "factory") {
+        location.hash = "dashboard";
+        r = "dashboard";
+      }
 
       const menu = $("#menu");
 
@@ -6571,6 +6575,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const permissions: string[] = role?.permissions || (isWorkspaceOwner ? ["All permissions"] : []);
       const hasAllPermissions = isWorkspaceOwner || permissions.includes("All permissions");
       const navItems: any[] = M.map((item: any[]) => {
+            if (item[0] === "Factory Accounts" && D.settings.businessType !== "factory") return null;
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
             if (D.settings.businessType === "factory") {
