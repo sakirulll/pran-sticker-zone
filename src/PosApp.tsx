@@ -199,8 +199,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         services: [],
         serviceItems: [],
         transfers: [],
-        factoryBatches: [],
-        factoryPurchases: [],
 
         currencies: [
           { id: 40, name: "Bangladeshi Taka", code: "BDT", symbol: String.fromCharCode(2547), rate: 1, status: "Active" },
@@ -422,7 +420,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // and categories are added to the shop's lists when the kind is chosen.
     const BUSINESS_TYPES: Record<string, { label: string; show: string[]; extra: string[]; units: string[]; categories: string[] }> = {
       general: { label: "General Store", show: ["brand", "lowAlert", "wholesale", "dealer", "manufacturer", "manufactureDate", "expireDate", "serial"], extra: [], units: [], categories: [] },
-      factory: { label: "Factory", show: ["lowAlert"], extra: [], units: ["Pcs", "Packet", "Box", "Carton", "Kg", "Dozen"], categories: ["Biscuit", "Ruti", "Cake", "Bread", "Packaging", "Raw Materials"] },
       sticker: { label: "Sticker & Wash Shop", show: ["brand", "lowAlert", "wholesale"], extra: [], units: ["Feet", "Inch", "Sq Ft"], categories: ["Bike Sticker", "Car Sticker", "Helmet Sticker", "Vinyl Roll", "Accessories"] },
       shoes: { label: "Shoe Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "material"], units: ["Pair", "Box"], categories: ["Men's Shoe", "Women's Shoe", "Kids Shoe", "Sandal", "Sneaker", "Slipper", "Formal Shoe", "Boot", "Socks"] },
       clothing: { label: "Clothing Shop", show: ["brand", "lowAlert", "wholesale", "sizeStock"], extra: ["color", "fabric"], units: ["Dozen", "Yard", "Meter"], categories: ["Shirt", "Pant", "Panjabi", "Saree", "Three Piece", "Kids Wear"] },
@@ -443,10 +440,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const SERVICE_KINDS: Record<string, { label: string; starter: ServiceGroup[] }> = {
       general: { label: "Service Sale", starter: [
         ["Service", [["Home Delivery", 60], ["Installation", 300], ["Repair", 200], ["Fitting Charge", 100], ["Packing Charge", 20], ["Gift Wrapping", 50], ["Service Charge", 50]]],
-      ] },
-      factory: { label: "Factory Work & Service", starter: [
-        ["Production", [["Cutting", 300], ["Fabrication", 500], ["Assembly", 500], ["Printing", 300], ["Packaging", 200], ["Quality Checking", 100]]],
-        ["Delivery & Work", [["Machine Repair", 500], ["Maintenance", 300], ["Installation", 500], ["Bulk Delivery", 500], ["Loading & Unloading", 300]]],
       ] },
       sticker: { label: "Sticker & Wash", starter: [
         ["Sticker", [["Bike Full Sticker", 1500], ["Bike Half Sticker", 800], ["Bike Tank Sticker", 300], ["Bike Name Sticker", 150], ["Number Plate Sticker", 200], ["Helmet Sticker", 150], ["Bike Reflective Sticker", 250], ["Car Full Wrap", 15000], ["Car Side Sticker", 1200], ["Car Name Sticker", 300], ["Windshield Sticker", 400], ["Laptop Skin", 350], ["Mobile Skin", 200], ["Custom Name Sticker", 100], ["Sticker Remove", 300]]],
@@ -492,7 +485,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     };
     const serviceKind = () => SERVICE_KINDS[D.settings.businessType] || SERVICE_KINDS.general;
     // Names a shop can give its service section, besides one it writes itself.
-    const SERVICE_NAMES = ["Service Sale", "Factory Work & Service", "Sticker & Wash", "Tailoring", "Repair Service", "Shoe Repair", "Health Service", "Beauty Service",
+    const SERVICE_NAMES = ["Service Sale", "Sticker & Wash", "Tailoring", "Repair Service", "Shoe Repair", "Health Service", "Beauty Service",
       "Fitting & Repair", "Print & Photocopy", "Delivery & Service", "Catering & Event", "Home Delivery", "Party Order", "Cake Order", "Ice Cream Order",
       "Custom Order", "Installation", "Bike Servicing", "Car Wash", "Laundry", "Photo Studio", "Courier Service", "Rental", "Event Booking",
       "Training & Course", "Consultation", "Other Income"];
@@ -5184,7 +5177,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       $("#factoryAdd").addEventListener("click", () => {
         const dialog = $("#dlg") as HTMLDialogElement;
         dialog.innerHTML = `<div class="lx-dlg"><h3>Add Factory Production</h3>
-          <label>Product Name</label><input id="factoryProduct" list="factoryProducts" placeholder="e.g. Biscuit, Ruti, Cake"><datalist id="factoryProducts"><option value="Biscuit"><option value="Ruti"><option value="Cake"><option value="Bread"><option value="Chanachur"></datalist>
           <div class="two"><div><label>Date</label><input id="factoryDate" type="date" value="${today()}"></div><div><label>Unit</label><select id="factoryUnit"><option>Pcs</option><option>Packet</option><option>Carton</option><option>Box</option><option>Kg</option><option>Dozen</option></select></div></div>
           <div class="two"><div><label>Produced Quantity</label><input id="factoryQuantity" type="number" min="0.001" step="0.001" placeholder="0"></div><div><label>Sold Quantity</label><input id="factorySold" type="number" min="0" step="0.001" value="0"></div></div>
           <label>Selling Price per Unit</label><input id="factorySellPrice" type="number" min="0" step="0.01" value="0">
@@ -5285,14 +5277,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       "admin-payments": () => adminPage("payments"),
       "admin-settings": () => adminPage("settings"),
       "admin-drive": drivePage,
-      "factory": factoryPage,
-      "factory-cost": factoryCostPage,
-      "factory-production": factoryPage,
-      "factory-raw-materials": factoryCostPage,
-      "factory-finished-goods": stocksPage,
-      "factory-due": duesPage,
-      "factory-profit": () => P.profit(),
-      "factory-reports": () => P.profit(),
 
       dashboard: () => {
         const cm = today().slice(0, 7);
@@ -6370,27 +6354,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
 
     const M: any[] = [
       [
-        "Factory Accounts",
-        "🏭",
-        "factory",
-      ],
-      [
-        "Sales",
-        "🛒",
-        [["Sale New", "sale-new"], ["Sale List", "sales"], ["Sales Return", "sale-returns"]],
-      ],
-      [
-        "Cost",
-        "৳",
-        "factory-cost",
-      ],
-      ["Production", "🏭", "factory-production"],
-      ["Raw Materials", "📦", "factory-raw-materials"],
-      ["Finished Goods", "📦", "factory-finished-goods"],
-      ["Due / Payments", "💳", "factory-due"],
-      ["Profit & Loss", "📈", "factory-profit"],
-      ["Reports", "📊", "factory-reports"],
-      [
         "Dashboard",
         "🏠",
         "dashboard",
@@ -6561,7 +6524,6 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     // The line drawing beside each sidebar entry, looked up by the name of the entry.
     const MENU_ICONS: Record<string, string> = {
       Dashboard: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
-      "Factory Accounts": '<path d="M3 21V10l6 3V8l6 4V5h4v16z"/><path d="M7 17h2M12 17h2M17 17h2"/>',
       Production: '<path d="M3 21V10l6 3V8l6 4V5h4v16z"/><path d="M7 17h2M12 17h2M17 17h2"/>',
       "Raw Materials": '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>',
       "Finished Goods": '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>',
@@ -6616,15 +6578,10 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       updateBell();
       applyTheme();
       document.body.classList.toggle("staff-mode", !isWorkspaceOwner);
-      document.body.classList.toggle("factory-mode", D.settings.businessType === "factory");
       document.body.classList.toggle("price-locked", priceLocked());
       let r =
         location.hash.slice(1) ||
         "dashboard";
-      if (["factory", "factory-cost", "factory-production", "factory-raw-materials", "factory-finished-goods", "factory-due", "factory-profit", "factory-reports"].includes(r) && D.settings.businessType !== "factory") {
-        location.hash = "dashboard";
-        r = "dashboard";
-      }
 
       const menu = $("#menu");
 
@@ -6634,12 +6591,8 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       const permissions: string[] = role?.permissions || (isWorkspaceOwner ? ["All permissions"] : []);
       const hasAllPermissions = isWorkspaceOwner || permissions.includes("All permissions");
       const navItems: any[] = M.map((item: any[]) => {
-            if (item[0] === "Factory Accounts" && D.settings.businessType !== "factory") return null;
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
-            if (D.settings.businessType === "factory") {
-              return ["Factory Accounts", "Sales", "Cost", "Production", "Raw Materials", "Finished Goods", "Due / Payments", "Profit & Loss", "Reports", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
-            }
             if (item[0] === "Subscription") return isWorkspaceOwner ? item : null;
             // The guide is for everyone.
             if (item[0] === "Help") return item;
