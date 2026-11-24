@@ -5228,6 +5228,48 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       }));
     };
 
+    const factoryCostPage = () => {
+      const batches: AnyData[] = D.factoryBatches || [];
+      const purchases: AnyData[] = D.factoryPurchases || [];
+      const batchTotal = (batch: AnyData) => (+batch.rawCost || 0) + (+batch.laborCost || 0) + (+batch.powerCost || 0) + (+batch.otherCost || 0);
+      const rawCost = sum(purchases, (item: AnyData) => +item.total || 0);
+      const productionRaw = sum(batches, (batch: AnyData) => +batch.rawCost || 0);
+      const labour = sum(batches, (batch: AnyData) => +batch.laborCost || 0);
+      const power = sum(batches, (batch: AnyData) => +batch.powerCost || 0);
+      const other = sum(batches, (batch: AnyData) => +batch.otherCost || 0);
+      const productionCost = productionRaw + labour + power + other;
+
+      $("#app").innerHTML = `
+        <div class="factory-dash">
+          <section class="factory-head"><div><span class="factory-eyebrow">FACTORY WORKSPACE</span><h2>Cost Management</h2><p>${esc(D.user.shop || "My Factory")}</p></div><div class="factory-actions"><button type="button" class="factory-btn primary" id="costProductionAdd">+ Add Production Cost</button></div></section>
+          <div class="factory-kpis">
+            <article class="factory-kpi navy"><span>Raw Material Purchase</span><strong>${tk(rawCost)}</strong><small>${purchases.length} purchase entries</small></article>
+            <article class="factory-kpi orange"><span>Labour Cost</span><strong>${tk(labour)}</strong><small>Production labour</small></article>
+            <article class="factory-kpi green"><span>Power / Gas Cost</span><strong>${tk(power)}</strong><small>Utility cost</small></article>
+            <article class="factory-kpi red"><span>Other & Production Cost</span><strong>${tk(other + productionCost)}</strong><small>${tk(productionCost)} batch cost</small></article>
+          </div>
+          <section class="factory-panel"><div class="factory-panel-head"><div><span>Batch wise</span><h3>Production Cost Details</h3></div><b>${batches.length} batches</b></div>
+            <div class="factory-table-wrap"><table class="factory-table"><thead><tr><th>Date</th><th>Product</th><th>Quantity</th><th>Raw Cost</th><th>Labour</th><th>Power / Gas</th><th>Other</th><th>Total Cost</th><th>Cost / Unit</th><th></th></tr></thead><tbody>${batches.map((batch: AnyData) => {
+              const total = batchTotal(batch);
+              const unitCost = (+batch.quantity || 0) > 0 ? total / (+batch.quantity || 0) : 0;
+              return `<tr><td>${esc(batch.date || "-")}</td><td><b>${esc(batch.product || "-")}</b></td><td>${+batch.quantity || 0} ${esc(batch.unit || "")}</td><td>${tk(+batch.rawCost || 0)}</td><td>${tk(+batch.laborCost || 0)}</td><td>${tk(+batch.powerCost || 0)}</td><td>${tk(+batch.otherCost || 0)}</td><td>${tk(total)}</td><td>${tk(unitCost)}</td><td><button class="factory-delete" type="button" aria-label="Delete cost batch" data-cost-delete="${batch.id}">×</button></td></tr>`;
+            }).join("") || `<tr><td colspan="10" class="factory-empty">No production cost added yet</td></tr>`}</tbody></table></div>
+          </section>
+        </div>`;
+
+      $("#costProductionAdd").addEventListener("click", () => {
+        $("#app").dispatchEvent(new CustomEvent("openFactoryProduction"));
+        location.hash = "factory";
+      });
+
+      $("#app").querySelectorAll("[data-cost-delete]").forEach((button: Element) => button.addEventListener("click", () => {
+        const id = +(button as HTMLElement).dataset.costDelete!;
+        if (!confirm("Delete this cost batch?")) return;
+        D.factoryBatches = batches.filter((batch: AnyData) => batch.id != id);
+        save(); factoryCostPage(); toast("Cost batch deleted");
+      }));
+    };
+
     const P: AnyData = {
       help: helpPage,
       products: productList,
@@ -5244,6 +5286,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       "admin-settings": () => adminPage("settings"),
       "admin-drive": drivePage,
       "factory": factoryPage,
+      "factory-cost": factoryCostPage,
 
       dashboard: () => {
         const cm = today().slice(0, 7);
@@ -6326,6 +6369,11 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
         "factory",
       ],
       [
+        "Cost",
+        "৳",
+        "factory-cost",
+      ],
+      [
         "Dashboard",
         "🏠",
         "dashboard",
@@ -6510,6 +6558,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
     const MENU_ICONS: Record<string, string> = {
       Dashboard: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
       "Factory Accounts": '<path d="M3 21V10l6 3V8l6 4V5h4v16z"/><path d="M7 17h2M12 17h2M17 17h2"/>',
+      Cost: '<path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
       Sales: LX_ICONS.cart,
       "Service Sale": LX_ICONS.tool,
       Purchases: '<path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
@@ -6562,7 +6611,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
       let r =
         location.hash.slice(1) ||
         "dashboard";
-      if (r === "factory" && D.settings.businessType !== "factory") {
+      if ((r === "factory" || r === "factory-cost") && D.settings.businessType !== "factory") {
         location.hash = "dashboard";
         r = "dashboard";
       }
@@ -6579,7 +6628,7 @@ export function POSApp({ user, onLogout }: { user: HostingUser; onLogout: () => 
             // The platform admin's own section; no shop role can grant it.
             if (item[0] === "Admin") return isAdmin ? item : null;
             if (D.settings.businessType === "factory") {
-              return ["Factory Accounts", "Sales", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
+              return ["Factory Accounts", "Sales", "Cost", "Profile", "Settings", "Help"].includes(item[0]) ? item : null;
             }
             if (item[0] === "Subscription") return isWorkspaceOwner ? item : null;
             // The guide is for everyone.
